@@ -1,7 +1,7 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-let lastTime = 0;
+const sunflower = createTower('sunflower');
 
 function update(deltaSeconds) {
   // Game state updates will go here.
@@ -10,11 +10,69 @@ function update(deltaSeconds) {
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = '#4caf50';
-  ctx.font = '24px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('Bug Tower Defense', canvas.width / 2, canvas.height / 2);
+  const x = canvas.width / 2;
+  const y = canvas.height / 2;
+
+  if (sunflower.attackType === 'ray') {
+    ctx.strokeStyle = sunflower.burn ? '#ff6600' : '#fff59d';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(canvas.width - 40, y);
+    ctx.stroke();
+  }
+
+  ctx.save();
+  if (sunflower.glow) {
+    ctx.shadowColor = sunflower.glow;
+    ctx.shadowBlur = 25;
+  }
+  ctx.fillStyle = sunflower.stats.color;
+  ctx.beginPath();
+  ctx.arc(x, y, sunflower.stats.size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
+
+function renderPanel() {
+  const statsEl = document.getElementById('stats');
+  statsEl.innerHTML = `
+    Damage: ${sunflower.stats.damage.toFixed(1)}<br>
+    Size: ${sunflower.stats.size.toFixed(1)}<br>
+    Attack: ${sunflower.attackType}<br>
+    Burn: ${sunflower.burn ? `${sunflower.burn.damagePerSecond}/s for ${sunflower.burn.duration}s` : 'none'}
+  `;
+
+  for (let pathIndex = 0; pathIndex < 3; pathIndex += 1) {
+    const btn = document.querySelector(`button[data-path="${pathIndex}"]`);
+    const type = TOWER_TYPES[sunflower.type];
+    const pathDefined = Boolean(type.upgradePaths[pathIndex]);
+    if (!pathDefined) continue; // leave the "Not yet designed" placeholder as-is
+
+    const upgrade = getAvailableUpgrade(sunflower, pathIndex);
+    if (upgrade) {
+      btn.disabled = false;
+      btn.textContent = `${upgrade.name} ($${upgrade.cost})`;
+    } else {
+      btn.disabled = true;
+      btn.textContent =
+        sunflower.chosenPath !== null && sunflower.chosenPath !== pathIndex
+          ? 'Locked out'
+          : 'Maxed out';
+    }
+  }
+}
+
+document.querySelectorAll('button[data-path]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const pathIndex = Number(btn.dataset.path);
+    if (purchaseUpgrade(sunflower, pathIndex)) renderPanel();
+  });
+});
+
+renderPanel();
+
+let lastTime = 0;
 
 function loop(timestamp) {
   const deltaSeconds = (timestamp - lastTime) / 1000;

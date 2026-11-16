@@ -7,7 +7,29 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <canvas id="game" width="960" height="640"></canvas>
+  <div id="game-container">
+    <canvas id="game" width="960" height="640"></canvas>
+
+    <div id="panel">
+      <h2>Sunflower</h2>
+      <div id="stats"></div>
+
+      <div class="path" id="path-0">
+        <h3>Solar Path</h3>
+        <button data-path="0" type="button"></button>
+      </div>
+      <div class="path" id="path-1">
+        <h3>Path 2</h3>
+        <button data-path="1" type="button" disabled>Not yet designed</button>
+      </div>
+      <div class="path" id="path-2">
+        <h3>Path 3</h3>
+        <button data-path="2" type="button" disabled>Not yet designed</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/towers.js"></script>
   <script src="js/game.js"></script>
 </body>
 </html>

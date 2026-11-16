@@ -5,9 +5,46 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: sans-serif;
+  color: #eee;
+}
+
+#game-container {
+  display: flex;
+  gap: 16px;
 }
 
 canvas {
   background: #2e2e2e;
   display: block;
+}
+
+#panel {
+  width: 220px;
+  padding: 12px;
+}
+
+#panel h2 {
+  margin-top: 0;
+}
+
+#panel h3 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+
+#stats {
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.path button {
+  width: 100%;
+  padding: 6px;
+  cursor: pointer;
+}
+
+.path button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
