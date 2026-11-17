@@ -31,6 +31,62 @@ let selectedShopItem = null;
 let mouseX = null;
 let mouseY = null;
 
+// Visible projectiles for the attack types that don't already have their
+// own always-on visual (the ray beam draws itself straight to the target
+// every frame, so it doesn't need one of these). Simple, no real physics:
+// each one just flies in a straight line toward where the target was at
+// the moment it was fired, and disappears once it covers that distance —
+// it doesn't home in, so a fast-moving enemy can walk out from under it.
+const PROJECTILE_SPEED = 400; // px/second, baseline pick — fast but visible
+let projectiles = [];
+
+function spawnProjectile(tower, target) {
+  const dx = target.x - tower.x;
+  const dy = target.y - tower.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  projectiles.push({
+    x: tower.x,
+    y: tower.y,
+    vx: (dx / distance) * PROJECTILE_SPEED,
+    vy: (dy / distance) * PROJECTILE_SPEED,
+    distanceLeft: distance,
+    color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
+    shape: tower.attackType === 'fireball' ? 'fireball' : 'petal',
+  });
+}
+
+function updateProjectiles(deltaSeconds) {
+  projectiles.forEach((projectile) => {
+    const step = PROJECTILE_SPEED * deltaSeconds;
+    projectile.x += projectile.vx * deltaSeconds;
+    projectile.y += projectile.vy * deltaSeconds;
+    projectile.distanceLeft -= step;
+  });
+  projectiles = projectiles.filter((projectile) => projectile.distanceLeft > 0);
+}
+
+function renderProjectiles(ctx) {
+  projectiles.forEach((projectile) => {
+    if (projectile.shape === 'fireball') {
+      ctx.fillStyle = projectile.color;
+      ctx.beginPath();
+      ctx.arc(projectile.x, projectile.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    // A small petal: an ellipse oriented along its direction of travel.
+    ctx.save();
+    ctx.translate(projectile.x, projectile.y);
+    ctx.rotate(Math.atan2(projectile.vy, projectile.vx));
+    ctx.fillStyle = projectile.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 7, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
 function updateTowerAttack(tower, x, y, deltaSeconds) {
   tower.target = findNearestEnemyInRange(x, y, tower.stats.range);
 
@@ -38,6 +94,7 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.target && tower.attackCooldown <= 0) {
     damageEnemy(tower.target, tower.stats.damage);
     if (tower.burn) applyBurn(tower.target, tower.burn);
+    if (tower.attackType !== 'ray') spawnProjectile(tower, tower.target);
     tower.attackCooldown = tower.stats.attackInterval;
   }
 
@@ -92,6 +149,7 @@ function update(deltaSeconds) {
   }
 
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
+  updateProjectiles(deltaSeconds);
 }
 
 function drawTowerWithRay(tower, x, y) {
@@ -102,18 +160,6 @@ function drawTowerWithRay(tower, x, y) {
     ctx.moveTo(x, y);
     ctx.lineTo(tower.target.x, tower.target.y);
     ctx.stroke();
-  } else if (tower.attackType === 'fireball' && tower.target) {
-    // Kept simple like the ray attack, no real projectile physics: the
-    // ember's drawn position is just interpolated along the tower->target
-    // line by how far through the current attack cooldown we are, purely
-    // for visual flavor — damage itself still applies instantly on cooldown.
-    const progress = 1 - tower.attackCooldown / tower.stats.attackInterval;
-    const fx = x + (tower.target.x - x) * progress;
-    const fy = y + (tower.target.y - y) * progress;
-    ctx.fillStyle = '#ff5722';
-    ctx.beginPath();
-    ctx.arc(fx, fy, 6, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   renderTower(ctx, tower, x, y);
@@ -134,6 +180,7 @@ function render() {
   towers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
 
   renderEnemies(ctx);
+  renderProjectiles(ctx);
 
   if (selectedShopItem && mouseX !== null) {
     const buildable = money >= selectedShopItem.cost && !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN);
