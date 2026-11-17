@@ -173,6 +173,68 @@ const TOWER_TYPES = {
       },
     ],
   },
+  rose: {
+    name: 'Rose',
+    baseStats: {
+      damage: 2,
+      size: 18, // starts a touch smaller than the Sunflower; Thorns' own sizeMultiplier grows it from here
+      color: '#c2185b',
+      range: 170, // unspecified by the brief — matches Sunflower's baseline rather than inventing a different number
+      attackInterval: 0.6, // same baseline cadence as Sunflower; the base attack is a thrown petal like Sunflower's, just weaker — the vines (once grown) are the Rose's real draw
+    },
+    upgradePaths: [
+      {
+        // Not named in the spec, only the 4 upgrades (thorn-vine themed) —
+        // picked to match the existing "<theme> Path" convention.
+        name: 'Thorn Path',
+        upgrades: [
+          {
+            name: 'Thorns',
+            description:
+              'Rose grows a thorn vine that lashes a nearby bug once a second for 2 damage — a second, separate ' +
+              "attack alongside the Rose's normal one, not a replacement for it; flower head grows 10%.",
+            cost: 100,
+            effects: {
+              // Introduces the vine subsystem once, at its own starting
+              // damage/cadence — addVines (below) is what actually grows the
+              // vine count, here and on every later tier of this path, so a
+              // future tower/path could reuse either independently.
+              vine: { damage: 2, interval: 1 },
+              addVines: 1,
+              sizeMultiplier: 1.1,
+            },
+          },
+          {
+            name: 'Puncture',
+            description:
+              'A second vine grows, each now bristling with more thorns; rose grows 25% bigger; damage doubles ' +
+              '(the base attack and every vine alike).',
+            cost: 500,
+            effects: { addVines: 1, moreThorns: true, sizeMultiplier: 1.25, damageMultiplier: 2 },
+          },
+          {
+            name: 'Overgrowth',
+            description:
+              'Three more vines grow (5 total); rose grows 50% bigger; vines reach twice as far; damage doubles again.',
+            cost: 1250,
+            // vineRangeMultiplier is a real mechanical range boost for the
+            // vines specifically (not just a visual flourish) — judgment
+            // call per the brief, since "how far the vines reach" reads as
+            // gameplay-relevant once there's an actual attack tied to them.
+            effects: { addVines: 3, sizeMultiplier: 1.5, vineRangeMultiplier: 2, damageMultiplier: 2 },
+          },
+          {
+            name: 'Vigorous',
+            description: 'Three more vines grow (8 total); the stem grows taller; damage doubles once more.',
+            cost: 2250,
+            effects: { addVines: 3, tallStem: true, damageMultiplier: 2 },
+          },
+        ],
+      },
+      null, // Path 2 — not yet designed.
+      null, // Path 3 — not yet designed.
+    ],
+  },
 };
 
 function createTower(typeKey) {
@@ -203,6 +265,19 @@ function createTower(typeKey) {
     shockwavePulse: 0, // seconds left of the shockwave's expanding-ring visual
     clouds: null, // decorative-only orbiting storm-cloud config, once bought (Storm Path)
     cloudsAngle: 0,
+    // Thorn vines (Rose's Thorn Path): a second, independent attack that
+    // ticks on its own cooldown alongside the tower's normal attack — see
+    // updateTowerVines() in game.js. vineCount is literal "how many vines"
+    // (added to, not multiplied, by each tier); vineDamage/vineInterval are
+    // introduced once by the `vine` effect and then scaled the same way
+    // tower.stats.damage is by any later damageMultiplier.
+    vineCount: 0,
+    vineDamage: 0,
+    vineInterval: 0,
+    vineCooldown: 0,
+    vineRangeMultiplier: 1,
+    moreThorns: false, // visual-only denser thorn spikes, once bought
+    tallStem: false, // visual-only taller stem, once bought
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
@@ -228,7 +303,13 @@ function purchaseUpgrade(tower, pathIndex) {
   if (tower.chosenPath === null) tower.chosenPath = pathIndex;
 
   const effects = upgrade.effects;
-  if (effects.damageMultiplier) tower.stats.damage *= effects.damageMultiplier;
+  if (effects.damageMultiplier) {
+    tower.stats.damage *= effects.damageMultiplier;
+    // Applies to vine damage too, same "on top of current" stacking as the
+    // base attack — vines don't have their own separate damageMultiplier
+    // chain, they just ride along with the tower's.
+    if (tower.vineDamage) tower.vineDamage *= effects.damageMultiplier;
+  }
   if (effects.sizeMultiplier) tower.stats.size *= effects.sizeMultiplier;
   if (effects.attackIntervalMultiplier) tower.stats.attackInterval *= effects.attackIntervalMultiplier;
   if (effects.color) tower.stats.color = effects.color;
@@ -254,6 +335,15 @@ function purchaseUpgrade(tower, pathIndex) {
     tower.shockwaveCooldown = effects.shockwave.interval; // don't fire instantly on purchase
   }
   if (effects.clouds) tower.clouds = effects.clouds;
+  if (effects.vine) {
+    tower.vineDamage = effects.vine.damage;
+    tower.vineInterval = effects.vine.interval;
+    tower.vineCooldown = effects.vine.interval; // don't fire instantly on purchase
+  }
+  if (effects.addVines) tower.vineCount += effects.addVines;
+  if (effects.moreThorns) tower.moreThorns = true;
+  if (effects.vineRangeMultiplier) tower.vineRangeMultiplier *= effects.vineRangeMultiplier;
+  if (effects.tallStem) tower.tallStem = true;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -278,9 +368,14 @@ function shadeColor(hex, percent) {
 // animation — not wall-clock time, so animation speed is tied to game
 // speed/pausing rather than real time.
 function renderTower(ctx, tower, x, y, time) {
+  const flashAmount = tower.attackFlash / ATTACK_FLASH_DURATION;
   if (tower.type === 'sunflower') {
-    const flashAmount = tower.attackFlash / ATTACK_FLASH_DURATION;
     drawSunflower(ctx, x, y, tower.stats.size, tower.stats.color, tower.glow, time, flashAmount);
+  } else if (tower.type === 'rose') {
+    // Vines are rooted appendages, not decoration riding on top of the
+    // flower — drawn first so the bloom and stem render over their bases.
+    if (tower.vineCount > 0) renderRoseVines(ctx, tower, x, y, time);
+    drawRose(ctx, x, y, tower.stats.size, tower.stats.color, tower.glow, time, flashAmount, tower.tallStem);
   } else {
     // Fallback for any future tower type without custom art yet.
     ctx.fillStyle = tower.stats.color;
@@ -484,4 +579,106 @@ function drawSunflower(ctx, x, y, size, color, glow, time, flashAmount) {
   });
 
   ctx.restore();
+}
+
+function drawRose(ctx, x, y, size, color, glow, time, flashAmount, tallStem) {
+  const stemHeight = size * (tallStem ? 1.7 : 1.3); // Vigorous grows the stem taller
+  const groundY = y + stemHeight;
+  const sway = Math.sin(time * 1.3 + x * 0.013) * 0.05;
+
+  ctx.save();
+  ctx.translate(x, groundY);
+  ctx.rotate(sway);
+  ctx.translate(-x, -groundY);
+
+  ctx.fillStyle = '#2e7d32';
+  ctx.strokeStyle = '#1b5e20';
+  ctx.lineWidth = 1;
+  ctx.fillRect(x - size * 0.07, y, size * 0.14, stemHeight);
+  ctx.strokeRect(x - size * 0.07, y, size * 0.14, stemHeight);
+
+  ctx.beginPath();
+  ctx.ellipse(x - size * 0.3, y + stemHeight * 0.45, size * 0.26, size * 0.11, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x + size * 0.3, y + stemHeight * 0.65, size * 0.26, size * 0.11, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The bloom pulses slightly bigger right after an attack, same cue as the Sunflower.
+  ctx.translate(x, y);
+  ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
+  ctx.translate(-x, -y);
+
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 25;
+  }
+
+  // Three interleaved rings of petals, shrinking and darkening toward the
+  // center — reads as an inward-curling rose bloom rather than the
+  // Sunflower's single flat radiating ring.
+  const layers = [
+    { count: 6, radius: 0.62, petalW: 0.34, petalH: 0.22, shade: 10 },
+    { count: 5, radius: 0.42, petalW: 0.28, petalH: 0.2, shade: -5 },
+    { count: 4, radius: 0.22, petalW: 0.2, petalH: 0.16, shade: -18 },
+  ];
+  layers.forEach((layer, layerIndex) => {
+    for (let i = 0; i < layer.count; i += 1) {
+      const angle = (i / layer.count) * Math.PI * 2 + layerIndex * 0.4;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = shadeColor(color, layer.shade);
+      ctx.beginPath();
+      ctx.ellipse(size * layer.radius, 0, size * layer.petalW, size * layer.petalH, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  });
+
+  ctx.fillStyle = shadeColor(color, -30);
+  ctx.beginPath();
+  ctx.arc(x, y, size * 0.14, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// Thorn vines (Rose's Thorn Path) — fixed-angle appendages radiating from
+// the tower (rooted, not orbiting), each with a couple of thorn-spike tick
+// marks. Purely the visual side; the actual periodic damage lives in
+// game.js's updateTowerVines(), driven by the same tower.vineCount this
+// reads. moreThorns (Puncture) just densifies the tick marks, same spirit
+// as flame's small/large or sparks' overlay.
+function renderRoseVines(ctx, tower, x, y, time) {
+  const length = tower.stats.size * 1.8 * tower.vineRangeMultiplier;
+  const thornTicks = tower.moreThorns ? 4 : 2;
+
+  for (let i = 0; i < tower.vineCount; i += 1) {
+    const angle = (i / tower.vineCount) * Math.PI * 2 + Math.sin(time * 0.6 + i) * 0.05;
+    const tipX = x + Math.cos(angle) * length;
+    const tipY = y + Math.sin(angle) * length;
+    const midX = x + Math.cos(angle) * length * 0.55;
+    const midY = y + Math.sin(angle) * length * 0.55 - length * 0.08;
+
+    ctx.strokeStyle = '#2e7d32';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(midX, midY, tipX, tipY);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#1b3a1d';
+    ctx.lineWidth = 1.5;
+    for (let t = 1; t <= thornTicks; t += 1) {
+      const frac = t / (thornTicks + 1);
+      const px = x + (tipX - x) * frac;
+      const py = y + (tipY - y) * frac;
+      const perp = angle + Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + Math.cos(perp) * 4, py + Math.sin(perp) * 4);
+      ctx.stroke();
+    }
+  }
 }

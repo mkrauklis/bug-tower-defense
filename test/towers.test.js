@@ -143,3 +143,58 @@ test('Storm Path locks out the other two paths once its first upgrade is bought'
   assert.equal(game.getAvailableUpgrade(tower, 0), null); // Solar Path locked out
   assert.equal(game.getAvailableUpgrade(tower, 1), null); // Fire Path locked out
 });
+
+test('createTower(\'rose\') returns Rose\'s own base stats with no vines yet', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+
+  assert.equal(tower.type, 'rose');
+  assert.deepEqual(tower.stats, game.TOWER_TYPES.rose.baseStats);
+  assert.equal(tower.vineCount, 0);
+  assert.equal(tower.vineDamage, 0);
+});
+
+test('Rose\'s Thorn Path grows vine count 1 -> 2 -> 5 -> 8, scaling damage and size alongside the base attack', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+  const baseDamage = tower.stats.damage; // 2
+  const baseSize = tower.stats.size;
+
+  game.purchaseUpgrade(tower, 0); // Thorns
+  assert.equal(tower.vineCount, 1);
+  assert.equal(tower.vineDamage, 2);
+  assert.equal(tower.vineInterval, 1);
+  assert.ok(Math.abs(tower.stats.size - baseSize * 1.1) < 1e-9);
+  assert.equal(tower.stats.damage, baseDamage); // Thorns itself has no damageMultiplier
+
+  game.purchaseUpgrade(tower, 0); // Puncture
+  assert.equal(tower.vineCount, 2);
+  assert.equal(tower.moreThorns, true);
+  assert.ok(Math.abs(tower.stats.size - baseSize * 1.1 * 1.25) < 1e-9);
+  assert.equal(tower.stats.damage, baseDamage * 2);
+  assert.equal(tower.vineDamage, 2 * 2); // vine damage rides the same multiplier as the base attack
+
+  game.purchaseUpgrade(tower, 0); // Overgrowth
+  assert.equal(tower.vineCount, 5);
+  assert.equal(tower.vineRangeMultiplier, 2);
+  assert.ok(Math.abs(tower.stats.size - baseSize * 1.1 * 1.25 * 1.5) < 1e-9);
+  assert.equal(tower.stats.damage, baseDamage * 2 * 2);
+  assert.equal(tower.vineDamage, 2 * 2 * 2);
+
+  game.purchaseUpgrade(tower, 0); // Vigorous
+  assert.equal(tower.vineCount, 8);
+  assert.equal(tower.tallStem, true);
+  assert.equal(tower.stats.damage, baseDamage * 2 * 2 * 2);
+  assert.equal(tower.vineDamage, 2 * 2 * 2 * 2);
+  // The base attack and every vine end up scaled identically, as specified.
+  assert.equal(tower.stats.damage, tower.vineDamage);
+});
+
+test('Rose\'s Path 2 and Path 3 are scaffolded as undesigned, same as Sunflower\'s were', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+  assert.equal(game.getAvailableUpgrade(tower, 1), null);
+  assert.equal(game.getAvailableUpgrade(tower, 2), null);
+  assert.equal(game.purchaseUpgrade(tower, 1), false);
+  assert.equal(game.purchaseUpgrade(tower, 2), false);
+});
