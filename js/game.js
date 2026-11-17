@@ -182,7 +182,13 @@ function update(deltaSeconds) {
   const killedEnemies = updateEnemies(deltaSeconds);
   if (killedEnemies.length > 0) {
     money += killedEnemies.reduce((sum, enemy) => sum + enemy.bounty, 0);
-    renderShop();
+    // Cheap refreshes only — a kill can happen many times a second during a
+    // big wave, and renderShop() tears down and rebuilds the whole shop
+    // list (new elements, new listeners) every time it's called. Doing
+    // that on every single kill was a real perf problem under load; these
+    // two just update existing elements' text/disabled state instead.
+    updateMoneyDisplay();
+    renderPanel();
   }
 
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
@@ -270,6 +276,17 @@ function renderPanel() {
           : 'Maxed out';
     }
   }
+}
+
+// Updates money's display and existing shop buttons' affordability without
+// recreating any elements — cheap enough to call on every kill, unlike
+// renderShop() itself (see the comment in update()).
+function updateMoneyDisplay() {
+  document.getElementById('money').textContent = `$${money}`;
+  document.querySelectorAll('.shop-item').forEach((btn, i) => {
+    const item = SHOP_ITEMS[i];
+    if (item) btn.disabled = money < item.cost;
+  });
 }
 
 function renderShop() {

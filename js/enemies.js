@@ -162,6 +162,10 @@ function applyBurn(enemy, burn) {
 
 function updateEnemies(deltaSeconds) {
   activeEnemies.forEach((enemy) => {
+    // Already dead, just waiting to be swept up below — don't let it take
+    // another burn tick or keep moving for the one extra frame before removal.
+    if (enemy.health <= 0) return;
+
     if (!enemy.spawned) {
       enemy.spawnDelay -= deltaSeconds;
       if (enemy.spawnDelay > 0) return;

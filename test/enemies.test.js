@@ -63,6 +63,24 @@ test('updateEnemies moves a spawned enemy toward the next waypoint', () => {
   assert.ok(enemy.x > startX);
 });
 
+test('an already-dead enemy does not move or take further burn damage before being swept up', () => {
+  const game = loadGameContext();
+  game.spawnWave([
+    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
+  ]);
+  const [enemy] = game.getActiveEnemies();
+  enemy.spawned = true;
+  enemy.health = -1;
+  enemy.burn = { damagePerSecond: 999, remaining: 5 };
+  const xBefore = enemy.x;
+
+  const killed = game.updateEnemies(1); // a full second — plenty to move or burn-tick if allowed to
+
+  assert.equal(enemy.x, xBefore); // didn't move
+  assert.equal(enemy.health, -1); // no extra burn damage either
+  assert.equal(killed.length, 1);
+});
+
 test('updateEnemies returns enemies that died, separately from ones that reached the goal', () => {
   const game = loadGameContext();
   game.spawnWave([
