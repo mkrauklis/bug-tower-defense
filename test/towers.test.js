@@ -73,6 +73,7 @@ test('Solar Path stacks damage multiplicatively as specified (5 -> 10 -> 15 -> 3
 
   assert.equal(tower.attackType, 'ray');
   assert.deepEqual(tower.burn, { damagePerSecond: 10, duration: 5 });
+  assert.equal(tower.fireMark, true); // Precision Rays' face mark
 });
 
 test('Fire Path stacks attack interval, size, and damage as specified', () => {

@@ -33,9 +33,9 @@ const TOWER_TYPES = {
           },
           {
             name: 'Precision Rays',
-            description: 'Damage increases 1.5x; sunflower gains a ray/beam attack.',
+            description: 'Damage increases 1.5x; sunflower gains a ray/beam attack and a small fire mark on its face.',
             cost: 250,
-            effects: { damageMultiplier: 1.5, attackType: 'ray' },
+            effects: { damageMultiplier: 1.5, attackType: 'ray', fireMark: true },
           },
           {
             name: 'Sun Ray',
@@ -195,6 +195,7 @@ function createTower(typeKey) {
     orbitAngle: 0,
     sparks: null, // 'small' — visual-only spark overlay, once bought (Storm Path)
     boltMark: false, // visual-only lightning mark on the flower's head, once bought (Storm Path)
+    fireMark: false, // visual-only fire mark on the flower's face, once bought (Solar Path's Precision Rays)
     spark: null, // single-target periodic jolt config, once bought (Storm Path)
     sparkCooldown: 0,
     shockwave: null, // AoE periodic pulse config, once bought (Storm Path)
@@ -243,6 +244,7 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.rangeMultiplier) tower.stats.range *= effects.rangeMultiplier;
   if (effects.sparks) tower.sparks = effects.sparks;
   if (effects.boltMark) tower.boltMark = true;
+  if (effects.fireMark) tower.fireMark = true;
   if (effects.spark) {
     tower.spark = effects.spark;
     tower.sparkCooldown = effects.spark.interval; // don't fire instantly on purchase
@@ -292,6 +294,7 @@ function renderTower(ctx, tower, x, y, time) {
 
   if (tower.sparks === 'small') drawSparks(ctx, x, y, tower.stats.size);
   if (tower.boltMark) drawBoltMark(ctx, x, y, tower.stats.size);
+  if (tower.fireMark) drawFireMark(ctx, x, y, tower.stats.size);
 
   if (tower.orbit) renderTowerOrbit(ctx, tower, x, y);
   if (tower.clouds) renderTowerClouds(ctx, tower, x, y);
@@ -335,6 +338,31 @@ function drawBoltMark(ctx, x, y, size) {
   ctx.strokeStyle = '#8d6e00';
   ctx.lineWidth = 1;
   ctx.stroke();
+  ctx.restore();
+}
+
+// A small two-tone flame mark on the flower's face (Precision Rays) — a
+// smaller, always-on cousin of drawFlame's bigger Fire Path overlay, placed
+// at the tower's own center like drawBoltMark rather than above/engulfing it.
+function drawFireMark(ctx, x, y, size) {
+  const s = size * 0.3;
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.fillStyle = '#ff7043';
+  ctx.beginPath();
+  ctx.moveTo(0, -s);
+  ctx.quadraticCurveTo(s * 0.6, -s * 0.1, 0, s * 0.9);
+  ctx.quadraticCurveTo(-s * 0.6, -s * 0.1, 0, -s);
+  ctx.fill();
+
+  ctx.fillStyle = '#ffee58';
+  ctx.beginPath();
+  ctx.moveTo(0, -s * 0.3);
+  ctx.quadraticCurveTo(s * 0.3, s * 0.1, 0, s * 0.6);
+  ctx.quadraticCurveTo(-s * 0.3, s * 0.1, 0, -s * 0.3);
+  ctx.fill();
+
   ctx.restore();
 }
 
