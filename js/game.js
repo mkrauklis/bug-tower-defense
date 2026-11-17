@@ -79,7 +79,10 @@ let money = 50;
 
 // Buyable towers. Scaffolded as a list so more towers can be added later;
 // only the Sunflower is a real purchasable option for now.
-const SHOP_ITEMS = [{ typeKey: 'sunflower', name: 'Sunflower', cost: 25 }];
+const SHOP_ITEMS = [
+  { typeKey: 'sunflower', name: 'Sunflower', cost: 25 },
+  { typeKey: 'rose', name: 'Rose', cost: 45 },
+];
 
 // How far a placed tower's center must stay from the path's centerline,
 // on top of the path's own half-width — keeps towers clear of the lane
@@ -228,6 +231,7 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.spark) updateTowerSpark(tower, x, y, deltaSeconds);
   if (tower.shockwave) updateTowerShockwave(tower, x, y, deltaSeconds);
   if (tower.clouds) tower.cloudsAngle += tower.clouds.angularSpeed * deltaSeconds;
+  if (tower.vineCount > 0) updateTowerVines(tower, x, y, deltaSeconds);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
 }
 
@@ -296,6 +300,25 @@ function updateTowerShockwave(tower, x, y, deltaSeconds) {
     tower.shockwaveCooldown = tower.shockwave.interval;
     getEnemiesInRadius(x, y, tower.stats.range).forEach((enemy) => damageEnemy(enemy, tower.shockwave.damage));
     tower.shockwavePulse = SHOCKWAVE_PULSE_DURATION;
+  }
+}
+
+// Rose's thorn vines (Thorn Path) — a second, independent attack alongside
+// the tower's normal one. All vines share a single cooldown (they all tick
+// "once a second" together, per the spec) rather than staggering; each
+// vine independently targets the single nearest enemy in vine range, so
+// with multiple vines and only one enemy nearby, that enemy just takes a
+// hit from every vine — simple and explicitly fine per the brief ("possibly
+// multiple vines able to hit the same enemy — doesn't need to be fancy").
+function updateTowerVines(tower, x, y, deltaSeconds) {
+  tower.vineCooldown -= deltaSeconds;
+  if (tower.vineCooldown <= 0) {
+    tower.vineCooldown = tower.vineInterval;
+    const vineRange = tower.stats.range * tower.vineRangeMultiplier;
+    for (let i = 0; i < tower.vineCount; i += 1) {
+      const target = findNearestEnemyInRange(x, y, vineRange);
+      if (target) damageEnemy(target, tower.vineDamage);
+    }
   }
 }
 
@@ -490,6 +513,10 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
     const orbitText = selectedTower.orbit
       ? `${selectedTower.orbit.count} embers, ${selectedTower.orbit.damagePerSecond}/s each`
       : 'none';
+    const vineText =
+      selectedTower.vineCount > 0
+        ? `${selectedTower.vineCount}, ${selectedTower.vineDamage}/hit every ${selectedTower.vineInterval}s`
+        : 'none';
     const lines = [
       `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
       `Size: ${selectedTower.stats.size.toFixed(1)}`,
@@ -498,6 +525,7 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
       `Burn: ${burnText}`,
       `Puddle: ${puddleText}`,
       `Orbit: ${orbitText}`,
+      `Vines: ${vineText}`,
     ];
     y = uiDrawTextLines(ctx, lines, x, y, 14, '#ccc', '12px sans-serif') + 8;
   }
@@ -550,7 +578,7 @@ function renderUpgradePaths(ctx, x, width, startY) {
       ctx.fillStyle = '#888';
       ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Path 3', colX + columnWidth / 2, colY);
+      ctx.fillText(`Path ${pathIndex + 1}`, colX + columnWidth / 2, colY);
       colY += 16;
       ctx.font = '10px sans-serif';
       ctx.fillText('Not yet designed.', colX + columnWidth / 2, colY);
