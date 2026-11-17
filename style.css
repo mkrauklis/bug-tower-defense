@@ -61,6 +61,13 @@ canvas {
   cursor: pointer;
 }
 
+#speed-toggle-btn {
+  width: 100%;
+  padding: 6px;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
 #money {
   font-size: 14px;
   color: #c0ca33;

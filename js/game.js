@@ -361,6 +361,16 @@ document.getElementById('next-round-btn').addEventListener('click', () => {
   updateNextRoundButton();
 });
 
+// A single multiplier applied to every update() call — covers enemy
+// movement, attack cooldowns, burn/puddle/orbit ticks, everything, since
+// they all derive from the same deltaSeconds.
+let gameSpeed = 1;
+
+document.getElementById('speed-toggle-btn').addEventListener('click', (event) => {
+  gameSpeed = gameSpeed === 1 ? 2 : 1;
+  event.target.textContent = `${gameSpeed}x Speed`;
+});
+
 renderPanel();
 renderWaveInfo();
 renderShop();
@@ -369,7 +379,7 @@ updateNextRoundButton();
 let lastTime = 0;
 
 function loop(timestamp) {
-  const deltaSeconds = lastTime ? (timestamp - lastTime) / 1000 : 0;
+  const deltaSeconds = lastTime ? ((timestamp - lastTime) / 1000) * gameSpeed : 0;
   lastTime = timestamp;
 
   update(deltaSeconds);
