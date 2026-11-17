@@ -36,6 +36,24 @@ let mouseY = null;
 // speed/determinism instead of real time.
 let animationTime = 0;
 
+// Purely decorative fireflies, plus ladybugs that grant a power-up when
+// clicked (js/wildlife.js). Neither fights or is fought.
+const wildlife = createWildlifeSwarm();
+
+// Clicking a ladybug grants every tower +50% damage for 10 seconds —
+// a simple, clearly-beneficial, temporary power-up. Baseline numbers,
+// not balanced/tuned. Scoped to each tower's primary attack (the ray's
+// instant hit, or a projectile's damage payload) rather than every damage
+// source in the game (puddle/orbit DoT, burn), to keep it simple to reason
+// about: "your towers hit harder," not a blanket multiplier on everything.
+const DAMAGE_BOOST_MULTIPLIER = 1.5;
+const DAMAGE_BOOST_DURATION = 10;
+let damageBoostRemaining = 0;
+
+function getEffectiveDamage(tower) {
+  return tower.stats.damage * (damageBoostRemaining > 0 ? DAMAGE_BOOST_MULTIPLIER : 1);
+}
+
 // Visible, damage-carrying projectiles for the attack types that don't
 // already have their own always-on visual (the ray beam draws itself
 // straight to the target every frame and hits instantly — it's a
@@ -68,7 +86,7 @@ function spawnProjectile(tower, target) {
     aimX: target.x,
     aimY: target.y,
     target,
-    damage: tower.stats.damage,
+    damage: getEffectiveDamage(tower),
     burn: tower.burn,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
     shape: tower.attackType === 'fireball' ? 'fireball' : 'petal',
@@ -132,7 +150,7 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.target && tower.attackCooldown <= 0) {
     if (tower.attackType === 'ray') {
       // A continuous beam hits instantly — there's no travel time to model.
-      damageEnemy(tower.target, tower.stats.damage);
+      damageEnemy(tower.target, getEffectiveDamage(tower));
       if (tower.burn) applyBurn(tower.target, tower.burn);
     } else {
       // Damage (and burn) travel with the projectile and apply on arrival.
@@ -187,6 +205,9 @@ function updateTowerOrbit(tower, x, y, deltaSeconds) {
 
 function update(deltaSeconds) {
   animationTime += deltaSeconds;
+  updateWildlife(wildlife, deltaSeconds);
+
+  damageBoostRemaining = Math.max(0, damageBoostRemaining - deltaSeconds);
 
   const killedEnemies = updateEnemies(deltaSeconds);
   if (killedEnemies.length > 0) {
@@ -227,13 +248,16 @@ function drawTowerWithRay(tower, x, y) {
 
 function render() {
   renderMap(ctx, canvas);
+  renderWildlife(ctx, wildlife, animationTime, 'ladybug'); // ground-level, under everything else
 
   towers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
   towers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
 
   renderEnemies(ctx);
   renderProjectiles(ctx);
+  renderWildlife(ctx, wildlife, animationTime, 'firefly'); // glowing, drawn on top so it reads over everything
   updateNextRoundButton();
+  updateBoostDisplay();
 
   if (selectedShopItem && mouseX !== null) {
     const buildable = money >= selectedShopItem.cost && !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN);
@@ -373,7 +397,17 @@ canvas.addEventListener('click', (event) => {
     return;
   }
 
-  // Not placing — click selects/switches/deselects a tower instead.
+  // Not placing — a ladybug takes priority over tower selection (a
+  // one-off, intentional interaction), then falls back to
+  // selecting/switching/deselecting a tower.
+  const ladybug = findLadybugAt(wildlife, x, y);
+  if (ladybug && ladybug.cooldownRemaining <= 0) {
+    ladybug.cooldownRemaining = LADYBUG_COOLDOWN;
+    damageBoostRemaining = DAMAGE_BOOST_DURATION;
+    updateBoostDisplay();
+    return;
+  }
+
   const clicked = findTowerAt(x, y);
   selectedTower = clicked === selectedTower ? null : clicked;
   renderPanel();
@@ -387,6 +421,11 @@ function renderWaveInfo() {
       : `${entry.name} x${entry.count} (${entry.health} HP each, ${entry.speedMultiplier}x speed)`
   );
   waveInfoEl.innerHTML = `Round: ${round}<br>${lines.join('<br>')}`;
+}
+
+function updateBoostDisplay() {
+  const el = document.getElementById('boost-info');
+  el.textContent = damageBoostRemaining > 0 ? `Damage Boost: ${damageBoostRemaining.toFixed(1)}s` : '';
 }
 
 // Only one wave runs at a time: the Next Round button stays disabled until

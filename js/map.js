@@ -51,6 +51,57 @@ function drawMapTree(ctx, x, y, r) {
   ctx.beginPath();
   ctx.arc(x + r * 0.5, y - r * 0.1, r * 0.7, 0, Math.PI * 2);
   ctx.fill();
+
+  // A touch of canopy highlight so the trees don't read as flat silhouettes.
+  ctx.fillStyle = '#1a3a1f';
+  ctx.beginPath();
+  ctx.arc(x - r * 0.3, y - r * 0.6, r * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Smaller than trees, scattered for additional ground-level detail.
+const MAP_BUSHES = [
+  { x: 180, y: 140, r: 12 },
+  { x: 480, y: 90, r: 14 },
+  { x: 260, y: 440, r: 12 },
+  { x: 560, y: 480, r: 13 },
+  { x: 780, y: 380, r: 12 },
+  { x: 820, y: 120, r: 11 },
+  { x: 110, y: 240, r: 10 },
+  { x: 680, y: 500, r: 13 },
+];
+
+function drawMapBush(ctx, x, y, r) {
+  ctx.fillStyle = '#17331b';
+  ctx.beginPath();
+  ctx.arc(x - r * 0.4, y, r * 0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + r * 0.4, y, r * 0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y - r * 0.3, r * 0.75, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Small tufts of grass for ground texture — a few near the path edge, a
+// few scattered in the open. Deterministic (fixed list), not randomly
+// generated each frame.
+const MAP_GRASS_TUFTS = [
+  { x: 150, y: 110 }, { x: 260, y: 230 }, { x: 460, y: 260 }, { x: 560, y: 340 },
+  { x: 700, y: 540 }, { x: 830, y: 220 }, { x: 70, y: 420 }, { x: 320, y: 410 },
+  { x: 600, y: 120 }, { x: 870, y: 480 }, { x: 200, y: 500 }, { x: 740, y: 260 },
+];
+
+function drawGrassTuft(ctx, x, y) {
+  ctx.strokeStyle = '#1f4023';
+  ctx.lineWidth = 2;
+  [-4, 0, 4].forEach((dx) => {
+    ctx.beginPath();
+    ctx.moveTo(x + dx, y + 6);
+    ctx.quadraticCurveTo(x + dx * 1.5, y - 2, x + dx * 0.5, y - 8);
+    ctx.stroke();
+  });
 }
 
 function strokeMapPath(ctx, waypoints) {
@@ -99,5 +150,7 @@ function renderMap(ctx, canvas) {
   ctx.lineWidth = MAP_PATH_WIDTH;
   strokeMapPath(ctx, MAP_PATH_WAYPOINTS);
 
+  MAP_GRASS_TUFTS.forEach((tuft) => drawGrassTuft(ctx, tuft.x, tuft.y));
+  MAP_BUSHES.forEach((bush) => drawMapBush(ctx, bush.x, bush.y, bush.r));
   MAP_TREES.forEach((tree) => drawMapTree(ctx, tree.x, tree.y, tree.r));
 }
