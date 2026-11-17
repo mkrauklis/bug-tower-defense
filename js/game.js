@@ -1,22 +1,18 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-const sunflower = createTower('sunflower');
+// No tower starts on the map — the player buys their first one from the
+// Shop. Whichever Sunflower they place first becomes the one tracked by
+// the Upgrades panel below (there's no per-tower selection UI yet, so this
+// is a simplification: only that first Sunflower is upgradeable for now).
+let sunflower = null;
 
 let round = 1;
 let currentWave = generateWave(round);
 spawnWave(currentWave);
 
-// Fixed demo spot on the forest floor, off the dirt path, for the
-// upgrade-testing Sunflower below — separate from the shop/placement
-// economy, which places its own independent towers.
-const SUNFLOWER_DEMO_X = 650;
-const SUNFLOWER_DEMO_Y = 320;
-
-// Starting money — a baseline pick (within the $200-$500 range suggested):
-// enough to place several Sunflowers before needing more, not balanced/tuned.
-const STARTING_MONEY = 300;
-let money = STARTING_MONEY;
+// Starting money — $50.
+let money = 50;
 
 // Buyable towers. Scaffolded as a list so more towers can be added later;
 // only the Sunflower is a real purchasable option for now.
@@ -44,8 +40,13 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
 }
 
 function update(deltaSeconds) {
-  updateEnemies(deltaSeconds);
-  updateTowerAttack(sunflower, SUNFLOWER_DEMO_X, SUNFLOWER_DEMO_Y, deltaSeconds);
+  const killedEnemies = updateEnemies(deltaSeconds);
+  if (killedEnemies.length > 0) {
+    money += killedEnemies.reduce((sum, enemy) => sum + enemy.bounty, 0);
+    renderShop();
+  }
+
+  if (sunflower) updateTowerAttack(sunflower, sunflower.x, sunflower.y, deltaSeconds);
   placedTowers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
 }
 
@@ -65,7 +66,7 @@ function drawTowerWithRay(tower, x, y) {
 function render() {
   renderMap(ctx, canvas);
 
-  drawTowerWithRay(sunflower, SUNFLOWER_DEMO_X, SUNFLOWER_DEMO_Y);
+  if (sunflower) drawTowerWithRay(sunflower, sunflower.x, sunflower.y);
   placedTowers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
 
   renderEnemies(ctx);
@@ -81,6 +82,15 @@ function render() {
 
 function renderPanel() {
   const statsEl = document.getElementById('stats');
+
+  if (!sunflower) {
+    statsEl.innerHTML = 'Buy a Sunflower from the Shop to manage its upgrades here.';
+    const path0Btn = document.querySelector('button[data-path="0"]');
+    path0Btn.disabled = true;
+    path0Btn.textContent = 'Buy a Sunflower first';
+    return;
+  }
+
   statsEl.innerHTML = `
     Damage: ${sunflower.stats.damage.toFixed(1)}<br>
     Size: ${sunflower.stats.size.toFixed(1)}<br>
@@ -158,9 +168,15 @@ canvas.addEventListener('click', (event) => {
   const tower = createTower(selectedShopItem.typeKey);
   tower.x = x;
   tower.y = y;
-  placedTowers.push(tower);
-  money -= selectedShopItem.cost;
 
+  if (!sunflower && selectedShopItem.typeKey === 'sunflower') {
+    sunflower = tower;
+    renderPanel();
+  } else {
+    placedTowers.push(tower);
+  }
+
+  money -= selectedShopItem.cost;
   renderShop();
 });
 

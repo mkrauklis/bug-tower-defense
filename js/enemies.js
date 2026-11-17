@@ -10,10 +10,12 @@
 
 const BASE_SPEED = 60; // px/second
 
+// `bounty` is the money awarded when the enemy dies (health hits 0, not
+// when it reaches the goal) — generic per enemy type, not hardcoded per-kill.
 const ENEMY_TYPES = {
-  ant: { name: 'Ant', speedMultiplier: 0.5, health: 1, color: '#8d6e63', radius: 8 },
-  worm: { name: 'Worm', speedMultiplier: 0.6, health: 5, color: '#c0ca33', radius: 10 },
-  tinyIsopod: { name: 'Tiny Isopod', speedMultiplier: 0.7, health: 10, color: '#78909c', radius: 12 },
+  ant: { name: 'Ant', speedMultiplier: 0.5, health: 1, color: '#8d6e63', radius: 8, bounty: 2 },
+  worm: { name: 'Worm', speedMultiplier: 0.6, health: 5, color: '#c0ca33', radius: 10, bounty: 5 },
+  tinyIsopod: { name: 'Tiny Isopod', speedMultiplier: 0.7, health: 10, color: '#78909c', radius: 12, bounty: 10 },
 };
 
 // Intro/difficulty order. Also gates which enemy types are unlocked at a
@@ -23,7 +25,7 @@ const ENEMY_ORDER = ['ant', 'worm', 'tinyIsopod'];
 // Bosses, keyed by boss tier (tier 1 = round 25, tier 2 = round 50, ...).
 // Only tier 1 is designed so far — add more tiers here as they're designed.
 const BOSS_TYPES = {
-  1: { name: 'Giant Beetle', speedMultiplier: 0.4, health: 50, color: '#4e342e', radius: 18 },
+  1: { name: 'Giant Beetle', speedMultiplier: 0.4, health: 50, color: '#4e342e', radius: 18, bounty: 50 },
 };
 
 const BOSS_INTERVAL = 25;
@@ -57,7 +59,7 @@ function getRoundScaling(round) {
 }
 
 // Builds this round's wave as a composition list:
-// { enemyKey, name, color, radius, count, health, speedMultiplier, isBoss }
+// { enemyKey, name, color, radius, count, health, speedMultiplier, isBoss, bounty }
 function generateWave(round) {
   if (isBossRound(round)) {
     const boss = getBossForRound(round);
@@ -71,6 +73,7 @@ function generateWave(round) {
         health: boss.health,
         speedMultiplier: boss.speedMultiplier,
         isBoss: true,
+        bounty: boss.bounty,
       },
     ];
   }
@@ -89,6 +92,7 @@ function generateWave(round) {
       health: Math.round(type.health * scaling.healthMultiplier),
       speedMultiplier: type.speedMultiplier,
       isBoss: false,
+      bounty: type.bounty,
     };
   });
 }
@@ -111,6 +115,7 @@ function spawnWave(composition) {
         health: entry.health,
         speed: BASE_SPEED * entry.speedMultiplier,
         isBoss: entry.isBoss,
+        bounty: entry.bounty,
         waypointIndex: 0,
         x: MAP_PATH_WAYPOINTS[0].x,
         y: MAP_PATH_WAYPOINTS[0].y,
@@ -181,11 +186,17 @@ function updateEnemies(deltaSeconds) {
     }
   });
 
+  // Enemies that died this frame (for bounty payout) — distinct from ones
+  // that merely reached the final waypoint, which pay no bounty.
+  const killed = activeEnemies.filter((enemy) => enemy.health <= 0);
+
   // Drop enemies that died or reached the final waypoint (the base/goal,
   // for now — there's no base-health/lose-condition system yet).
   activeEnemies = activeEnemies.filter(
     (enemy) => enemy.health > 0 && enemy.waypointIndex < MAP_PATH_WAYPOINTS.length - 1
   );
+
+  return killed;
 }
 
 // Simple, distinguishable silhouettes per enemy type — canvas primitives
