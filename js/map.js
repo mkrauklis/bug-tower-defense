@@ -60,6 +60,28 @@ function strokeMapPath(ctx, waypoints) {
   ctx.stroke();
 }
 
+function distanceToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq));
+  const closestX = ax + t * dx;
+  const closestY = ay + t * dy;
+  return Math.hypot(px - closestX, py - closestY);
+}
+
+// Whether a point is on (or within `margin` of) the dirt path — used to
+// keep towers off the path when placing them.
+function isPointOnPath(x, y, margin = 0) {
+  const halfWidth = MAP_PATH_WIDTH / 2 + margin;
+  for (let i = 0; i < MAP_PATH_WAYPOINTS.length - 1; i += 1) {
+    const a = MAP_PATH_WAYPOINTS[i];
+    const b = MAP_PATH_WAYPOINTS[i + 1];
+    if (distanceToSegment(x, y, a.x, a.y, b.x, b.y) <= halfWidth) return true;
+  }
+  return false;
+}
+
 function renderMap(ctx, canvas) {
   ctx.fillStyle = '#0d1b10';
   ctx.fillRect(0, 0, canvas.width, canvas.height);

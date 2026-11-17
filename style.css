@@ -60,3 +60,29 @@ canvas {
   padding: 6px;
   cursor: pointer;
 }
+
+#money {
+  font-size: 14px;
+  color: #c0ca33;
+}
+
+#shop-list {
+  margin-bottom: 16px;
+}
+
+.shop-item {
+  width: 100%;
+  padding: 6px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.shop-item.selected {
+  border-color: #c0ca33;
+  box-shadow: 0 0 0 2px #c0ca33;
+}
+
+.shop-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
