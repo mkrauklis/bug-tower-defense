@@ -268,16 +268,17 @@ function render() {
   }
 }
 
+// Solar = yellow, Fire = orange — matches each path's own visual theme on
+// the tower itself (glow/flame colors), index-aligned with upgradePaths.
+const PATH_COLORS = ['#ffd54f', '#ff7043'];
+
 function renderPanel() {
   const statsEl = document.getElementById('stats');
 
   if (!selectedTower) {
-    statsEl.innerHTML = 'Buy a Sunflower from the Shop, or click one already on the map, to manage its upgrades here.';
-    ['0', '1'].forEach((pathIndex) => {
-      const btn = document.querySelector(`button[data-path="${pathIndex}"]`);
-      btn.disabled = true;
-      btn.textContent = 'No tower selected';
-    });
+    statsEl.innerHTML =
+      'Click a Shop item, then click open ground to place a tower — or click an existing tower to manage it here.';
+    renderUpgradePaths();
     return;
   }
 
@@ -291,24 +292,87 @@ function renderPanel() {
     Orbit: ${selectedTower.orbit ? `${selectedTower.orbit.count} embers, ${selectedTower.orbit.damagePerSecond}/s each` : 'none'}
   `;
 
-  for (let pathIndex = 0; pathIndex < 3; pathIndex += 1) {
-    const btn = document.querySelector(`button[data-path="${pathIndex}"]`);
-    const type = TOWER_TYPES[selectedTower.type];
-    const pathDefined = Boolean(type.upgradePaths[pathIndex]);
-    if (!pathDefined) continue; // leave the "Not yet designed" placeholder as-is
+  renderUpgradePaths();
+}
 
-    const upgrade = getAvailableUpgrade(selectedTower, pathIndex);
-    if (upgrade) {
-      btn.disabled = money < upgrade.cost;
-      btn.textContent = `${upgrade.name} ($${upgrade.cost})`;
-    } else {
-      btn.disabled = true;
-      btn.textContent =
-        selectedTower.chosenPath !== null && selectedTower.chosenPath !== pathIndex
-          ? 'Locked out'
-          : 'Maxed out';
+// Rebuilds the two (eventually three) upgrade-path columns from scratch —
+// each tier shows one of: bought, available (next in line, affordable),
+// unaffordable (next in line, can't afford yet), locked (a future tier),
+// or path-locked (a different path was already chosen). Rebuilding here
+// is cheap (a handful of small elements, not the shop's larger list), and
+// only happens on purchase/selection changes, not every frame.
+function renderUpgradePaths() {
+  const container = document.getElementById('upgrade-paths');
+  container.innerHTML = '';
+
+  const type = selectedTower ? TOWER_TYPES[selectedTower.type] : TOWER_TYPES.sunflower;
+
+  type.upgradePaths.forEach((path, pathIndex) => {
+    const column = document.createElement('div');
+    column.className = 'upgrade-path-column';
+
+    if (!path) {
+      column.classList.add('undesigned');
+      column.style.setProperty('--path-color', '#666');
+      const heading = document.createElement('h4');
+      heading.textContent = 'Path 3';
+      const note = document.createElement('p');
+      note.className = 'path-note';
+      note.textContent = 'Not yet designed.';
+      column.append(heading, note);
+      container.appendChild(column);
+      return;
     }
-  }
+
+    column.style.setProperty('--path-color', PATH_COLORS[pathIndex]);
+
+    const isLockedOut =
+      Boolean(selectedTower) && selectedTower.chosenPath !== null && selectedTower.chosenPath !== pathIndex;
+    if (isLockedOut) column.classList.add('locked-out');
+
+    const heading = document.createElement('h4');
+    heading.textContent = path.name;
+    column.appendChild(heading);
+
+    path.upgrades.forEach((upgrade, tierIndex) => {
+      const tierEl = document.createElement('div');
+
+      const bought = Boolean(selectedTower) && selectedTower.chosenPath === pathIndex && tierIndex < selectedTower.upgradesPurchased;
+      const isNextInLine =
+        Boolean(selectedTower) &&
+        !isLockedOut &&
+        ((selectedTower.chosenPath === pathIndex && tierIndex === selectedTower.upgradesPurchased) ||
+          (selectedTower.chosenPath === null && tierIndex === 0));
+
+      if (bought) {
+        tierEl.className = 'tier bought';
+      } else if (isLockedOut) {
+        tierEl.className = 'tier path-locked';
+      } else if (isNextInLine) {
+        const affordable = selectedTower && money >= upgrade.cost;
+        tierEl.className = `tier ${affordable ? 'available' : 'unaffordable'}`;
+      } else {
+        tierEl.className = 'tier locked';
+      }
+
+      tierEl.innerHTML = `<span class="tier-status"></span><span class="tier-name">${upgrade.name}</span><span class="tier-cost">$${upgrade.cost}</span>`;
+
+      if (isNextInLine) {
+        tierEl.addEventListener('click', () => {
+          if (money < upgrade.cost) return;
+          if (purchaseUpgrade(selectedTower, pathIndex)) {
+            money -= upgrade.cost;
+            renderPanel();
+            renderShop();
+          }
+        });
+      }
+
+      column.appendChild(tierEl);
+    });
+
+    container.appendChild(column);
+  });
 }
 
 // Updates money's display and existing shop buttons' affordability without
@@ -436,22 +500,6 @@ function updateNextRoundButton() {
   btn.disabled = waveInProgress;
   btn.textContent = waveInProgress ? 'Wave in progress…' : 'Next Round';
 }
-
-document.querySelectorAll('button[data-path]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    if (!selectedTower) return;
-
-    const pathIndex = Number(btn.dataset.path);
-    const upgrade = getAvailableUpgrade(selectedTower, pathIndex);
-    if (!upgrade || money < upgrade.cost) return; // can't afford it — same rule the Shop follows
-
-    if (purchaseUpgrade(selectedTower, pathIndex)) {
-      money -= upgrade.cost;
-      renderPanel();
-      renderShop();
-    }
-  });
-});
 
 document.getElementById('next-round-btn').addEventListener('click', () => {
   if (activeEnemies.length > 0) return; // belt-and-suspenders; the button is disabled too
