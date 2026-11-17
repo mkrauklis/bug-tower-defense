@@ -32,16 +32,7 @@ function render() {
     ctx.stroke();
   }
 
-  ctx.save();
-  if (sunflower.glow) {
-    ctx.shadowColor = sunflower.glow;
-    ctx.shadowBlur = 25;
-  }
-  ctx.fillStyle = sunflower.stats.color;
-  ctx.beginPath();
-  ctx.arc(x, y, sunflower.stats.size, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  renderTower(ctx, sunflower, x, y);
 
   renderEnemies(ctx);
 }

@@ -156,14 +156,117 @@ function updateEnemies(deltaSeconds) {
   );
 }
 
-function renderEnemies(ctx) {
-  activeEnemies.forEach((enemy) => {
-    if (!enemy.spawned) return;
+// Simple, distinguishable silhouettes per enemy type — canvas primitives
+// only, no external art. Scoped to visual clarity, not a detailed art pass.
+function drawAnt(ctx, e) {
+  ctx.strokeStyle = '#2b1c12';
+  ctx.lineWidth = 1.5;
+  [-1, 0, 1].forEach((i) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y);
+    ctx.lineTo(e.x - e.radius * 1.3, e.y + i * e.radius * 0.6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y);
+    ctx.lineTo(e.x + e.radius * 1.3, e.y + i * e.radius * 0.6);
+    ctx.stroke();
+  });
 
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.9, e.radius * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.9, e.y, e.radius * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.2, e.y - e.radius * 0.1);
+  ctx.lineTo(e.x - e.radius * 1.7, e.y - e.radius * 0.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.2, e.y + e.radius * 0.1);
+  ctx.lineTo(e.x - e.radius * 1.7, e.y + e.radius * 0.5);
+  ctx.stroke();
+}
+
+function drawWorm(ctx, e) {
+  ctx.fillStyle = e.color;
+  const segments = 3;
+  for (let i = 0; i < segments; i += 1) {
+    const offset = (i - (segments - 1) / 2) * e.radius * 0.8;
+    ctx.beginPath();
+    ctx.arc(e.x + offset, e.y, e.radius * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawTinyIsopod(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#37474f';
+  ctx.lineWidth = 1.5;
+  [-1, 0, 1].forEach((i) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x + i * e.radius * 0.4, e.y - e.radius * 0.6);
+    ctx.lineTo(e.x + i * e.radius * 0.4, e.y + e.radius * 0.6);
+    ctx.stroke();
+  });
+}
+
+function drawGiantBeetle(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.9, e.y, e.radius * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#ffd54f';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 1.05, e.y - e.radius * 0.15, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 1.05, e.y + e.radius * 0.15, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#2a1a10';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(e.x, e.y - e.radius * 0.7);
+  ctx.lineTo(e.x, e.y + e.radius * 0.7);
+  ctx.stroke();
+}
+
+function drawEnemyShape(ctx, enemy) {
+  if (enemy.isBoss) {
+    drawGiantBeetle(ctx, enemy);
+    return;
+  }
+  if (enemy.enemyKey === 'ant') {
+    drawAnt(ctx, enemy);
+  } else if (enemy.enemyKey === 'worm') {
+    drawWorm(ctx, enemy);
+  } else if (enemy.enemyKey === 'tinyIsopod') {
+    drawTinyIsopod(ctx, enemy);
+  } else {
+    // Fallback for any future enemy type without custom art yet.
     ctx.fillStyle = enemy.color;
     ctx.beginPath();
     ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
     ctx.fill();
+  }
+}
+
+function renderEnemies(ctx) {
+  activeEnemies.forEach((enemy) => {
+    if (!enemy.spawned) return;
+
+    drawEnemyShape(ctx, enemy);
 
     const barWidth = enemy.radius * 2;
     const healthRatio = enemy.health / enemy.maxHealth;

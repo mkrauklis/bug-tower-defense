@@ -102,3 +102,47 @@ function purchaseUpgrade(tower, pathIndex) {
   tower.upgradesPurchased += 1;
   return true;
 }
+
+// Visuals, kept alongside each tower's data so a new tower type brings its
+// own look with it. Canvas primitives only, no external art.
+function renderTower(ctx, tower, x, y) {
+  if (tower.type === 'sunflower') {
+    drawSunflower(ctx, x, y, tower.stats.size, tower.stats.color, tower.glow);
+    return;
+  }
+
+  // Fallback for any future tower type without custom art yet.
+  ctx.fillStyle = tower.stats.color;
+  ctx.beginPath();
+  ctx.arc(x, y, tower.stats.size, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSunflower(ctx, x, y, size, color, glow) {
+  const petalCount = 8;
+
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 25;
+  }
+
+  ctx.fillStyle = color;
+  for (let i = 0; i < petalCount; i += 1) {
+    const angle = (i / petalCount) * Math.PI * 2;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.ellipse(size * 0.55, 0, size * 0.45, size * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.fillStyle = '#4a2f12';
+  ctx.beginPath();
+  ctx.arc(x, y, size * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
