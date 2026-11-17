@@ -31,13 +31,23 @@ let selectedShopItem = null;
 let mouseX = null;
 let mouseY = null;
 
-// Visible projectiles for the attack types that don't already have their
-// own always-on visual (the ray beam draws itself straight to the target
-// every frame, so it doesn't need one of these). Simple, no real physics:
-// each one just flies in a straight line toward where the target was at
-// the moment it was fired, and disappears once it covers that distance —
-// it doesn't home in, so a fast-moving enemy can walk out from under it.
+// Visible, damage-carrying projectiles for the attack types that don't
+// already have their own always-on visual (the ray beam draws itself
+// straight to the target every frame and hits instantly — it's a
+// continuous beam, not a thrown object, so instant-hit is correct for it
+// and it never spawns one of these). A petal/fireball instead carries its
+// damage (and burn, if any) with it and only actually hits on arrival —
+// simple, no real physics: it flies in a straight line toward where the
+// target was at the moment it was fired and does not home in, so a target
+// that moves, dies, or leaves range mid-flight can cause a miss:
+// - Target already dead by the time the projectile arrives: it fizzles,
+//   no damage (there's nothing left to hit).
+// - Target still alive but has wandered away from the aimed-at point by
+//   more than HIT_TOLERANCE: also fizzles, treated as a miss rather than
+//   homing in — it only needs to have drifted a little to still land,
+//   since enemies are far slower than projectiles.
 const PROJECTILE_SPEED = 400; // px/second, baseline pick — fast but visible
+const PROJECTILE_HIT_TOLERANCE = 20; // px of target drift still counted as a hit
 let projectiles = [];
 
 function spawnProjectile(tower, target) {
@@ -50,9 +60,26 @@ function spawnProjectile(tower, target) {
     vx: (dx / distance) * PROJECTILE_SPEED,
     vy: (dy / distance) * PROJECTILE_SPEED,
     distanceLeft: distance,
+    aimX: target.x,
+    aimY: target.y,
+    target,
+    damage: tower.stats.damage,
+    burn: tower.burn,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
     shape: tower.attackType === 'fireball' ? 'fireball' : 'petal',
+    resolved: false,
   });
+}
+
+function resolveProjectile(projectile) {
+  const { target } = projectile;
+  if (!target || target.health <= 0) return; // fizzle: target already dead
+
+  const driftFromAim = Math.hypot(target.x - projectile.aimX, target.y - projectile.aimY);
+  if (driftFromAim > target.radius + PROJECTILE_HIT_TOLERANCE) return; // fizzle: wandered off
+
+  damageEnemy(target, projectile.damage);
+  if (projectile.burn) applyBurn(target, projectile.burn);
 }
 
 function updateProjectiles(deltaSeconds) {
@@ -61,8 +88,13 @@ function updateProjectiles(deltaSeconds) {
     projectile.x += projectile.vx * deltaSeconds;
     projectile.y += projectile.vy * deltaSeconds;
     projectile.distanceLeft -= step;
+
+    if (projectile.distanceLeft <= 0 && !projectile.resolved) {
+      resolveProjectile(projectile);
+      projectile.resolved = true;
+    }
   });
-  projectiles = projectiles.filter((projectile) => projectile.distanceLeft > 0);
+  projectiles = projectiles.filter((projectile) => !projectile.resolved);
 }
 
 function renderProjectiles(ctx) {
@@ -92,9 +124,14 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
 
   tower.attackCooldown = Math.max(0, tower.attackCooldown - deltaSeconds);
   if (tower.target && tower.attackCooldown <= 0) {
-    damageEnemy(tower.target, tower.stats.damage);
-    if (tower.burn) applyBurn(tower.target, tower.burn);
-    if (tower.attackType !== 'ray') spawnProjectile(tower, tower.target);
+    if (tower.attackType === 'ray') {
+      // A continuous beam hits instantly — there's no travel time to model.
+      damageEnemy(tower.target, tower.stats.damage);
+      if (tower.burn) applyBurn(tower.target, tower.burn);
+    } else {
+      // Damage (and burn) travel with the projectile and apply on arrival.
+      spawnProjectile(tower, tower.target);
+    }
     tower.attackCooldown = tower.stats.attackInterval;
   }
 
