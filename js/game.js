@@ -361,9 +361,9 @@ document.getElementById('next-round-btn').addEventListener('click', () => {
   updateNextRoundButton();
 });
 
-// A single multiplier applied to every update() call — covers enemy
-// movement, attack cooldowns, burn/puddle/orbit ticks, everything, since
-// they all derive from the same deltaSeconds.
+// Scales how much simulated time each real frame adds to the fixed-step
+// accumulator below — covers enemy movement, attack cooldowns, every
+// DoT/puddle/orbit tick, everything, since they all run through update().
 let gameSpeed = 1;
 
 document.getElementById('speed-toggle-btn').addEventListener('click', (event) => {
@@ -371,18 +371,36 @@ document.getElementById('speed-toggle-btn').addEventListener('click', (event) =>
   event.target.textContent = `${gameSpeed}x Speed`;
 });
 
+document.getElementById('seed-info').textContent = `Seed: ${GAME_SEED}`;
+
 renderPanel();
 renderWaveInfo();
 renderShop();
 updateNextRoundButton();
 
+// Fixed-timestep accumulator: the simulation always advances in constant
+// FIXED_DT slices, however ragged the display's actual frame times are —
+// so outcomes depend on how much time passed, not on framerate/timing
+// jitter. gameSpeed scales how much simulated time each real frame adds to
+// the accumulator, not the size of a slice, so ticks stay the same length
+// at 1x and 2x (2x just runs roughly twice as many of them per frame).
+// frameTime is clamped so a long tab-background pause doesn't force a
+// huge catch-up burst of ticks once the tab is foregrounded again.
+const FIXED_DT = 1 / 60;
+const MAX_FRAME_TIME = 0.25;
 let lastTime = 0;
+let accumulator = 0;
 
 function loop(timestamp) {
-  const deltaSeconds = lastTime ? ((timestamp - lastTime) / 1000) * gameSpeed : 0;
+  const frameTime = lastTime ? Math.min((timestamp - lastTime) / 1000, MAX_FRAME_TIME) : 0;
   lastTime = timestamp;
 
-  update(deltaSeconds);
+  accumulator += frameTime * gameSpeed;
+  while (accumulator >= FIXED_DT) {
+    update(FIXED_DT);
+    accumulator -= FIXED_DT;
+  }
+
   render();
 
   requestAnimationFrame(loop);

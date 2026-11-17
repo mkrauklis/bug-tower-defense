@@ -68,6 +68,12 @@ canvas {
   cursor: pointer;
 }
 
+#seed-info {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #777;
+}
+
 #money {
   font-size: 14px;
   color: #c0ca33;
