@@ -232,11 +232,10 @@ const TOWER_TYPES = {
         ],
       },
       {
-        // Only the first tier has been specified so far — the rest will
-        // follow later. Named "Root Path" provisionally to match the
-        // "<theme> Path" convention already set by Thorn Path; revisit once
-        // the remaining tiers (and whatever they're actually about) exist,
-        // same as how a path can also be entirely undesigned (`null`).
+        // Named "Root Path" to match the "<theme> Path" convention already
+        // set by Thorn Path — kept as-is now that all 4 tiers are in (it
+        // was only ever provisional for being incomplete, not for being
+        // the wrong name).
         name: 'Root Path',
         upgrades: [
           {
@@ -254,9 +253,50 @@ const TOWER_TYPES = {
               roots: { count: 3, damage: 2 },
             },
           },
-          null, // Tier 2 — not yet designed.
-          null, // Tier 3 — not yet designed.
-          null, // Tier 4 — not yet designed.
+          {
+            name: 'Rootbound',
+            description:
+              'Damage doubles; 2 more root traps sprout nearby (5 total); the Rose itself sprouts visible roots ' +
+              'from its own body.',
+            cost: 750,
+            effects: {
+              damageMultiplier: 2,
+              roots: { count: 2, damage: 2 },
+              bodyRootGrowths: true, // visual-only — roots growing out of the plant itself, not a ground trap
+            },
+          },
+          {
+            name: 'Tanglement',
+            description:
+              'Damage doubles again; 5 more root traps sprout nearby (10 total); every root now has a 15% ' +
+              'chance to also grab the bug that steps on it — on top of its normal 2 damage, not instead of it ' +
+              '— holding it in place for 2s and dealing 10 extra damage; two small rose-bud growths appear on ' +
+              'the body; the Rose grows to a massive 11.5x its size.',
+            cost: 2000,
+            effects: {
+              damageMultiplier: 2,
+              roots: { count: 5, damage: 2 },
+              // Deliberately additive, not a replacement for the base
+              // trigger — see updateTowerRoots() in game.js. chance/damage/
+              // duration bundled into one effect since they're introduced
+              // together and nothing before this tier has any of them.
+              rootGrab: { chance: 0.15, damage: 10, duration: 2 },
+              bodyFlowerGrowths: 2, // additive — Stranglement adds 2 more on top of these
+              sizeMultiplier: 11.5, // a big, deliberate number per the user, not a typo
+            },
+          },
+          {
+            name: 'Stranglement',
+            description:
+              '15 more root traps sprout nearby (25 total); two more rose-bud growths appear on the body (4 ' +
+              "total); the body's root growths lengthen. No further damage multiplier at this tier.",
+            cost: 5000,
+            effects: {
+              roots: { count: 15, damage: 2 },
+              bodyFlowerGrowths: 2,
+              longThorns: true, // lengthens Rootbound's body-root growths — see the note by drawRoseBodyRoots()
+            },
+          },
         ],
       },
       null, // Path 3 — not yet designed.
@@ -317,6 +357,17 @@ function createTower(typeKey) {
     // list. { x, y, damage } per entry; checked every frame in game.js's
     // updateTowerRoots().
     roots: [],
+    bodyRootGrowths: false, // visual-only roots on the plant's own body, once bought (Rootbound)
+    bodyFlowerGrowths: 0, // count of small rose-bud growths on the body, additive (Tanglement/Stranglement)
+    longThorns: false, // visual-only — lengthens bodyRootGrowths, once bought (Stranglement)
+    // Root grab (Tanglement): a chance, on top of a root's normal hit, to
+    // also immobilize the enemy and deal bonus damage — see
+    // updateTowerRoots() in game.js and enemy.immobilizedRemaining in
+    // enemies.js. All three start at 0/falsy so a Rose without Tanglement
+    // never rolls for it.
+    rootGrabChance: 0,
+    rootGrabDamage: 0,
+    rootGrabDuration: 0,
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
@@ -387,8 +438,19 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.vineRangeMultiplier) tower.vineRangeMultiplier *= effects.vineRangeMultiplier;
   if (effects.tallStem) tower.tallStem = true;
   if (effects.roots) {
-    const spots = spawnRoseRoots(tower.x, tower.y, effects.roots.count);
+    // Passes the roots already placed so a later tier's new ones don't
+    // land on top of an earlier tier's (separation is checked across all
+    // of them, not just within one call's own batch).
+    const spots = spawnRoseRoots(tower.x, tower.y, effects.roots.count, tower.roots);
     spots.forEach((spot) => tower.roots.push({ x: spot.x, y: spot.y, damage: effects.roots.damage }));
+  }
+  if (effects.bodyRootGrowths) tower.bodyRootGrowths = true;
+  if (effects.bodyFlowerGrowths) tower.bodyFlowerGrowths += effects.bodyFlowerGrowths;
+  if (effects.longThorns) tower.longThorns = true;
+  if (effects.rootGrab) {
+    tower.rootGrabChance = effects.rootGrab.chance;
+    tower.rootGrabDamage = effects.rootGrab.damage;
+    tower.rootGrabDuration = effects.rootGrab.duration;
   }
 
   tower.upgradesPurchased += 1;
@@ -404,14 +466,23 @@ function purchaseUpgrade(tower, pathIndex) {
 // keeps the sub-stretches that fall within range, then picks `count` points
 // from that combined coverage using the game's own seeded random() (not
 // Math.random(), per the determinism work) — rerolling a pick that lands
-// too close to one already chosen so the roots read as 3 separate spots,
-// not a cluster. Gives up after a bounded number of attempts and returns
+// too close to one already chosen so the roots read as separate spots, not
+// a cluster. Gives up after a bounded number of attempts and returns
 // however many distinct points it found (including none, if no path
 // segment is in range at all — e.g. a tower placed in a far corner).
-const ROOT_SPAWN_RADIUS = 100;
-const ROOT_MIN_SEPARATION = 30;
+//
+// Sized for Root Path's eventual 25 roots (Stranglement): the whole map's
+// path is only ~1860px total, so a tight radius/separation (first tried:
+// 100 / 30) could only fit a handful of points near a tower close to a
+// corner before random retries stopped finding room — tested and bumped
+// both up until a typical placement can actually reach 25. A tower in a
+// genuinely path-sparse spot may still end up with fewer than requested;
+// that's an accepted, documented limit of "best effort" placement rather
+// than a hard guarantee.
+const ROOT_SPAWN_RADIUS = 220;
+const ROOT_MIN_SEPARATION = 18;
 
-function spawnRoseRoots(cx, cy, count) {
+function spawnRoseRoots(cx, cy, count, existingPoints = []) {
   const coverage = [];
   let totalLength = 0;
 
@@ -445,7 +516,10 @@ function spawnRoseRoots(cx, cy, count) {
 
   const points = [];
   let attempts = 0;
-  while (points.length < count && attempts < count * 20) {
+  // A generous retry budget — later Root Path tiers call this with up to
+  // 15 already-placed roots to avoid on top of their own batch's
+  // separation, so it needs real headroom to still hit the requested count.
+  while (points.length < count && attempts < (count + existingPoints.length) * 60) {
     attempts += 1;
     let target = random() * totalLength;
     const run = coverage.find((candidate) => {
@@ -458,7 +532,8 @@ function spawnRoseRoots(cx, cy, count) {
     const t = run.tStart + (target / run.length) * (run.tEnd - run.tStart);
     const x = run.a.x + run.dx * t;
     const y = run.a.y + run.dy * t;
-    if (points.some((p) => Math.hypot(p.x - x, p.y - y) < ROOT_MIN_SEPARATION)) continue;
+    const tooClose = (p) => Math.hypot(p.x - x, p.y - y) < ROOT_MIN_SEPARATION;
+    if (points.some(tooClose) || existingPoints.some(tooClose)) continue;
     points.push({ x, y });
   }
 
@@ -491,7 +566,20 @@ function renderTower(ctx, tower, x, y, time) {
     // Vines are rooted appendages, not decoration riding on top of the
     // flower — drawn first so the bloom and stem render over their bases.
     if (tower.vineCount > 0) renderRoseVines(ctx, tower, x, y, time);
-    drawRose(ctx, x, y, tower.stats.size, tower.stats.color, tower.glow, time, flashAmount, tower.tallStem);
+    drawRose(
+      ctx,
+      x,
+      y,
+      tower.stats.size,
+      tower.stats.color,
+      tower.glow,
+      time,
+      flashAmount,
+      tower.tallStem,
+      tower.bodyRootGrowths,
+      tower.bodyFlowerGrowths,
+      tower.longThorns
+    );
   } else {
     // Fallback for any future tower type without custom art yet.
     ctx.fillStyle = tower.stats.color;
@@ -723,8 +811,19 @@ function drawSunflower(ctx, x, y, size, color, glow, time, flashAmount) {
   ctx.restore();
 }
 
-function drawRose(ctx, x, y, size, color, glow, time, flashAmount, tallStem) {
-  const stemHeight = size * (tallStem ? 1.7 : 1.3); // Vigorous grows the stem taller
+function drawRose(ctx, x, y, size, color, glow, time, flashAmount, tallStem, bodyRootGrowths, bodyFlowerGrowths, longThorns) {
+  // Capped: Root Path's Tanglement can push `size` up to 11.5x (a Rose's
+  // base size 18 -> ~207), and an uncapped stem at that scale (207 * 1.3 =
+  // ~269px) pushed the stem's ground point, and the body growths anchored
+  // near it, off the bottom of the 640px-tall world for anything placed in
+  // the lower half of the map — confirmed in testing. The bloom itself
+  // (this function's real "big, deliberate" visual) stays fully
+  // proportional to `size` and uncapped; only the stem's footprint is
+  // bounded, which reads as a dramatically oversized flower on a normal-
+  // ish stem rather than one that runs off-screen. Thorn Path's tallStem
+  // never gets remotely close to this cap on its own, so it's unaffected.
+  const STEM_HEIGHT_CAP = 160;
+  const stemHeight = Math.min(size * (tallStem ? 1.7 : 1.3), STEM_HEIGHT_CAP); // Vigorous grows the stem taller
   const groundY = y + stemHeight;
   const sway = Math.sin(time * 1.3 + x * 0.013) * 0.05;
 
@@ -745,6 +844,11 @@ function drawRose(ctx, x, y, size, color, glow, time, flashAmount, tallStem) {
   ctx.beginPath();
   ctx.ellipse(x + size * 0.3, y + stemHeight * 0.65, size * 0.26, size * 0.11, 0.5, 0, Math.PI * 2);
   ctx.fill();
+
+  // Root Path body growths — drawn on the stem itself (sway with the
+  // plant, but not affected by the bloom's attack-flash pulse below).
+  if (bodyRootGrowths) drawRoseBodyRoots(ctx, x, y, groundY, size, longThorns);
+  if (bodyFlowerGrowths > 0) drawRoseBodyFlowers(ctx, x, y, groundY, size, color, bodyFlowerGrowths);
 
   // The bloom pulses slightly bigger right after an attack, same cue as the Sunflower.
   ctx.translate(x, y);
@@ -784,6 +888,55 @@ function drawRose(ctx, x, y, size, color, glow, time, flashAmount, tallStem) {
   ctx.fill();
 
   ctx.restore();
+}
+
+// Root Path's Rootbound: small root spikes jutting out near the stem's
+// base, distinct from both the ground-trap roots (drawn on the path
+// itself, see renderTowerGroundEffects) and the Thorn Path's vines (which
+// radiate from the flower head, not the stem) — this Rose only ever has
+// one of the two paths at once, so there's no risk of confusing the two.
+// Stranglement's longThorns lengthens these specifically (see that tier's
+// description for why "longer thorns" applies here rather than to vines,
+// which a Root Path Rose never has).
+function drawRoseBodyRoots(ctx, x, y, groundY, size, longThorns) {
+  const spikeLength = size * (longThorns ? 0.5 : 0.3);
+  const angles = [-2.4, -1.9, 1.9, 2.4]; // roughly down-and-outward on each side
+  ctx.strokeStyle = '#4e342e';
+  ctx.lineWidth = 2.5;
+  angles.forEach((angle) => {
+    const baseX = x + Math.cos(angle) * size * 0.1;
+    const baseY = groundY - size * 0.08;
+    const tipX = baseX + Math.cos(angle) * spikeLength;
+    const tipY = baseY + Math.sin(angle) * spikeLength * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    ctx.quadraticCurveTo(baseX + Math.cos(angle) * spikeLength * 0.5, baseY + spikeLength * 0.15, tipX, tipY);
+    ctx.stroke();
+  });
+}
+
+// Tanglement/Stranglement: small extra rose-bud growths along the stem —
+// capped to 4 fixed slots regardless of size, so a Tanglement-scale (11.5x)
+// Rose doesn't need more draw calls, just bigger ones.
+function drawRoseBodyFlowers(ctx, x, y, groundY, size, color, count) {
+  const slots = [
+    { dx: -0.45, dyFrac: 0.35 },
+    { dx: 0.45, dyFrac: 0.3 },
+    { dx: -0.3, dyFrac: 0.75 },
+    { dx: 0.3, dyFrac: 0.7 },
+  ];
+  slots.slice(0, Math.min(count, slots.length)).forEach((slot) => {
+    const bx = x + slot.dx * size * 0.55;
+    const by = y + (groundY - y) * slot.dyFrac;
+    ctx.fillStyle = shadeColor(color, -10);
+    ctx.beginPath();
+    ctx.arc(bx, by, size * 0.11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(bx, by, size * 0.07, 0, Math.PI * 2);
+    ctx.fill();
+  });
 }
 
 // Thorn vines (Rose's Thorn Path) — fixed-angle appendages radiating from

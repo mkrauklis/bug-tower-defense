@@ -104,6 +104,24 @@ test('updateEnemies moves a spawned enemy toward the next waypoint', () => {
   assert.ok(enemy.x > startX);
 });
 
+test('an immobilized enemy (Rose Root Path\'s grab) does not move, but still takes burn damage', () => {
+  const game = loadGameContext();
+  game.spawnWave([
+    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
+  ]);
+  const [enemy] = game.getActiveEnemies();
+  enemy.spawned = true;
+  enemy.immobilizedRemaining = 2;
+  enemy.burn = { damagePerSecond: 10, remaining: 5 };
+  const startX = enemy.x;
+
+  game.updateEnemies(1);
+
+  assert.equal(enemy.x, startX); // held in place — movement is skipped entirely
+  assert.equal(enemy.health, 990); // burn still ticks while immobilized
+  assert.equal(enemy.immobilizedRemaining, 1); // counts down toward 0
+});
+
 test('an already-dead enemy does not move or take further burn damage before being swept up', () => {
   const game = loadGameContext();
   game.spawnWave([

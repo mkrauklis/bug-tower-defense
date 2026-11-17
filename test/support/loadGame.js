@@ -138,7 +138,7 @@ function loadFullGameContext() {
     globalThis.__fullExports = {
       createTower, purchaseUpgrade,
       damageEnemy, applyBurn, findNearestEnemyInRange,
-      updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles,
+      updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies,
       getProjectiles: () => projectiles,
       getActiveEnemies: () => activeEnemies,
       update,

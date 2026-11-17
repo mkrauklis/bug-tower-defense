@@ -219,20 +219,66 @@ test('Rooting (Root Path tier 1) boosts damage 1.5x and spawns 3 root traps on t
     assert.ok(game.isPointOnPath(root.x, root.y, 0)); // lands exactly on the path, not just "nearby"
   });
 
-  // The 3 roots shouldn't be stacked on top of each other.
+  // The 3 roots shouldn't be stacked on top of each other (ROOT_MIN_SEPARATION).
   const [a, b, c] = tower.roots;
-  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 30);
-  assert.ok(Math.hypot(a.x - c.x, a.y - c.y) >= 30);
-  assert.ok(Math.hypot(b.x - c.x, b.y - c.y) >= 30);
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 18);
+  assert.ok(Math.hypot(a.x - c.x, a.y - c.y) >= 18);
+  assert.ok(Math.hypot(b.x - c.x, b.y - c.y) >= 18);
 });
 
-test('Root Path\'s remaining tiers (2-4) are still undesigned placeholders', () => {
+test('Root Path tiers 2-4 stack damage, root count, grab, and visuals as specified', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+  // A spot with generous path coverage on multiple nearby segments, not a
+  // corner — Stranglement needs room for 25 roots, and a position right
+  // next to a corner (like Rooting's own (220, 150) test above, which only
+  // ever needs 3) doesn't have enough nearby path to reliably fit that many
+  // at ROOT_MIN_SEPARATION.
+  tower.x = 520;
+  tower.y = 430;
+  const baseDamage = tower.stats.damage;
+
+  game.purchaseUpgrade(tower, 1); // Rooting: x1.5, 3 roots
+  assert.equal(tower.roots.length, 3);
+
+  game.purchaseUpgrade(tower, 1); // Rootbound: x2, +2 roots (5 total), body roots
+  assert.ok(Math.abs(tower.stats.damage - baseDamage * 1.5 * 2) < 1e-9);
+  assert.equal(tower.roots.length, 5);
+  assert.equal(tower.bodyRootGrowths, true);
+  assert.equal(tower.stats.size, game.TOWER_TYPES.rose.baseStats.size); // no size change yet
+
+  game.purchaseUpgrade(tower, 1); // Tanglement: x2, +5 roots (10 total), grab, +2 body flowers, 11.5x size
+  assert.ok(Math.abs(tower.stats.damage - baseDamage * 1.5 * 2 * 2) < 1e-9);
+  assert.equal(tower.roots.length, 10);
+  assert.deepEqual(
+    { chance: tower.rootGrabChance, damage: tower.rootGrabDamage, duration: tower.rootGrabDuration },
+    { chance: 0.15, damage: 10, duration: 2 }
+  );
+  assert.equal(tower.bodyFlowerGrowths, 2);
+  assert.ok(Math.abs(tower.stats.size - game.TOWER_TYPES.rose.baseStats.size * 11.5) < 1e-6);
+
+  game.purchaseUpgrade(tower, 1); // Stranglement: +15 roots (25 total), +2 body flowers (4 total), longThorns
+  assert.equal(tower.roots.length, 25);
+  assert.equal(tower.bodyFlowerGrowths, 4);
+  assert.equal(tower.longThorns, true);
+  // No further damage multiplier at this tier, per the brief.
+  assert.ok(Math.abs(tower.stats.damage - baseDamage * 1.5 * 2 * 2) < 1e-9);
+
+  // None of the roots across all 4 purchases ended up stacked on each other.
+  for (let i = 0; i < tower.roots.length; i += 1) {
+    for (let j = i + 1; j < tower.roots.length; j += 1) {
+      const dist = Math.hypot(tower.roots[i].x - tower.roots[j].x, tower.roots[i].y - tower.roots[j].y);
+      assert.ok(dist >= 18, `roots ${i} and ${j} are only ${dist.toFixed(1)}px apart`);
+    }
+  }
+});
+
+test('Root Path is maxed out after Stranglement — no further purchase possible', () => {
   const game = loadGameContext();
   const tower = game.createTower('rose');
   tower.x = 220;
   tower.y = 150;
-  game.purchaseUpgrade(tower, 1); // Rooting
-
+  for (let i = 0; i < 4; i += 1) assert.equal(game.purchaseUpgrade(tower, 1), true);
   assert.equal(game.getAvailableUpgrade(tower, 1), null);
   assert.equal(game.purchaseUpgrade(tower, 1), false);
 });

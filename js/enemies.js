@@ -214,6 +214,7 @@ function spawnWave(composition) {
         heading: initialHeading,
         spawnDelay,
         spawned: false,
+        immobilizedRemaining: 0, // seconds left held in place by Root Path's Tanglement grab, if any
       });
       spawnDelay += 0.5; // stagger spawns half a second apart so they don't overlap
     }
@@ -269,6 +270,13 @@ function updateEnemies(deltaSeconds) {
       damageEnemy(enemy, enemy.burn.damagePerSecond * deltaSeconds);
       enemy.burn.remaining -= deltaSeconds;
       if (enemy.burn.remaining <= 0) enemy.burn = null;
+    }
+
+    // Grabbed by a Tanglement root — held in place (movement only; burn
+    // above still ticks normally) until the hold expires.
+    if (enemy.immobilizedRemaining > 0) {
+      enemy.immobilizedRemaining = Math.max(0, enemy.immobilizedRemaining - deltaSeconds);
+      return;
     }
 
     let remaining = enemy.speed * deltaSeconds;
@@ -644,6 +652,19 @@ function renderEnemies(ctx) {
       ctx.beginPath();
       ctx.arc(enemy.x + enemy.radius * 0.7, enemy.y - enemy.radius * 0.7, 3, 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    // A dashed brown ring reads as "wrapped/held" while a Tanglement grab
+    // is active — distinct from the burn marker's small dot.
+    if (enemy.immobilizedRemaining > 0) {
+      ctx.save();
+      ctx.strokeStyle = '#4e342e';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.radius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     }
 
     const barWidth = enemy.radius * 2;

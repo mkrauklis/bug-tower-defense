@@ -250,8 +250,20 @@ function updateTowerRoots(tower) {
   tower.roots = tower.roots.filter((root) => {
     const [victim] = getEnemiesInRadius(root.x, root.y, ROOT_TRIGGER_RADIUS);
     if (!victim) return true;
-    damageEnemy(victim, root.damage);
-    return false; // consumed
+
+    damageEnemy(victim, root.damage); // the base "step on it" hit — always happens
+
+    // Tanglement's grab is additive, not a replacement for the above: a
+    // root with a successful roll still dealt its normal hit this same
+    // trigger, then also immobilizes and deals bonus damage. Uses the
+    // game's seeded random() (not Math.random()), same as everywhere else
+    // that needs randomness.
+    if (tower.rootGrabChance > 0 && random() < tower.rootGrabChance) {
+      damageEnemy(victim, tower.rootGrabDamage);
+      victim.immobilizedRemaining = Math.max(victim.immobilizedRemaining, tower.rootGrabDuration);
+    }
+
+    return false; // consumed either way — a root is still single-use
   });
 }
 
