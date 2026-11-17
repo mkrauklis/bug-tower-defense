@@ -1,11 +1,11 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-// No tower starts on the map — the player buys their first one from the
-// Shop. Whichever Sunflower they place first becomes the one tracked by
-// the Upgrades panel below (there's no per-tower selection UI yet, so this
-// is a simplification: only that first Sunflower is upgradeable for now).
-let sunflower = null;
+// Every placed tower lives here, including the first one bought — there's
+// no special "demo" tower anymore. The Upgrades panel always follows
+// `selectedTower`, which the player sets by clicking a tower on the map.
+let towers = [];
+let selectedTower = null;
 
 let round = 1;
 let currentWave = generateWave(round);
@@ -23,7 +23,10 @@ const SHOP_ITEMS = [{ typeKey: 'sunflower', name: 'Sunflower', cost: 25 }];
 // instead of just touching its edge.
 const PLACEMENT_PATH_MARGIN = 20;
 
-let placedTowers = [];
+// Minimum click-hit radius for selecting a tower, so a tiny (shrunk) tower
+// is still easy to click.
+const MIN_SELECT_RADIUS = 18;
+
 let selectedShopItem = null;
 let mouseX = null;
 let mouseY = null;
@@ -88,8 +91,7 @@ function update(deltaSeconds) {
     renderShop();
   }
 
-  if (sunflower) updateTowerAttack(sunflower, sunflower.x, sunflower.y, deltaSeconds);
-  placedTowers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
+  towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
 }
 
 function drawTowerWithRay(tower, x, y) {
@@ -115,16 +117,21 @@ function drawTowerWithRay(tower, x, y) {
   }
 
   renderTower(ctx, tower, x, y);
+
+  if (tower === selectedTower) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(tower.stats.size, MIN_SELECT_RADIUS) + 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 function render() {
   renderMap(ctx, canvas);
 
-  if (sunflower) renderTowerGroundEffects(ctx, sunflower);
-  placedTowers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
-
-  if (sunflower) drawTowerWithRay(sunflower, sunflower.x, sunflower.y);
-  placedTowers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
+  towers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
+  towers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
 
   renderEnemies(ctx);
 
@@ -140,40 +147,40 @@ function render() {
 function renderPanel() {
   const statsEl = document.getElementById('stats');
 
-  if (!sunflower) {
-    statsEl.innerHTML = 'Buy a Sunflower from the Shop to manage its upgrades here.';
+  if (!selectedTower) {
+    statsEl.innerHTML = 'Buy a Sunflower from the Shop, or click one already on the map, to manage its upgrades here.';
     ['0', '1'].forEach((pathIndex) => {
       const btn = document.querySelector(`button[data-path="${pathIndex}"]`);
       btn.disabled = true;
-      btn.textContent = 'Buy a Sunflower first';
+      btn.textContent = 'No tower selected';
     });
     return;
   }
 
   statsEl.innerHTML = `
-    Damage: ${sunflower.stats.damage.toFixed(1)}<br>
-    Size: ${sunflower.stats.size.toFixed(1)}<br>
-    Attack interval: ${sunflower.stats.attackInterval.toFixed(2)}s<br>
-    Attack: ${sunflower.attackType}<br>
-    Burn: ${sunflower.burn ? `${sunflower.burn.damagePerSecond}/s for ${sunflower.burn.duration}s` : 'none'}<br>
-    Puddle: ${sunflower.puddle ? `${sunflower.puddle.damagePerSecond}/s every ${sunflower.puddle.interval}s` : 'none'}<br>
-    Orbit: ${sunflower.orbit ? `${sunflower.orbit.count} embers, ${sunflower.orbit.damagePerSecond}/s each` : 'none'}
+    Damage: ${selectedTower.stats.damage.toFixed(1)}<br>
+    Size: ${selectedTower.stats.size.toFixed(1)}<br>
+    Attack interval: ${selectedTower.stats.attackInterval.toFixed(2)}s<br>
+    Attack: ${selectedTower.attackType}<br>
+    Burn: ${selectedTower.burn ? `${selectedTower.burn.damagePerSecond}/s for ${selectedTower.burn.duration}s` : 'none'}<br>
+    Puddle: ${selectedTower.puddle ? `${selectedTower.puddle.damagePerSecond}/s every ${selectedTower.puddle.interval}s` : 'none'}<br>
+    Orbit: ${selectedTower.orbit ? `${selectedTower.orbit.count} embers, ${selectedTower.orbit.damagePerSecond}/s each` : 'none'}
   `;
 
   for (let pathIndex = 0; pathIndex < 3; pathIndex += 1) {
     const btn = document.querySelector(`button[data-path="${pathIndex}"]`);
-    const type = TOWER_TYPES[sunflower.type];
+    const type = TOWER_TYPES[selectedTower.type];
     const pathDefined = Boolean(type.upgradePaths[pathIndex]);
     if (!pathDefined) continue; // leave the "Not yet designed" placeholder as-is
 
-    const upgrade = getAvailableUpgrade(sunflower, pathIndex);
+    const upgrade = getAvailableUpgrade(selectedTower, pathIndex);
     if (upgrade) {
       btn.disabled = money < upgrade.cost;
       btn.textContent = `${upgrade.name} ($${upgrade.cost})`;
     } else {
       btn.disabled = true;
       btn.textContent =
-        sunflower.chosenPath !== null && sunflower.chosenPath !== pathIndex
+        selectedTower.chosenPath !== null && selectedTower.chosenPath !== pathIndex
           ? 'Locked out'
           : 'Maxed out';
     }
@@ -209,6 +216,22 @@ function getCanvasPoint(event) {
   };
 }
 
+function findTowerAt(x, y) {
+  let closest = null;
+  let closestDist = Infinity;
+
+  towers.forEach((tower) => {
+    const hitRadius = Math.max(tower.stats.size, MIN_SELECT_RADIUS);
+    const dist = Math.hypot(tower.x - x, tower.y - y);
+    if (dist <= hitRadius && dist < closestDist) {
+      closest = tower;
+      closestDist = dist;
+    }
+  });
+
+  return closest;
+}
+
 canvas.addEventListener('mousemove', (event) => {
   const point = getCanvasPoint(event);
   mouseX = point.x;
@@ -221,25 +244,28 @@ canvas.addEventListener('mouseleave', () => {
 });
 
 canvas.addEventListener('click', (event) => {
-  if (!selectedShopItem) return;
-
   const { x, y } = getCanvasPoint(event);
-  if (money < selectedShopItem.cost) return;
-  if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
 
-  const tower = createTower(selectedShopItem.typeKey);
-  tower.x = x;
-  tower.y = y;
+  if (selectedShopItem) {
+    if (money < selectedShopItem.cost) return;
+    if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
 
-  if (!sunflower && selectedShopItem.typeKey === 'sunflower') {
-    sunflower = tower;
+    const tower = createTower(selectedShopItem.typeKey);
+    tower.x = x;
+    tower.y = y;
+    towers.push(tower);
+    money -= selectedShopItem.cost;
+
+    selectedTower = tower; // jump straight to managing the tower just bought
     renderPanel();
-  } else {
-    placedTowers.push(tower);
+    renderShop();
+    return;
   }
 
-  money -= selectedShopItem.cost;
-  renderShop();
+  // Not placing — click selects/switches/deselects a tower instead.
+  const clicked = findTowerAt(x, y);
+  selectedTower = clicked === selectedTower ? null : clicked;
+  renderPanel();
 });
 
 function renderWaveInfo() {
@@ -254,13 +280,13 @@ function renderWaveInfo() {
 
 document.querySelectorAll('button[data-path]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    if (!sunflower) return;
+    if (!selectedTower) return;
 
     const pathIndex = Number(btn.dataset.path);
-    const upgrade = getAvailableUpgrade(sunflower, pathIndex);
+    const upgrade = getAvailableUpgrade(selectedTower, pathIndex);
     if (!upgrade || money < upgrade.cost) return; // can't afford it — same rule the Shop follows
 
-    if (purchaseUpgrade(sunflower, pathIndex)) {
+    if (purchaseUpgrade(selectedTower, pathIndex)) {
       money -= upgrade.cost;
       renderPanel();
       renderShop();
