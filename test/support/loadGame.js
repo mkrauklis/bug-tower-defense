@@ -48,4 +48,87 @@ function loadGameContext() {
   return context.__exports;
 }
 
-module.exports = { loadGameContext };
+// A generic "accepts anything" DOM element stub: any property read that
+// wasn't explicitly set returns a callable no-op (so `.addEventListener`,
+// `.appendChild`, `.getContext`, etc. all just work), and anything set is
+// stored and read back normally (so `.textContent`, `.disabled`, `.width`
+// behave like real properties once assigned).
+function createStubElement() {
+  const target = {};
+  return new Proxy(target, {
+    get(obj, prop) {
+      if (prop in obj) return obj[prop];
+      if (prop === 'getBoundingClientRect') {
+        return () => ({ left: 0, top: 0, width: 960, height: 640 });
+      }
+      return (..._args) => createStubElement();
+    },
+    set(obj, prop, value) {
+      obj[prop] = value;
+      return true;
+    },
+  });
+}
+
+function createDomStub() {
+  const canvas = createStubElement();
+  canvas.width = 960;
+  canvas.height = 640;
+
+  const elementsById = { game: canvas };
+
+  const document = {
+    getElementById(id) {
+      if (!elementsById[id]) elementsById[id] = createStubElement();
+      return elementsById[id];
+    },
+    querySelector: () => createStubElement(),
+    querySelectorAll: () => [],
+    createElement: () => createStubElement(),
+  };
+
+  return { document, canvas };
+}
+
+// Loads the full game, including game.js's rendering/UI-wiring code, behind
+// a minimal fake DOM (above) so it can execute in Node without a real
+// browser. Used for testing game.js logic (combat/projectiles) that lives
+// outside the pure-data files the lighter loadGameContext() above covers.
+const FULL_LOAD_ORDER = ['js/random.js', 'js/towers.js', 'js/map.js', 'js/enemies.js', 'js/game.js'];
+
+function loadFullGameContext() {
+  const { document } = createDomStub();
+  const context = {
+    console,
+    Math,
+    Object,
+    document,
+    location: { search: '' },
+    URLSearchParams,
+    requestAnimationFrame: () => {},
+  };
+  vm.createContext(context);
+
+  FULL_LOAD_ORDER.forEach((file) => {
+    const code = fs.readFileSync(path.join(GAME_ROOT, file), 'utf8');
+    vm.runInContext(code, context, { filename: file });
+  });
+
+  vm.runInContext(
+    `
+    globalThis.__fullExports = {
+      createTower, purchaseUpgrade,
+      damageEnemy, applyBurn, findNearestEnemyInRange,
+      updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles,
+      getProjectiles: () => projectiles,
+      getActiveEnemies: () => activeEnemies,
+      update,
+    };
+    `,
+    context
+  );
+
+  return context.__fullExports;
+}
+
+module.exports = { loadGameContext, loadFullGameContext };
