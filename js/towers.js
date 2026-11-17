@@ -31,20 +31,20 @@ const TOWER_TYPES = {
           {
             name: 'Precision Rays',
             description: 'Damage increases 1.5x; sunflower gains a ray/beam attack.',
-            cost: 100,
+            cost: 250,
             effects: { damageMultiplier: 1.5, attackType: 'ray' },
           },
           {
             name: 'Sun Ray',
             description: 'Sunflower glows yellow; damage doubles again.',
-            cost: 175,
+            cost: 650,
             effects: { damageMultiplier: 2, glow: '#ffe066' },
           },
           {
             name: 'Solar Ray',
             description:
               'Sunflower turns neon; its ray ignites bugs it hits, dealing burn damage over time.',
-            cost: 300,
+            cost: 1500,
             effects: {
               color: '#39ff14',
               burn: { damagePerSecond: 10, duration: 5 },
