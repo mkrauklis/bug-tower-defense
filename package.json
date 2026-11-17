@@ -1,0 +1,8 @@
+{
+  "name": "bug-tower-defense",
+  "private": true,
+  "description": "2D tower defense game, plain HTML5 Canvas + vanilla JS, no build step. package.json exists only to run the dev-only Node test suite (node:test/node:assert, no new runtime dependency) - the game itself has none.",
+  "scripts": {
+    "test": "node --test test/"
+  }
+}
