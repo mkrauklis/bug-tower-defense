@@ -223,3 +223,56 @@ test('getTooltipLines shows "Owned" instead of a cost for a bought tier', () => 
   assert.ok(lines.includes('Owned'));
   assert.ok(!lines.some((line) => line.includes('$50')));
 });
+
+test('getSellRefund is 50% of everything actually spent on the tower, rounded down', () => {
+  const game = loadFullGameContext();
+  const tower = game.createTower('sunflower');
+
+  tower.moneySpent = 25; // base purchase only
+  assert.equal(game.getSellRefund(tower), 12); // floor(25 * 0.5)
+
+  tower.moneySpent = 25 + 50 + 250; // base + Glare + Precision Rays
+  assert.equal(game.getSellRefund(tower), 162); // floor(325 * 0.5)
+});
+
+test('getSellRefund is 0 for a tower with no tracked spend', () => {
+  const game = loadFullGameContext();
+  const tower = game.createTower('sunflower'); // moneySpent never set
+  assert.equal(game.getSellRefund(tower), 0);
+});
+
+test('activateRegion on sell-tower removes the tower, refunds money, and deselects', () => {
+  const game = loadFullGameContext();
+  const tower = game.createTower('sunflower');
+  tower.x = 100;
+  tower.y = 100;
+  tower.moneySpent = 25;
+  game.getTowers().push(tower);
+  game.setSelectedTower(tower);
+  game.setMoney(0);
+
+  const refund = game.getSellRefund(tower);
+  game.activateRegion({ id: 'sell-tower', data: { refund } });
+
+  assert.equal(game.getTowers().includes(tower), false);
+  assert.equal(game.getMoney(), refund);
+  assert.equal(game.getSelectedTower(), null);
+});
+
+test('activateRegion on sell-tower is a no-op when nothing is selected', () => {
+  const game = loadFullGameContext();
+  game.setSelectedTower(null);
+  game.setMoney(50);
+
+  game.activateRegion({ id: 'sell-tower', data: { refund: 999 } });
+
+  assert.equal(game.getMoney(), 50); // unchanged — refused, nothing to sell
+});
+
+test('getTooltipLines explains the sell refund and its rate', () => {
+  const game = loadFullGameContext();
+  const lines = game.getTooltipLines({ id: 'sell-tower', data: { refund: 37 } });
+
+  assert.ok(lines.some((line) => line.includes('37')));
+  assert.ok(lines.some((line) => line.includes('50%')));
+});

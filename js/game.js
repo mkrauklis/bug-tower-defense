@@ -502,7 +502,36 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
     y = uiDrawTextLines(ctx, lines, x, y, 14, '#ccc', '12px sans-serif') + 8;
   }
 
-  return renderUpgradePaths(ctx, x, width, y) + 10;
+  y = renderUpgradePaths(ctx, x, width, y) + 10;
+
+  if (selectedTower) {
+    const refund = getSellRefund(selectedTower);
+    uiDrawButton(ctx, {
+      x,
+      y,
+      w: width,
+      h: 28,
+      label: `Sell (+$${refund})`,
+      state: 'default',
+      hovered: Boolean(hoverRegion) && hoverRegion.id === 'sell-tower',
+    });
+    uiRegisterRegion('sell-tower', x, y, width, 28, { refund });
+    y += 36;
+  }
+
+  return y;
+}
+
+// Refunds a fraction of everything actually spent on a tower — its base
+// purchase cost plus every upgrade tier actually bought on it — rather than
+// a flat amount unrelated to what the player put into it. 50% is a common
+// tower-defense convention (steep enough that selling isn't a free way to
+// shuffle towers around, generous enough to be worth using to recover from
+// a bad placement).
+const SELL_REFUND_RATE = 0.5;
+
+function getSellRefund(tower) {
+  return Math.floor((tower.moneySpent || 0) * SELL_REFUND_RATE);
 }
 
 function renderUpgradePaths(ctx, x, width, startY) {
@@ -740,6 +769,10 @@ function getTooltipLines(region) {
 
   if (region.id === 'speed-toggle') return ['Toggle 1x / 2x simulation speed.'];
 
+  if (region.id === 'sell-tower') {
+    return [`Sell this tower for $${region.data.refund}`, `(${Math.round(SELL_REFUND_RATE * 100)}% of what was spent on it)`];
+  }
+
   return [];
 }
 
@@ -756,7 +789,18 @@ function activateRegion(region) {
     const { pathIndex, upgrade, isNextInLine } = region.data;
     if (!isNextInLine || !selectedTower) return;
     if (money < upgrade.cost) return;
-    if (purchaseUpgrade(selectedTower, pathIndex)) money -= upgrade.cost;
+    if (purchaseUpgrade(selectedTower, pathIndex)) {
+      money -= upgrade.cost;
+      selectedTower.moneySpent += upgrade.cost;
+    }
+    return;
+  }
+
+  if (region.id === 'sell-tower') {
+    if (!selectedTower) return;
+    money += region.data.refund;
+    towers = towers.filter((tower) => tower !== selectedTower);
+    selectedTower = null;
     return;
   }
 
@@ -809,6 +853,7 @@ function handleCanvasTap(x, y) {
     const tower = createTower(selectedShopItem.typeKey);
     tower.x = x;
     tower.y = y;
+    tower.moneySpent = selectedShopItem.cost; // tracked for the Sell button's refund — see getSellRefund()
     towers.push(tower);
     money -= selectedShopItem.cost;
 

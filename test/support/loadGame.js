@@ -140,7 +140,7 @@ function loadFullGameContext() {
       update,
       uiBeginFrame, uiRegisterRegion, uiHitTest, uiWrapText,
       getCanvasPoint, isWorldPoint, activateRegion, getTooltipLines,
-      renderUI,
+      renderUI, getSellRefund,
       // Top-level \`let\`/\`const\` bindings from a vm-run classic script
       // aren't reachable off globalThis (same as a browser <script> tag),
       // so mutable state needs explicit getter/setter pairs rather than
