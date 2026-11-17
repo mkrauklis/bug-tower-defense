@@ -11,11 +11,17 @@ function update(deltaSeconds) {
   updateEnemies(deltaSeconds);
 }
 
-function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+// Fixed demo spot on the forest floor, off the dirt path — there's no
+// tower-placement system yet, so this just stands in for "placed on
+// buildable ground" until one exists.
+const SUNFLOWER_DEMO_X = 650;
+const SUNFLOWER_DEMO_Y = 320;
 
-  const x = canvas.width / 2;
-  const y = canvas.height / 2;
+function render() {
+  renderMap(ctx, canvas);
+
+  const x = SUNFLOWER_DEMO_X;
+  const y = SUNFLOWER_DEMO_Y;
 
   if (sunflower.attackType === 'ray') {
     ctx.strokeStyle = sunflower.burn ? '#ff6600' : '#fff59d';

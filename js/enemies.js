@@ -3,11 +3,10 @@
 // Speed is expressed as a multiplier of BASE_SPEED (pixels/second) — the
 // speed a 1.0x-speed enemy would move at. Health is absolute hit points.
 //
-// Enemies move by following PATH_WAYPOINTS, an ordered list of {x, y}
-// points. For now this is a placeholder straight line across the canvas's
-// vertical center (there's no map yet); once a real map/path exists,
-// replace PATH_WAYPOINTS with its waypoints and this movement code keeps
-// working unchanged.
+// Enemies move by following the map's path waypoints (MAP_PATH_WAYPOINTS,
+// defined in map.js — load that script before this one). This movement
+// code is path-shape-agnostic: it just walks the waypoint list, so a
+// different map's path would work without any change here.
 
 const BASE_SPEED = 60; // px/second
 
@@ -28,11 +27,6 @@ const BOSS_TYPES = {
 };
 
 const BOSS_INTERVAL = 25;
-
-const PATH_WAYPOINTS = [
-  { x: -20, y: 320 },
-  { x: 980, y: 320 },
-];
 
 function isBossRound(round) {
   return round % BOSS_INTERVAL === 0;
@@ -118,8 +112,8 @@ function spawnWave(composition) {
         speed: BASE_SPEED * entry.speedMultiplier,
         isBoss: entry.isBoss,
         waypointIndex: 0,
-        x: PATH_WAYPOINTS[0].x,
-        y: PATH_WAYPOINTS[0].y,
+        x: MAP_PATH_WAYPOINTS[0].x,
+        y: MAP_PATH_WAYPOINTS[0].y,
         spawnDelay,
         spawned: false,
       });
@@ -137,8 +131,8 @@ function updateEnemies(deltaSeconds) {
     }
 
     let remaining = enemy.speed * deltaSeconds;
-    while (remaining > 0 && enemy.waypointIndex < PATH_WAYPOINTS.length - 1) {
-      const target = PATH_WAYPOINTS[enemy.waypointIndex + 1];
+    while (remaining > 0 && enemy.waypointIndex < MAP_PATH_WAYPOINTS.length - 1) {
+      const target = MAP_PATH_WAYPOINTS[enemy.waypointIndex + 1];
       const dx = target.x - enemy.x;
       const dy = target.y - enemy.y;
       const dist = Math.hypot(dx, dy);
@@ -158,7 +152,7 @@ function updateEnemies(deltaSeconds) {
 
   // Drop enemies that reached the final waypoint (the base/goal, for now).
   activeEnemies = activeEnemies.filter(
-    (enemy) => enemy.waypointIndex < PATH_WAYPOINTS.length - 1
+    (enemy) => enemy.waypointIndex < MAP_PATH_WAYPOINTS.length - 1
   );
 }
 
