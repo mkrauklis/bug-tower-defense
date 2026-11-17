@@ -212,18 +212,22 @@ function updateEnemies(deltaSeconds) {
 }
 
 // Simple, distinguishable silhouettes per enemy type — canvas primitives
-// only, no external art. Scoped to visual clarity, not a detailed art pass.
+// only, no external art. A step up from flat shapes (curved limbs, a touch
+// of shading/highlight via shadeColor from towers.js) but still just a
+// handful of draw calls each, since dozens of these can be on screen at
+// once — no gradients or per-frame object allocation.
 function drawAnt(ctx, e) {
   ctx.strokeStyle = '#2b1c12';
   ctx.lineWidth = 1.5;
   [-1, 0, 1].forEach((i) => {
+    const kneeY = e.y + i * e.radius * 0.5;
     ctx.beginPath();
     ctx.moveTo(e.x, e.y);
-    ctx.lineTo(e.x - e.radius * 1.3, e.y + i * e.radius * 0.6);
+    ctx.quadraticCurveTo(e.x - e.radius * 0.7, kneeY, e.x - e.radius * 1.3, e.y + i * e.radius * 0.6);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(e.x, e.y);
-    ctx.lineTo(e.x + e.radius * 1.3, e.y + i * e.radius * 0.6);
+    ctx.quadraticCurveTo(e.x + e.radius * 0.7, kneeY, e.x + e.radius * 1.3, e.y + i * e.radius * 0.6);
     ctx.stroke();
   });
 
@@ -233,6 +237,12 @@ function drawAnt(ctx, e) {
   ctx.fill();
   ctx.beginPath();
   ctx.arc(e.x - e.radius * 0.9, e.y, e.radius * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // A small highlight on the abdomen suggests a glossy shell.
+  ctx.fillStyle = shadeColor(e.color, 25);
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.15, e.y - e.radius * 0.2, e.radius * 0.3, e.radius * 0.15, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
@@ -246,20 +256,37 @@ function drawAnt(ctx, e) {
 }
 
 function drawWorm(ctx, e) {
-  ctx.fillStyle = e.color;
   const segments = 3;
   for (let i = 0; i < segments; i += 1) {
     const offset = (i - (segments - 1) / 2) * e.radius * 0.8;
+    // Alternating light/dark segments read as a simple ribbed body.
+    ctx.fillStyle = i % 2 === 0 ? e.color : shadeColor(e.color, -15);
     ctx.beginPath();
     ctx.arc(e.x + offset, e.y, e.radius * 0.6, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  // Eyes on the lead (front) segment.
+  const frontOffset = ((segments - 1) / 2) * e.radius * 0.8;
+  ctx.fillStyle = '#212121';
+  ctx.beginPath();
+  ctx.arc(e.x + frontOffset + e.radius * 0.15, e.y - e.radius * 0.2, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x + frontOffset + e.radius * 0.15, e.y + e.radius * 0.2, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawTinyIsopod(ctx, e) {
   ctx.fillStyle = e.color;
   ctx.beginPath();
   ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // A lighter top band gives the shell some roundness.
+  ctx.fillStyle = shadeColor(e.color, 20);
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y - e.radius * 0.25, e.radius * 0.85, e.radius * 0.3, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.strokeStyle = '#37474f';
@@ -281,6 +308,13 @@ function drawGiantBeetle(ctx, e) {
   ctx.arc(e.x - e.radius * 0.9, e.y, e.radius * 0.45, 0, Math.PI * 2);
   ctx.fill();
 
+  // A shell highlight — a boss is rare on screen, so it can afford a bit
+  // more detail than the common enemies above.
+  ctx.fillStyle = shadeColor(e.color, 18);
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.1, e.y - e.radius * 0.3, e.radius * 0.5, e.radius * 0.2, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.fillStyle = '#ffd54f';
   ctx.beginPath();
   ctx.arc(e.x - e.radius * 1.05, e.y - e.radius * 0.15, e.radius * 0.1, 0, Math.PI * 2);
@@ -294,6 +328,17 @@ function drawGiantBeetle(ctx, e) {
   ctx.beginPath();
   ctx.moveTo(e.x, e.y - e.radius * 0.7);
   ctx.lineTo(e.x, e.y + e.radius * 0.7);
+  ctx.stroke();
+
+  // Mandibles.
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.3, e.y - e.radius * 0.2);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.6, e.y - e.radius * 0.35, e.x - e.radius * 1.75, e.y - e.radius * 0.1);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.3, e.y + e.radius * 0.2);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.6, e.y + e.radius * 0.35, e.x - e.radius * 1.75, e.y + e.radius * 0.1);
   ctx.stroke();
 }
 

@@ -31,6 +31,11 @@ let selectedShopItem = null;
 let mouseX = null;
 let mouseY = null;
 
+// The game's own simulation clock, advanced in update() rather than read
+// from the wall clock — idle animation (sway, pulses) stays tied to game
+// speed/determinism instead of real time.
+let animationTime = 0;
+
 // Visible, damage-carrying projectiles for the attack types that don't
 // already have their own always-on visual (the ray beam draws itself
 // straight to the target every frame and hits instantly — it's a
@@ -121,6 +126,7 @@ function renderProjectiles(ctx) {
 
 function updateTowerAttack(tower, x, y, deltaSeconds) {
   tower.target = findNearestEnemyInRange(x, y, tower.stats.range);
+  tower.attackFlash = Math.max(0, tower.attackFlash - deltaSeconds);
 
   tower.attackCooldown = Math.max(0, tower.attackCooldown - deltaSeconds);
   if (tower.target && tower.attackCooldown <= 0) {
@@ -133,6 +139,7 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
       spawnProjectile(tower, tower.target);
     }
     tower.attackCooldown = tower.stats.attackInterval;
+    tower.attackFlash = ATTACK_FLASH_DURATION;
   }
 
   if (tower.puddle) updateTowerPuddle(tower, deltaSeconds);
@@ -179,6 +186,8 @@ function updateTowerOrbit(tower, x, y, deltaSeconds) {
 }
 
 function update(deltaSeconds) {
+  animationTime += deltaSeconds;
+
   const killedEnemies = updateEnemies(deltaSeconds);
   if (killedEnemies.length > 0) {
     money += killedEnemies.reduce((sum, enemy) => sum + enemy.bounty, 0);
@@ -205,7 +214,7 @@ function drawTowerWithRay(tower, x, y) {
     ctx.stroke();
   }
 
-  renderTower(ctx, tower, x, y);
+  renderTower(ctx, tower, x, y, animationTime);
 
   if (tower === selectedTower) {
     ctx.strokeStyle = '#ffffff';
