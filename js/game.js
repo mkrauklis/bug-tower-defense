@@ -168,7 +168,7 @@ function renderPanel() {
 
     const upgrade = getAvailableUpgrade(sunflower, pathIndex);
     if (upgrade) {
-      btn.disabled = false;
+      btn.disabled = money < upgrade.cost;
       btn.textContent = `${upgrade.name} ($${upgrade.cost})`;
     } else {
       btn.disabled = true;
@@ -254,8 +254,17 @@ function renderWaveInfo() {
 
 document.querySelectorAll('button[data-path]').forEach((btn) => {
   btn.addEventListener('click', () => {
+    if (!sunflower) return;
+
     const pathIndex = Number(btn.dataset.path);
-    if (purchaseUpgrade(sunflower, pathIndex)) renderPanel();
+    const upgrade = getAvailableUpgrade(sunflower, pathIndex);
+    if (!upgrade || money < upgrade.cost) return; // can't afford it — same rule the Shop follows
+
+    if (purchaseUpgrade(sunflower, pathIndex)) {
+      money -= upgrade.cost;
+      renderPanel();
+      renderShop();
+    }
   });
 });
 
