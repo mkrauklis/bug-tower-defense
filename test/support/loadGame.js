@@ -92,9 +92,18 @@ function createDomStub() {
 
 // Loads the full game, including game.js's rendering/UI-wiring code, behind
 // a minimal fake DOM (above) so it can execute in Node without a real
-// browser. Used for testing game.js logic (combat/projectiles) that lives
-// outside the pure-data files the lighter loadGameContext() above covers.
-const FULL_LOAD_ORDER = ['js/random.js', 'js/towers.js', 'js/map.js', 'js/enemies.js', 'js/game.js'];
+// browser. Used for testing game.js logic (combat/projectiles, canvas-UI
+// hit-testing) that lives outside the pure-data files the lighter
+// loadGameContext() above covers.
+const FULL_LOAD_ORDER = [
+  'js/random.js',
+  'js/towers.js',
+  'js/map.js',
+  'js/wildlife.js',
+  'js/enemies.js',
+  'js/ui.js',
+  'js/game.js',
+];
 
 function loadFullGameContext() {
   const { document } = createDomStub();
@@ -106,6 +115,12 @@ function loadFullGameContext() {
     location: { search: '' },
     URLSearchParams,
     requestAnimationFrame: () => {},
+    // game.js's applyLayout()/touch-hold handling reach for these — stub
+    // just enough for module load + logic calls to work without a real
+    // browser. window.innerWidth is wide, so tests load in the "side"
+    // (not "stacked") panel layout by default.
+    window: { innerWidth: 1280, addEventListener: () => {} },
+    performance: { now: () => Date.now() },
   };
   vm.createContext(context);
 
@@ -123,6 +138,23 @@ function loadFullGameContext() {
       getProjectiles: () => projectiles,
       getActiveEnemies: () => activeEnemies,
       update,
+      uiBeginFrame, uiRegisterRegion, uiHitTest, uiWrapText,
+      getCanvasPoint, isWorldPoint, activateRegion, getTooltipLines,
+      renderUI,
+      // Top-level \`let\`/\`const\` bindings from a vm-run classic script
+      // aren't reachable off globalThis (same as a browser <script> tag),
+      // so mutable state needs explicit getter/setter pairs rather than
+      // plain property forwarding (which would just snapshot the value at
+      // export time) or a generic globalThis-patching setState.
+      getMoney: () => money,
+      setMoney: (value) => { money = value; },
+      getSelectedTower: () => selectedTower,
+      setSelectedTower: (tower) => { selectedTower = tower; },
+      getSelectedShopItem: () => selectedShopItem,
+      setSelectedShopItem: (item) => { selectedShopItem = item; },
+      getRound: () => round,
+      getGameSpeed: () => gameSpeed,
+      getTowers: () => towers,
     };
     `,
     context

@@ -1,6 +1,69 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
+// The game world (map/towers/enemies) is always WORLD_WIDTH x WORLD_HEIGHT —
+// unrelated to the canvas's own size, which also has to fit the control
+// panel (Shop/Selected Tower/Wave) now that the panel is drawn on canvas
+// instead of being separate DOM elements (see js/ui.js). The panel sits
+// beside the world on a wide screen, or below it (full-width, same content)
+// on a narrow one — applyLayout() below picks which and resizes the canvas
+// to match. Only js/map.js/js/wildlife.js use WORLD_WIDTH/WORLD_HEIGHT
+// (their own MAP_PATH_WAYPOINTS/WILDLIFE_BOUNDS are defined in world space
+// and untouched by this file).
+const WORLD_WIDTH = 960;
+const WORLD_HEIGHT = 640;
+const PANEL_WIDTH_SIDE = 320;
+const PANEL_PADDING = 14;
+// Fixed height budget for the panel's content (Shop + Selected Tower incl.
+// both upgrade columns + Wave incl. both buttons) — the same in both
+// layouts since neither saves much room by being wider: most of the panel's
+// height comes from fixed-size rows (shop tiles, upgrade tiers, buttons),
+// not text wrapping. If it ever overflows, body's own overflow-y:auto (see
+// style.css) lets the page scroll rather than clipping anything.
+const PANEL_HEIGHT = 500;
+const NARROW_BREAKPOINT = 820;
+
+let layoutMode = 'side'; // 'side' | 'stacked'
+let panelX = WORLD_WIDTH;
+let panelY = 0;
+let panelWidth = PANEL_WIDTH_SIDE;
+let panelHeight = PANEL_HEIGHT;
+
+// Resizes the canvas and repositions the panel for the current viewport.
+// Narrow screens get the world and panel stacked (both full WORLD_WIDTH, so
+// touch targets stay the same real size as the already-shipped mobile
+// support for the world itself) instead of shrunk side by side.
+function applyLayout() {
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : WORLD_WIDTH + PANEL_WIDTH_SIDE;
+  layoutMode = viewportWidth < NARROW_BREAKPOINT ? 'stacked' : 'side';
+
+  if (layoutMode === 'stacked') {
+    panelX = 0;
+    panelY = WORLD_HEIGHT;
+    panelWidth = WORLD_WIDTH;
+    panelHeight = PANEL_HEIGHT;
+    canvas.width = WORLD_WIDTH;
+    canvas.height = WORLD_HEIGHT + PANEL_HEIGHT;
+  } else {
+    panelX = WORLD_WIDTH;
+    panelY = 0;
+    panelWidth = PANEL_WIDTH_SIDE;
+    panelHeight = PANEL_HEIGHT;
+    canvas.width = WORLD_WIDTH + PANEL_WIDTH_SIDE;
+    canvas.height = Math.max(WORLD_HEIGHT, PANEL_HEIGHT);
+  }
+}
+
+applyLayout();
+if (typeof window !== 'undefined') window.addEventListener('resize', applyLayout);
+
+// Whether (x, y) in canvas-pixel space falls inside the game world (as
+// opposed to the panel) — depends on layoutMode, since the panel moves from
+// "beside" to "below" the world.
+function isWorldPoint(x, y) {
+  return layoutMode === 'stacked' ? y < WORLD_HEIGHT : x < WORLD_WIDTH;
+}
+
 // Every placed tower lives here, including the first one bought — there's
 // no special "demo" tower anymore. The Upgrades panel always follows
 // `selectedTower`, which the player sets by clicking a tower on the map.
@@ -212,13 +275,9 @@ function update(deltaSeconds) {
   const killedEnemies = updateEnemies(deltaSeconds);
   if (killedEnemies.length > 0) {
     money += killedEnemies.reduce((sum, enemy) => sum + enemy.bounty, 0);
-    // Cheap refreshes only — a kill can happen many times a second during a
-    // big wave, and renderShop() tears down and rebuilds the whole shop
-    // list (new elements, new listeners) every time it's called. Doing
-    // that on every single kill was a real perf problem under load; these
-    // two just update existing elements' text/disabled state instead.
-    updateMoneyDisplay();
-    renderPanel();
+    // No DOM to refresh any more — the panel is redrawn from current state
+    // every render() frame anyway (see renderUI()), so a kill just needs to
+    // update `money` and the next frame picks it up for free.
   }
 
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
@@ -247,7 +306,16 @@ function drawTowerWithRay(tower, x, y) {
 }
 
 function render() {
-  renderMap(ctx, canvas);
+  updateTouchHold();
+  canvas.style.cursor = selectedShopItem ? 'crosshair' : 'default';
+
+  ctx.fillStyle = '#10131a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // map.js only reads .width/.height off what's passed here — this keeps
+  // the world's own rendering fixed at WORLD_WIDTH x WORLD_HEIGHT regardless
+  // of how big the real canvas is (map.js itself is untouched).
+  renderMap(ctx, { width: WORLD_WIDTH, height: WORLD_HEIGHT });
   renderWildlife(ctx, wildlife, animationTime, 'ladybug'); // ground-level, under everything else
 
   towers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
@@ -256,155 +324,411 @@ function render() {
   renderEnemies(ctx);
   renderProjectiles(ctx);
   renderWildlife(ctx, wildlife, animationTime, 'firefly'); // glowing, drawn on top so it reads over everything
-  updateNextRoundButton();
-  updateBoostDisplay();
 
-  if (selectedShopItem && mouseX !== null) {
+  if (selectedShopItem && mouseX !== null && isWorldPoint(mouseX, mouseY)) {
     const buildable = money >= selectedShopItem.cost && !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN);
     ctx.fillStyle = buildable ? 'rgba(76, 175, 80, 0.4)' : 'rgba(229, 57, 53, 0.4)';
     ctx.beginPath();
     ctx.arc(mouseX, mouseY, 20, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  renderUI(ctx);
 }
+
+// ---------------------------------------------------------------------------
+// Canvas-drawn control panel (Shop / Selected Tower / Wave) — see js/ui.js
+// for the small hit-testing/tooltip toolkit this leans on. Everything below
+// is immediate-mode: it reads current game state and redraws from scratch
+// every frame, same as the rest of render() — there's no retained DOM to
+// patch any more, so a state change (money, selection, a purchase) just
+// shows up on the very next frame for free.
+// ---------------------------------------------------------------------------
 
 // Solar = yellow, Fire = orange — matches each path's own visual theme on
 // the tower itself (glow/flame colors), index-aligned with upgradePaths.
 const PATH_COLORS = ['#ffd54f', '#ff7043'];
 
-function renderPanel() {
-  const statsEl = document.getElementById('stats');
+// Currently hovered panel region (desktop mouse only — see getCanvasPoint's
+// callers below), used both to draw hover feedback and to pick which
+// tooltip (if any) to show.
+let hoverRegion = null;
 
-  if (!selectedTower) {
-    statsEl.innerHTML =
-      'Click a Shop item, then click open ground to place a tower — or click an existing tower to manage it here.';
-    renderUpgradePaths();
-    return;
-  }
-
-  statsEl.innerHTML = `
-    Damage: ${selectedTower.stats.damage.toFixed(1)}<br>
-    Size: ${selectedTower.stats.size.toFixed(1)}<br>
-    Attack interval: ${selectedTower.stats.attackInterval.toFixed(2)}s<br>
-    Attack: ${selectedTower.attackType}<br>
-    Burn: ${selectedTower.burn ? `${selectedTower.burn.damagePerSecond}/s for ${selectedTower.burn.duration}s` : 'none'}<br>
-    Puddle: ${selectedTower.puddle ? `${selectedTower.puddle.damagePerSecond}/s every ${selectedTower.puddle.interval}s` : 'none'}<br>
-    Orbit: ${selectedTower.orbit ? `${selectedTower.orbit.count} embers, ${selectedTower.orbit.damagePerSecond}/s each` : 'none'}
-  `;
-
-  renderUpgradePaths();
+// Cached preview tower instances (base stats, no upgrades bought) used to
+// draw each shop item's icon with the tower's own real renderTower() art
+// instead of a generic placeholder or plain text label.
+const shopPreviewTowers = {};
+function getShopPreviewTower(typeKey) {
+  if (!shopPreviewTowers[typeKey]) shopPreviewTowers[typeKey] = createTower(typeKey);
+  return shopPreviewTowers[typeKey];
 }
 
-// Rebuilds the two (eventually three) upgrade-path columns from scratch —
-// each tier shows one of: bought, available (next in line, affordable),
-// unaffordable (next in line, can't afford yet), locked (a future tier),
-// or path-locked (a different path was already chosen). Rebuilding here
-// is cheap (a handful of small elements, not the shop's larger list), and
-// only happens on purchase/selection changes, not every frame.
-function renderUpgradePaths() {
-  const container = document.getElementById('upgrade-paths');
-  container.innerHTML = '';
+const SHOP_TILE_SIZE = 60;
+const SHOP_TILE_GAP = 10;
 
+function renderShopSection(ctx, x, width, startY) {
+  let y = startY;
+
+  ctx.fillStyle = '#f0f0f0';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Shop', x, y);
+  ctx.fillStyle = '#c0ca33';
+  ctx.font = '13px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`$${money}`, x + width, y + 1);
+  ctx.textAlign = 'left';
+  y += 26;
+
+  let tileX = x;
+  let rowY = y;
+  SHOP_ITEMS.forEach((item) => {
+    if (tileX + SHOP_TILE_SIZE > x + width) {
+      tileX = x;
+      rowY += SHOP_TILE_SIZE + SHOP_TILE_GAP;
+    }
+
+    const affordable = money >= item.cost;
+    const selected = selectedShopItem === item;
+    const regionId = `shop:${item.typeKey}`;
+    const hovered = hoverRegion && hoverRegion.id === regionId;
+
+    uiRoundRect(ctx, tileX, rowY, SHOP_TILE_SIZE, SHOP_TILE_SIZE, 6);
+    ctx.fillStyle = selected ? '#3a5a2e' : hovered ? '#262b35' : '#1c2028';
+    ctx.fill();
+    ctx.strokeStyle = selected ? '#8bc34a' : affordable ? '#454c5c' : '#3a2020';
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.stroke();
+
+    ctx.save();
+    uiRoundRect(ctx, tileX, rowY, SHOP_TILE_SIZE, SHOP_TILE_SIZE, 6);
+    ctx.clip();
+    if (!affordable) ctx.globalAlpha = 0.45;
+    const iconCenterX = tileX + SHOP_TILE_SIZE / 2;
+    const iconCenterY = rowY + SHOP_TILE_SIZE / 2;
+    ctx.translate(iconCenterX, iconCenterY);
+    ctx.scale(0.8, 0.8);
+    ctx.translate(-iconCenterX, -iconCenterY);
+    renderTower(ctx, getShopPreviewTower(item.typeKey), iconCenterX, iconCenterY - 6, animationTime);
+    ctx.restore();
+
+    uiRegisterRegion(regionId, tileX, rowY, SHOP_TILE_SIZE, SHOP_TILE_SIZE, item);
+    tileX += SHOP_TILE_SIZE + SHOP_TILE_GAP;
+  });
+
+  return rowY + SHOP_TILE_SIZE + 16;
+}
+
+function renderSelectedTowerSection(ctx, x, width, startY) {
+  let y = startY;
+
+  ctx.fillStyle = '#f0f0f0';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Selected Tower', x, y);
+  y += 22;
+
+  if (!selectedTower) {
+    ctx.font = '12px sans-serif';
+    const lines = uiWrapText(
+      ctx,
+      'Click a Shop item, then click open ground to place a tower — or click an existing tower to manage it here.',
+      width
+    );
+    y = uiDrawTextLines(ctx, lines, x, y, 15, '#aaa', '12px sans-serif') + 8;
+  } else {
+    const burnText = selectedTower.burn
+      ? `${selectedTower.burn.damagePerSecond}/s for ${selectedTower.burn.duration}s`
+      : 'none';
+    const puddleText = selectedTower.puddle
+      ? `${selectedTower.puddle.damagePerSecond}/s every ${selectedTower.puddle.interval}s`
+      : 'none';
+    const orbitText = selectedTower.orbit
+      ? `${selectedTower.orbit.count} embers, ${selectedTower.orbit.damagePerSecond}/s each`
+      : 'none';
+    const lines = [
+      `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
+      `Size: ${selectedTower.stats.size.toFixed(1)}`,
+      `Attack interval: ${selectedTower.stats.attackInterval.toFixed(2)}s`,
+      `Attack: ${selectedTower.attackType}`,
+      `Burn: ${burnText}`,
+      `Puddle: ${puddleText}`,
+      `Orbit: ${orbitText}`,
+    ];
+    y = uiDrawTextLines(ctx, lines, x, y, 14, '#ccc', '12px sans-serif') + 8;
+  }
+
+  return renderUpgradePaths(ctx, x, width, y) + 10;
+}
+
+function renderUpgradePaths(ctx, x, width, startY) {
   const type = selectedTower ? TOWER_TYPES[selectedTower.type] : TOWER_TYPES.sunflower;
+  const columnGap = 8;
+  const columnWidth = (width - columnGap * 2) / 3;
+  const tierHeight = 32;
+  const tierGap = 4;
+  let maxBottom = startY;
 
   type.upgradePaths.forEach((path, pathIndex) => {
-    const column = document.createElement('div');
-    column.className = 'upgrade-path-column';
+    const colX = x + pathIndex * (columnWidth + columnGap);
+    let colY = startY;
 
     if (!path) {
-      column.classList.add('undesigned');
-      column.style.setProperty('--path-color', '#666');
-      const heading = document.createElement('h4');
-      heading.textContent = 'Path 3';
-      const note = document.createElement('p');
-      note.className = 'path-note';
-      note.textContent = 'Not yet designed.';
-      column.append(heading, note);
-      container.appendChild(column);
+      ctx.fillStyle = '#888';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Path 3', colX + columnWidth / 2, colY);
+      colY += 16;
+      ctx.font = '10px sans-serif';
+      ctx.fillText('Not yet designed.', colX + columnWidth / 2, colY);
+      ctx.textAlign = 'left';
+      colY += 16;
+      maxBottom = Math.max(maxBottom, colY);
       return;
     }
 
-    column.style.setProperty('--path-color', PATH_COLORS[pathIndex]);
+    const pathColor = PATH_COLORS[pathIndex];
+    const isLockedOut = Boolean(selectedTower) && selectedTower.chosenPath !== null && selectedTower.chosenPath !== pathIndex;
 
-    const isLockedOut =
-      Boolean(selectedTower) && selectedTower.chosenPath !== null && selectedTower.chosenPath !== pathIndex;
-    if (isLockedOut) column.classList.add('locked-out');
-
-    const heading = document.createElement('h4');
-    heading.textContent = path.name;
-    column.appendChild(heading);
+    ctx.fillStyle = isLockedOut ? '#666' : pathColor;
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(path.name, colX + columnWidth / 2, colY);
+    ctx.textAlign = 'left';
+    colY += 16;
 
     path.upgrades.forEach((upgrade, tierIndex) => {
-      const tierEl = document.createElement('div');
-
       const bought = Boolean(selectedTower) && selectedTower.chosenPath === pathIndex && tierIndex < selectedTower.upgradesPurchased;
       const isNextInLine =
         Boolean(selectedTower) &&
         !isLockedOut &&
         ((selectedTower.chosenPath === pathIndex && tierIndex === selectedTower.upgradesPurchased) ||
           (selectedTower.chosenPath === null && tierIndex === 0));
+      const affordable = isNextInLine && money >= upgrade.cost;
 
+      let fill = '#181b22';
+      let border = '#2e333e';
+      let textColor = '#777';
+      let statusGlyph = '\u{1F512}'; // lock
       if (bought) {
-        tierEl.className = 'tier bought';
+        fill = 'rgba(76, 175, 80, 0.18)';
+        border = '#4caf50';
+        textColor = '#ddd';
+        statusGlyph = '✓'; // check
       } else if (isLockedOut) {
-        tierEl.className = 'tier path-locked';
+        textColor = '#555';
       } else if (isNextInLine) {
-        const affordable = selectedTower && money >= upgrade.cost;
-        tierEl.className = `tier ${affordable ? 'available' : 'unaffordable'}`;
-      } else {
-        tierEl.className = 'tier locked';
+        border = affordable ? pathColor : '#555';
+        textColor = affordable ? '#eee' : '#999';
+        statusGlyph = '→'; // arrow
       }
 
-      tierEl.innerHTML = `<span class="tier-status"></span><span class="tier-name">${upgrade.name}</span><span class="tier-cost">$${upgrade.cost}</span>`;
+      const regionId = `upgrade:${pathIndex}:${tierIndex}`;
+      const hovered = hoverRegion && hoverRegion.id === regionId;
 
-      if (isNextInLine) {
-        tierEl.addEventListener('click', () => {
-          if (money < upgrade.cost) return;
-          if (purchaseUpgrade(selectedTower, pathIndex)) {
-            money -= upgrade.cost;
-            renderPanel();
-            renderShop();
-          }
-        });
+      uiRoundRect(ctx, colX, colY, columnWidth, tierHeight, 4);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      if (hovered) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+        ctx.fill();
       }
 
-      column.appendChild(tierEl);
+      ctx.save();
+      uiRoundRect(ctx, colX, colY, columnWidth, tierHeight, 4);
+      ctx.clip();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = textColor;
+      ctx.font = '9px sans-serif';
+      ctx.fillText(`${statusGlyph} ${upgrade.name}`, colX + 4, colY + 4);
+      ctx.fillStyle = bought ? '#8bc34a' : textColor;
+      ctx.fillText(bought ? 'Owned' : `$${upgrade.cost}`, colX + 4, colY + 17);
+      ctx.restore();
+
+      uiRegisterRegion(regionId, colX, colY, columnWidth, tierHeight, {
+        pathIndex,
+        tierIndex,
+        upgrade,
+        bought,
+        isNextInLine,
+        isLockedOut,
+        affordable,
+      });
+
+      colY += tierHeight + tierGap;
     });
 
-    container.appendChild(column);
+    maxBottom = Math.max(maxBottom, colY);
   });
+
+  return maxBottom;
 }
 
-// Updates money's display and existing shop buttons' affordability without
-// recreating any elements — cheap enough to call on every kill, unlike
-// renderShop() itself (see the comment in update()).
-function updateMoneyDisplay() {
-  document.getElementById('money').textContent = `$${money}`;
-  document.querySelectorAll('.shop-item').forEach((btn, i) => {
-    const item = SHOP_ITEMS[i];
-    if (item) btn.disabled = money < item.cost;
+function renderWaveSection(ctx, x, width, startY) {
+  let y = startY;
+
+  ctx.fillStyle = '#f0f0f0';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Wave', x, y);
+  y += 22;
+
+  ctx.font = '12px sans-serif';
+  const waveLines = [
+    `Round: ${round}`,
+    ...currentWave.map((entry) =>
+      entry.isBoss
+        ? `BOSS: ${entry.name} (${entry.health} HP, ${entry.speedMultiplier}x speed)`
+        : `${entry.name} x${entry.count} (${entry.health} HP each, ${entry.speedMultiplier}x speed)`
+    ),
+  ];
+  const wrapped = waveLines.flatMap((line) => uiWrapText(ctx, line, width));
+  y = uiDrawTextLines(ctx, wrapped, x, y, 14, '#ccc', '12px sans-serif') + 10;
+
+  const waveInProgress = activeEnemies.length > 0;
+  uiDrawButton(ctx, {
+    x,
+    y,
+    w: width,
+    h: 30,
+    label: waveInProgress ? 'Wave in progress…' : 'Next Round',
+    state: waveInProgress ? 'disabled' : 'accent',
+    hovered: Boolean(hoverRegion) && hoverRegion.id === 'next-round' && !waveInProgress,
   });
+  uiRegisterRegion('next-round', x, y, width, 30, { waveInProgress });
+  y += 38;
+
+  uiDrawButton(ctx, {
+    x,
+    y,
+    w: width,
+    h: 30,
+    label: `${gameSpeed}x Speed`,
+    state: 'default',
+    hovered: Boolean(hoverRegion) && hoverRegion.id === 'speed-toggle',
+  });
+  uiRegisterRegion('speed-toggle', x, y, width, 30, {});
+  y += 38;
+
+  if (damageBoostRemaining > 0) {
+    ctx.fillStyle = '#ff8a65';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(`Damage Boost: ${damageBoostRemaining.toFixed(1)}s`, x, y);
+  }
+  y += 18;
+
+  ctx.fillStyle = '#777';
+  ctx.font = '11px sans-serif';
+  ctx.fillText(`Seed: ${GAME_SEED}`, x, y);
+  y += 16;
+
+  return y;
 }
 
-function renderShop() {
-  document.getElementById('money').textContent = `$${money}`;
+function renderUI(ctx) {
+  uiBeginFrame();
 
-  const listEl = document.getElementById('shop-list');
-  listEl.innerHTML = '';
-  SHOP_ITEMS.forEach((item) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'shop-item' + (selectedShopItem === item ? ' selected' : '');
-    btn.disabled = money < item.cost;
-    btn.textContent = `${item.name} ($${item.cost})`;
-    btn.addEventListener('click', () => {
-      selectedShopItem = selectedShopItem === item ? null : item;
-      renderShop();
-    });
-    listEl.appendChild(btn);
-  });
+  ctx.fillStyle = '#12161c';
+  ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+  ctx.strokeStyle = '#2a2f3a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (layoutMode === 'side') {
+    ctx.moveTo(panelX + 0.5, panelY);
+    ctx.lineTo(panelX + 0.5, panelY + panelHeight);
+  } else {
+    ctx.moveTo(panelX, panelY + 0.5);
+    ctx.lineTo(panelX + panelWidth, panelY + 0.5);
+  }
+  ctx.stroke();
 
-  canvas.style.cursor = selectedShopItem ? 'crosshair' : 'default';
+  const contentX = panelX + PANEL_PADDING;
+  const contentWidth = panelWidth - PANEL_PADDING * 2;
+
+  let y = panelY + PANEL_PADDING;
+  y = renderShopSection(ctx, contentX, contentWidth, y);
+  y = renderSelectedTowerSection(ctx, contentX, contentWidth, y);
+  renderWaveSection(ctx, contentX, contentWidth, y);
+
+  const tooltipRegion = getActiveTooltipRegion();
+  if (tooltipRegion) {
+    const lines = getTooltipLines(tooltipRegion);
+    if (lines.length) {
+      uiDrawTooltip(
+        ctx,
+        tooltipRegion.x + tooltipRegion.w / 2,
+        tooltipRegion.y,
+        lines,
+        canvas.width,
+        canvas.height
+      );
+    }
+  }
+}
+
+// Builds the hover/hold tooltip content for a panel region. Shown for every
+// upgrade tier — including locked and path-locked ones — so hovering/
+// holding a future upgrade is a legitimate way to preview it before it's
+// reachable, not just a convenience for the next-in-line tier.
+function getTooltipLines(region) {
+  if (region.id.startsWith('shop:')) {
+    const item = region.data;
+    return [item.name, `$${item.cost} — place on open ground`];
+  }
+
+  if (region.id.startsWith('upgrade:')) {
+    const { upgrade, bought, isLockedOut } = region.data;
+    ctx.font = '12px sans-serif';
+    const lines = [upgrade.name, bought ? 'Owned' : `$${upgrade.cost}`];
+    lines.push(...uiWrapText(ctx, upgrade.description, 220));
+    if (isLockedOut) lines.push('Locked — a different path was chosen.');
+    return lines;
+  }
+
+  if (region.id === 'next-round') {
+    return region.data.waveInProgress ? ['Wait for the current wave to clear.'] : ['Start the next wave.'];
+  }
+
+  if (region.id === 'speed-toggle') return ['Toggle 1x / 2x simulation speed.'];
+
+  return [];
+}
+
+// Resolves a click/tap on a panel region into a game-state change. Shared by
+// the mouse click handler and the touch "quick tap" path below.
+function activateRegion(region) {
+  if (region.id.startsWith('shop:')) {
+    const item = region.data;
+    selectedShopItem = selectedShopItem === item ? null : item;
+    return;
+  }
+
+  if (region.id.startsWith('upgrade:')) {
+    const { pathIndex, upgrade, isNextInLine } = region.data;
+    if (!isNextInLine || !selectedTower) return;
+    if (money < upgrade.cost) return;
+    if (purchaseUpgrade(selectedTower, pathIndex)) money -= upgrade.cost;
+    return;
+  }
+
+  if (region.id === 'next-round') {
+    if (region.data.waveInProgress) return;
+    round += 1;
+    currentWave = generateWave(round);
+    spawnWave(currentWave);
+    return;
+  }
+
+  if (region.id === 'speed-toggle') {
+    gameSpeed = gameSpeed === 1 ? 2 : 1;
+  }
 }
 
 function getCanvasPoint(event) {
@@ -431,8 +755,10 @@ function findTowerAt(x, y) {
   return closest;
 }
 
-// Shared by the mouse click handler and the touch handler below, so tap
-// and click behave identically instead of maintaining two copies of this.
+// World-area tap handling (placement/ladybug/tower-select) — shared by the
+// mouse click handler and the touch "quick tap" path below. Only called for
+// points inside the game world; panel taps go through activateRegion()
+// instead (see the click/touch handlers).
 function handleCanvasTap(x, y) {
   if (selectedShopItem) {
     if (money < selectedShopItem.cost) return;
@@ -445,8 +771,6 @@ function handleCanvasTap(x, y) {
     money -= selectedShopItem.cost;
 
     selectedTower = tower; // jump straight to managing the tower just bought
-    renderPanel();
-    renderShop();
     return;
   }
 
@@ -457,37 +781,60 @@ function handleCanvasTap(x, y) {
   if (ladybug && ladybug.cooldownRemaining <= 0) {
     ladybug.cooldownRemaining = LADYBUG_COOLDOWN;
     damageBoostRemaining = DAMAGE_BOOST_DURATION;
-    updateBoostDisplay();
     return;
   }
 
   const clicked = findTowerAt(x, y);
   selectedTower = clicked === selectedTower ? null : clicked;
-  renderPanel();
 }
 
 canvas.addEventListener('mousemove', (event) => {
   const point = getCanvasPoint(event);
   mouseX = point.x;
   mouseY = point.y;
+  hoverRegion = isWorldPoint(point.x, point.y) ? null : uiHitTest(point.x, point.y);
 });
 
 canvas.addEventListener('mouseleave', () => {
   mouseX = null;
   mouseY = null;
+  hoverRegion = null;
 });
 
 canvas.addEventListener('click', (event) => {
   const { x, y } = getCanvasPoint(event);
-  handleCanvasTap(x, y);
+  if (isWorldPoint(x, y)) {
+    handleCanvasTap(x, y);
+    return;
+  }
+  const region = uiHitTest(x, y);
+  if (region) activateRegion(region);
 });
 
-// Touch equivalent of the click handler above — there's no hover/preview
-// state on touch (no mousemove equivalent before a tap), so this just acts
-// immediately on the tapped spot, same as a click. preventDefault keeps
-// the page from scrolling/zooming on this gesture and stops the browser
-// from also firing a synthetic "click" for the same tap (which would
-// otherwise run handleCanvasTap a second time).
+// Touch equivalent of mouse hover + click. There's no mousemove-before-tap
+// on touch, so hover doesn't apply — instead, a press-and-hold on a panel
+// region shows its tooltip (same content a mouse hover would show) without
+// triggering its action; releasing early (a normal quick tap) triggers the
+// action and never shows a tooltip. Dragging past a small threshold cancels
+// the hold outright (and triggers nothing), so scrolling/dragging the page
+// doesn't accidentally fire a button. World-area touches are unaffected —
+// they act immediately on touchstart, same as before.
+let touchHold = null;
+const TOUCH_HOLD_MS = 450;
+const TOUCH_MOVE_CANCEL_PX = 12;
+
+function updateTouchHold() {
+  if (touchHold && !touchHold.tooltipShown && performance.now() - touchHold.startTime >= TOUCH_HOLD_MS) {
+    touchHold.tooltipShown = true;
+  }
+}
+
+function getActiveTooltipRegion() {
+  if (hoverRegion) return hoverRegion;
+  if (touchHold && touchHold.tooltipShown) return touchHold.region;
+  return null;
+}
+
 canvas.addEventListener(
   'touchstart',
   (event) => {
@@ -495,61 +842,49 @@ canvas.addEventListener(
     const touch = event.touches[0];
     if (!touch) return;
     const { x, y } = getCanvasPoint(touch);
+
+    if (!isWorldPoint(x, y)) {
+      const region = uiHitTest(x, y);
+      if (region) {
+        touchHold = { region, startX: x, startY: y, startTime: performance.now(), tooltipShown: false };
+        return;
+      }
+    }
+
     handleCanvasTap(x, y);
   },
   { passive: false }
 );
 
-function renderWaveInfo() {
-  const waveInfoEl = document.getElementById('wave-info');
-  const lines = currentWave.map((entry) =>
-    entry.isBoss
-      ? `BOSS: ${entry.name} (${entry.health} HP, ${entry.speedMultiplier}x speed)`
-      : `${entry.name} x${entry.count} (${entry.health} HP each, ${entry.speedMultiplier}x speed)`
-  );
-  waveInfoEl.innerHTML = `Round: ${round}<br>${lines.join('<br>')}`;
-}
+canvas.addEventListener(
+  'touchmove',
+  (event) => {
+    if (!touchHold) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const { x, y } = getCanvasPoint(touch);
+    if (Math.hypot(x - touchHold.startX, y - touchHold.startY) > TOUCH_MOVE_CANCEL_PX) {
+      touchHold = null; // dragged away — cancel outright, no tooltip, no action
+    }
+  },
+  { passive: true }
+);
 
-function updateBoostDisplay() {
-  const el = document.getElementById('boost-info');
-  el.textContent = damageBoostRemaining > 0 ? `Damage Boost: ${damageBoostRemaining.toFixed(1)}s` : '';
-}
-
-// Only one wave runs at a time: the Next Round button stays disabled until
-// every enemy from the current wave is gone (dead or reached the goal).
-function updateNextRoundButton() {
-  const btn = document.getElementById('next-round-btn');
-  const waveInProgress = activeEnemies.length > 0;
-  btn.disabled = waveInProgress;
-  btn.textContent = waveInProgress ? 'Wave in progress…' : 'Next Round';
-}
-
-document.getElementById('next-round-btn').addEventListener('click', () => {
-  if (activeEnemies.length > 0) return; // belt-and-suspenders; the button is disabled too
-
-  round += 1;
-  currentWave = generateWave(round);
-  spawnWave(currentWave);
-  renderWaveInfo();
-  updateNextRoundButton();
-});
+canvas.addEventListener(
+  'touchend',
+  () => {
+    if (!touchHold) return;
+    const held = touchHold;
+    touchHold = null;
+    if (!held.tooltipShown) activateRegion(held.region); // released before the hold threshold — a tap
+  },
+  { passive: true }
+);
 
 // Scales how much simulated time each real frame adds to the fixed-step
 // accumulator below — covers enemy movement, attack cooldowns, every
 // DoT/puddle/orbit tick, everything, since they all run through update().
 let gameSpeed = 1;
-
-document.getElementById('speed-toggle-btn').addEventListener('click', (event) => {
-  gameSpeed = gameSpeed === 1 ? 2 : 1;
-  event.target.textContent = `${gameSpeed}x Speed`;
-});
-
-document.getElementById('seed-info').textContent = `Seed: ${GAME_SEED}`;
-
-renderPanel();
-renderWaveInfo();
-renderShop();
-updateNextRoundButton();
 
 // Fixed-timestep accumulator: the simulation always advances in constant
 // FIXED_DT slices, however ragged the display's actual frame times are —
