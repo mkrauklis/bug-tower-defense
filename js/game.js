@@ -3,8 +3,12 @@ const ctx = canvas.getContext('2d');
 
 const sunflower = createTower('sunflower');
 
+let round = 1;
+let currentWave = generateWave(round);
+spawnWave(currentWave);
+
 function update(deltaSeconds) {
-  // Game state updates will go here.
+  updateEnemies(deltaSeconds);
 }
 
 function render() {
@@ -32,6 +36,8 @@ function render() {
   ctx.arc(x, y, sunflower.stats.size, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+
+  renderEnemies(ctx);
 }
 
 function renderPanel() {
@@ -63,6 +69,16 @@ function renderPanel() {
   }
 }
 
+function renderWaveInfo() {
+  const waveInfoEl = document.getElementById('wave-info');
+  const lines = currentWave.map((entry) =>
+    entry.isBoss
+      ? `BOSS: ${entry.name} (${entry.health} HP, ${entry.speedMultiplier}x speed)`
+      : `${entry.name} x${entry.count} (${entry.health} HP each, ${entry.speedMultiplier}x speed)`
+  );
+  waveInfoEl.innerHTML = `Round: ${round}<br>${lines.join('<br>')}`;
+}
+
 document.querySelectorAll('button[data-path]').forEach((btn) => {
   btn.addEventListener('click', () => {
     const pathIndex = Number(btn.dataset.path);
@@ -70,12 +86,20 @@ document.querySelectorAll('button[data-path]').forEach((btn) => {
   });
 });
 
+document.getElementById('next-round-btn').addEventListener('click', () => {
+  round += 1;
+  currentWave = generateWave(round);
+  spawnWave(currentWave);
+  renderWaveInfo();
+});
+
 renderPanel();
+renderWaveInfo();
 
 let lastTime = 0;
 
 function loop(timestamp) {
-  const deltaSeconds = (timestamp - lastTime) / 1000;
+  const deltaSeconds = lastTime ? (timestamp - lastTime) / 1000 : 0;
   lastTime = timestamp;
 
   update(deltaSeconds);
