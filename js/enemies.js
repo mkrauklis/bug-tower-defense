@@ -12,20 +12,39 @@ const BASE_SPEED = 60; // px/second
 
 // `bounty` is the money awarded when the enemy dies (health hits 0, not
 // when it reaches the goal) — generic per enemy type, not hardcoded per-kill.
+// Bounty convention established by the tier-1 roster below: bounty ≈ health
+// (roughly 1:1), with a small flat bump for the very cheapest enemy so it's
+// not worth nothing. Tier 2's bounties follow the same 1:1 ratio directly —
+// tadpole 20, baby frog 30, poison dart frog 50, matching their health.
 const ENEMY_TYPES = {
   ant: { name: 'Ant', speedMultiplier: 0.5, health: 1, color: '#8d6e63', radius: 8, bounty: 2 },
   worm: { name: 'Worm', speedMultiplier: 0.6, health: 5, color: '#c0ca33', radius: 10, bounty: 5 },
   tinyIsopod: { name: 'Tiny Isopod', speedMultiplier: 0.7, health: 10, color: '#78909c', radius: 12, bounty: 10 },
+  // Tier 2 — unlocks after round 25 (see getUnlockedEnemyTypes), same
+  // progressive-unlock mechanism as tier 1, just gated to start later.
+  // A lighter olive than a real tadpole's near-black so it still reads
+  // clearly against the forest floor's own dark green.
+  tadpole: { name: 'Tadpole', speedMultiplier: 0.7, health: 20, color: '#5a7a3a', radius: 7, bounty: 20 },
+  babyFrog: { name: 'Baby Frog', speedMultiplier: 0.6, health: 30, color: '#66bb6a', radius: 10, bounty: 30 },
+  poisonDartFrog: { name: 'Poison Dart Frog', speedMultiplier: 0.65, health: 50, color: '#2979ff', radius: 9, bounty: 50 },
 };
 
-// Intro/difficulty order. Also gates which enemy types are unlocked at a
-// given round (see getUnlockedEnemyTypes).
+// Intro/difficulty order for tier 1 (unlocked from round 1) and tier 2
+// (unlocked starting after round 25 — see getUnlockedEnemyTypes). Kept as
+// two separate lists rather than one long ENEMY_ORDER so each tier unlocks
+// on its own progressive every-5-rounds cadence instead of one continuous
+// count across both.
 const ENEMY_ORDER = ['ant', 'worm', 'tinyIsopod'];
+const ENEMY_ORDER_TIER2 = ['tadpole', 'babyFrog', 'poisonDartFrog'];
 
 // Bosses, keyed by boss tier (tier 1 = round 25, tier 2 = round 50, ...).
-// Only tier 1 is designed so far — add more tiers here as they're designed.
+// Add more tiers here as they're designed — getBossForRound() falls back to
+// the strongest designed tier for any round whose tier isn't here yet.
 const BOSS_TYPES = {
   1: { name: 'Giant Beetle', speedMultiplier: 0.4, health: 50, color: '#4e342e', radius: 18, bounty: 50 },
+  // Bounty follows the same ~1:1-with-health convention as the regular
+  // roster above.
+  2: { name: 'Boss Toad', speedMultiplier: 0.4, health: 100, color: '#558b2f', radius: 24, bounty: 100 },
 };
 
 const BOSS_INTERVAL = 25;
@@ -45,15 +64,35 @@ function getBossForRound(round) {
 }
 
 function getUnlockedEnemyTypes(round) {
-  const unlockedCount = Math.min(ENEMY_ORDER.length, Math.floor((round - 1) / 5) + 1);
-  return ENEMY_ORDER.slice(0, unlockedCount);
+  const tier1Count = Math.min(ENEMY_ORDER.length, Math.floor((round - 1) / 5) + 1);
+  const unlocked = ENEMY_ORDER.slice(0, tier1Count);
+
+  // Tier 2 starts unlocking the round right after the round-25 boss, on the
+  // same progressive every-5-rounds cadence as tier 1, just starting later
+  // (round 26 unlocks the first tier-2 type, round 31 the second, round 36
+  // the third) rather than being available from round 1.
+  if (round > BOSS_INTERVAL) {
+    const roundsSinceTier2Start = round - (BOSS_INTERVAL + 1);
+    const tier2Count = Math.min(ENEMY_ORDER_TIER2.length, Math.floor(roundsSinceTier2Start / 5) + 1);
+    unlocked.push(...ENEMY_ORDER_TIER2.slice(0, tier2Count));
+  }
+
+  return unlocked;
 }
 
-// Simple, generic round-over-round scaling: more enemies each round, and a
-// little tougher every few rounds. Not tuned — just a reasonable baseline.
+// How many of each unlocked enemy type spawn per regular (non-boss) wave —
+// fixed, not round-scaled. Round-over-round difficulty comes from
+// healthMultiplier below and from unlocking new enemy types (see
+// getUnlockedEnemyTypes), not from ever-larger waves.
+const BASE_ENEMY_COUNT = 3;
+
+// Round-over-round scaling: enemies get tougher (health), but a wave's
+// total enemy count stays flat — per direct request, rounds shouldn't keep
+// spawning more enemies as the game goes on, only harder ones (plus new
+// types unlocking every 5 rounds, as before). Not tuned — just a reasonable
+// baseline curve: +10% health every 3 rounds.
 function getRoundScaling(round) {
   return {
-    countMultiplier: 1 + (round - 1) * 0.2,
     healthMultiplier: 1 + Math.floor((round - 1) / 3) * 0.1,
   };
 }
@@ -88,7 +127,7 @@ function generateWave(round) {
       name: type.name,
       color: type.color,
       radius: type.radius,
-      count: Math.max(1, Math.round(3 * scaling.countMultiplier)),
+      count: BASE_ENEMY_COUNT,
       health: Math.round(type.health * scaling.healthMultiplier),
       speedMultiplier: type.speedMultiplier,
       isBoss: false,
@@ -107,8 +146,14 @@ let activeEnemies = [];
 // Ant/Giant Beetle draw their head/mandibles on the -x side; Worm draws its
 // eyes on the +x side; Tiny Isopod has no directional features, so its
 // offset is arbitrary.
-const ENEMY_FACING_OFFSET = { ant: Math.PI, worm: 0, tinyIsopod: 0 };
-const BOSS_FACING_OFFSET = Math.PI;
+// Tadpole/Baby Frog/Poison Dart Frog have no strong left/right "head" side
+// in their art (see draw functions below), so 0 is as good a default as
+// any for them.
+const ENEMY_FACING_OFFSET = { ant: Math.PI, worm: 0, tinyIsopod: 0, tadpole: 0, babyFrog: 0, poisonDartFrog: 0 };
+// Keyed by enemyKey (e.g. 'boss-tier-1'), same as ENEMY_FACING_OFFSET,
+// since different boss tiers can have different default facing directions
+// baked into their own art.
+const BOSS_FACING_OFFSET = { 'boss-tier-1': Math.PI, 'boss-tier-2': 0 };
 
 function spawnWave(composition) {
   activeEnemies = [];
@@ -358,9 +403,138 @@ function drawGiantBeetle(ctx, e) {
   ctx.stroke();
 }
 
+// Tier 2 (post-round-25) roster — same hand-drawn-primitives discipline as
+// the tier-1 shapes above, each still distinguishable at a glance.
+function drawTadpole(ctx, e) {
+  // A teardrop tail trailing behind the round head (head faces +x by
+  // default, matching ENEMY_FACING_OFFSET.tadpole === 0).
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.6, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.8, e.y - e.radius * 0.7, e.x - e.radius * 2.4, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.8, e.y + e.radius * 0.7, e.x - e.radius * 0.6, e.y);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // A small highlight so the round head doesn't read as a flat disc.
+  ctx.fillStyle = shadeColor(e.color, 25);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.15, e.y - e.radius * 0.3, e.radius * 0.35, e.radius * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.3, e.y - e.radius * 0.3, e.radius * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.3, e.y + e.radius * 0.3, e.radius * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawBabyFrog(ctx, e) {
+  // Folded back legs, bulging on each side.
+  ctx.fillStyle = shadeColor(e.color, -10);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.7, e.y + e.radius * 0.4, e.radius * 0.5, e.radius * 0.32, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.7, e.y + e.radius * 0.4, e.radius * 0.5, e.radius * 0.32, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Bulging eyes on top — a frog's most recognizable feature.
+  [-0.35, 0.35].forEach((dx) => {
+    ctx.fillStyle = shadeColor(e.color, 15);
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.6, e.radius * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.6, e.radius * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawPoisonDartFrog(ctx, e) {
+  // Same body plan as the baby frog, but with contrasting dark spots on a
+  // vivid base color — the classic "poison" warning-color cue.
+  ctx.fillStyle = shadeColor(e.color, -10);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.7, e.y + e.radius * 0.4, e.radius * 0.5, e.radius * 0.32, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.7, e.y + e.radius * 0.4, e.radius * 0.5, e.radius * 0.32, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#1b1b1b';
+  [[-0.4, -0.15], [0.35, -0.25], [0, 0.3], [0.45, 0.15], [-0.35, 0.3]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - 0.3 * e.radius, e.y - e.radius * 0.55, e.radius * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x + 0.3 * e.radius, e.y - e.radius * 0.55, e.radius * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawBossToad(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Warts — a boss-sized toad can afford a bit more surface detail than the
+  // common enemies above, same as Giant Beetle's shell highlight.
+  ctx.fillStyle = shadeColor(e.color, -18);
+  [[-0.5, -0.3], [0.4, -0.4], [0.1, 0.1], [-0.2, 0.4], [0.5, 0.3]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  [-0.4, 0.4].forEach((dx) => {
+    ctx.fillStyle = shadeColor(e.color, 25);
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.65, e.radius * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#c62828';
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.65, e.radius * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.strokeStyle = '#1b2e0e';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.6, e.y + e.radius * 0.15);
+  ctx.quadraticCurveTo(e.x, e.y + e.radius * 0.45, e.x + e.radius * 0.6, e.y + e.radius * 0.15);
+  ctx.stroke();
+}
+
 function drawEnemyShape(ctx, enemy) {
   if (enemy.isBoss) {
-    drawGiantBeetle(ctx, enemy);
+    if (enemy.enemyKey === 'boss-tier-2') {
+      drawBossToad(ctx, enemy);
+    } else {
+      drawGiantBeetle(ctx, enemy);
+    }
     return;
   }
   if (enemy.enemyKey === 'ant') {
@@ -369,6 +543,12 @@ function drawEnemyShape(ctx, enemy) {
     drawWorm(ctx, enemy);
   } else if (enemy.enemyKey === 'tinyIsopod') {
     drawTinyIsopod(ctx, enemy);
+  } else if (enemy.enemyKey === 'tadpole') {
+    drawTadpole(ctx, enemy);
+  } else if (enemy.enemyKey === 'babyFrog') {
+    drawBabyFrog(ctx, enemy);
+  } else if (enemy.enemyKey === 'poisonDartFrog') {
+    drawPoisonDartFrog(ctx, enemy);
   } else {
     // Fallback for any future enemy type without custom art yet.
     ctx.fillStyle = enemy.color;
@@ -388,7 +568,9 @@ function renderEnemies(ctx) {
     // enemy's own (x, y) means drawEnemyShape's existing e.x/e.y-based
     // drawing code needs no changes — it's drawn exactly as before, just
     // inside a rotated context.
-    const facingOffset = enemy.isBoss ? BOSS_FACING_OFFSET : (ENEMY_FACING_OFFSET[enemy.enemyKey] ?? 0);
+    const facingOffset = enemy.isBoss
+      ? (BOSS_FACING_OFFSET[enemy.enemyKey] ?? 0)
+      : (ENEMY_FACING_OFFSET[enemy.enemyKey] ?? 0);
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
     ctx.rotate(enemy.heading + facingOffset);

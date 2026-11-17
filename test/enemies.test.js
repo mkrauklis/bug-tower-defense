@@ -13,13 +13,38 @@ test('round 1 wave is just Ants, scaled to a baseline count/health', () => {
   assert.equal(wave[0].bounty, game.ENEMY_TYPES.ant.bounty);
 });
 
+test('wave size per enemy type stays flat across rounds — only health scales up', () => {
+  const game = loadGameContext();
+  const round1Count = game.generateWave(1)[0].count;
+  const round10Counts = game.generateWave(10).map((entry) => entry.count);
+  const round40Counts = game.generateWave(40).map((entry) => entry.count);
+
+  round10Counts.concat(round40Counts).forEach((count) => assert.equal(count, round1Count));
+
+  // Health, meanwhile, keeps climbing — the one remaining scaling lever
+  // besides unlocking new enemy types.
+  const round1Health = game.generateWave(1)[0].health;
+  const round10Health = game.generateWave(10).find((entry) => entry.enemyKey === 'ant').health;
+  assert.ok(round10Health > round1Health);
+});
+
 test('more enemy types unlock as rounds progress', () => {
   const game = loadGameContext();
   assert.deepEqual(game.getUnlockedEnemyTypes(5), ['ant']);
   assert.deepEqual(game.getUnlockedEnemyTypes(6), ['ant', 'worm']);
   assert.deepEqual(game.getUnlockedEnemyTypes(11), ['ant', 'worm', 'tinyIsopod']);
-  // Never unlocks more than the roster has, however high the round.
-  assert.deepEqual(game.getUnlockedEnemyTypes(1000), ['ant', 'worm', 'tinyIsopod']);
+  // Tier 1 stays maxed out through round 25 — tier 2 hasn't started yet.
+  assert.deepEqual(game.getUnlockedEnemyTypes(25), ['ant', 'worm', 'tinyIsopod']);
+});
+
+test('tier-2 enemies unlock progressively starting the round after the round-25 boss', () => {
+  const game = loadGameContext();
+  const tier1 = ['ant', 'worm', 'tinyIsopod'];
+  assert.deepEqual(game.getUnlockedEnemyTypes(26), [...tier1, 'tadpole']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(31), [...tier1, 'tadpole', 'babyFrog']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(36), [...tier1, 'tadpole', 'babyFrog', 'poisonDartFrog']);
+  // Never unlocks more than either roster has, however high the round.
+  assert.deepEqual(game.getUnlockedEnemyTypes(1000), [...tier1, 'tadpole', 'babyFrog', 'poisonDartFrog']);
 });
 
 test('every 25th round is a boss wave, carrying the boss\'s own bounty', () => {
@@ -35,10 +60,17 @@ test('every 25th round is a boss wave, carrying the boss\'s own bounty', () => {
   assert.equal(wave[0].bounty, game.BOSS_TYPES[1].bounty);
 });
 
-test('an undesigned boss tier falls back to the strongest designed one, not a new boss', () => {
+test('round 50 spawns the tier-2 boss (Boss Toad), not a tier-1 fallback', () => {
   const game = loadGameContext();
-  const round50Wave = game.generateWave(50); // tier 2, not designed yet
-  assert.equal(round50Wave[0].name, 'Giant Beetle'); // falls back to tier 1
+  const round50Wave = game.generateWave(50);
+  assert.equal(round50Wave[0].name, 'Boss Toad');
+  assert.equal(round50Wave[0].bounty, game.BOSS_TYPES[2].bounty);
+});
+
+test('an undesigned boss tier (beyond the highest designed one) falls back, not a new boss', () => {
+  const game = loadGameContext();
+  const round75Wave = game.generateWave(75); // tier 3, not designed yet
+  assert.equal(round75Wave[0].name, 'Boss Toad'); // falls back to the strongest designed tier
 });
 
 test('spawnWave lays out the right number of enemy instances, staggered', () => {
