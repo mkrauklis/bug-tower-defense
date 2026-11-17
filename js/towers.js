@@ -176,7 +176,7 @@ const TOWER_TYPES = {
   rose: {
     name: 'Rose',
     baseStats: {
-      damage: 2,
+      damage: 4, // doubled from the original 2 in a balance pass — base stat only, flows through the existing damageMultiplier chain same as before
       size: 18, // starts a touch smaller than the Sunflower; Thorns' own sizeMultiplier grows it from here
       color: '#c2185b',
       range: 170, // unspecified by the brief — matches Sunflower's baseline rather than inventing a different number

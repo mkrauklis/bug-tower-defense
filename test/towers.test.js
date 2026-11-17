@@ -186,8 +186,12 @@ test('Rose\'s Thorn Path grows vine count 1 -> 2 -> 5 -> 8, scaling damage and s
   assert.equal(tower.tallStem, true);
   assert.equal(tower.stats.damage, baseDamage * 2 * 2 * 2);
   assert.equal(tower.vineDamage, 2 * 2 * 2 * 2);
-  // The base attack and every vine end up scaled identically, as specified.
-  assert.equal(tower.stats.damage, tower.vineDamage);
+  // Both the base attack and every vine get hit by the exact same x2/x2/x2
+  // multiplier chain — they just started from different base numbers
+  // (tower.stats.damage from TOWER_TYPES.rose.baseStats, vineDamage from
+  // Thorns' own `vine.damage`), so they stay in that same ratio rather than
+  // converging to one number.
+  assert.equal(tower.stats.damage / tower.vineDamage, baseDamage / 2);
 });
 
 test('Rose\'s Path 2 and Path 3 are scaffolded as undesigned, same as Sunflower\'s were', () => {
