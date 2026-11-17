@@ -431,20 +431,9 @@ function findTowerAt(x, y) {
   return closest;
 }
 
-canvas.addEventListener('mousemove', (event) => {
-  const point = getCanvasPoint(event);
-  mouseX = point.x;
-  mouseY = point.y;
-});
-
-canvas.addEventListener('mouseleave', () => {
-  mouseX = null;
-  mouseY = null;
-});
-
-canvas.addEventListener('click', (event) => {
-  const { x, y } = getCanvasPoint(event);
-
+// Shared by the mouse click handler and the touch handler below, so tap
+// and click behave identically instead of maintaining two copies of this.
+function handleCanvasTap(x, y) {
   if (selectedShopItem) {
     if (money < selectedShopItem.cost) return;
     if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
@@ -475,7 +464,41 @@ canvas.addEventListener('click', (event) => {
   const clicked = findTowerAt(x, y);
   selectedTower = clicked === selectedTower ? null : clicked;
   renderPanel();
+}
+
+canvas.addEventListener('mousemove', (event) => {
+  const point = getCanvasPoint(event);
+  mouseX = point.x;
+  mouseY = point.y;
 });
+
+canvas.addEventListener('mouseleave', () => {
+  mouseX = null;
+  mouseY = null;
+});
+
+canvas.addEventListener('click', (event) => {
+  const { x, y } = getCanvasPoint(event);
+  handleCanvasTap(x, y);
+});
+
+// Touch equivalent of the click handler above — there's no hover/preview
+// state on touch (no mousemove equivalent before a tap), so this just acts
+// immediately on the tapped spot, same as a click. preventDefault keeps
+// the page from scrolling/zooming on this gesture and stops the browser
+// from also firing a synthetic "click" for the same tap (which would
+// otherwise run handleCanvasTap a second time).
+canvas.addEventListener(
+  'touchstart',
+  (event) => {
+    event.preventDefault();
+    const touch = event.touches[0];
+    if (!touch) return;
+    const { x, y } = getCanvasPoint(touch);
+    handleCanvasTap(x, y);
+  },
+  { passive: false }
+);
 
 function renderWaveInfo() {
   const waveInfoEl = document.getElementById('wave-info');

@@ -1,6 +1,6 @@
 html, body {
   margin: 0;
-  height: 100%;
+  min-height: 100%;
   background: #1a1a1a;
   display: flex;
   align-items: center;
@@ -11,21 +11,50 @@ html, body {
      while playing — this is a game UI, not a document. */
   -webkit-user-select: none;
   user-select: none;
+  /* Rows can run taller than the viewport once the layout stacks on a
+     phone-sized screen (see the media query below) — let the page scroll
+     rather than clipping content, instead of the no-scroll desktop fit. */
+  overflow-y: auto;
 }
 
 #game-container {
   display: flex;
   gap: 16px;
+  max-width: 100%;
 }
 
 canvas {
   background: #2e2e2e;
   display: block;
+  max-width: 100%;
+  height: auto;
+  /* The game reads touches on the canvas itself; don't let the browser
+     also try to scroll/zoom the page with them. The panel below is left
+     alone so it can still scroll normally if it runs taller than the
+     viewport. */
+  touch-action: none;
 }
 
 #panel {
   width: 300px;
   padding: 12px;
+  box-sizing: border-box;
+}
+
+/* Phone-sized screens: stack the canvas above the panel instead of side
+   by side (there's no room for both at a usable width), and let the
+   panel use the full width. Not a bespoke mobile layout, just enough to
+   keep everything reachable and legible. */
+@media (max-width: 820px) {
+  #game-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #panel {
+    width: 100%;
+    max-width: 640px;
+  }
 }
 
 #panel h2 {
