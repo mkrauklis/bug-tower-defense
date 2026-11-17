@@ -12,21 +12,25 @@ const BASE_SPEED = 60; // px/second
 
 // `bounty` is the money awarded when the enemy dies (health hits 0, not
 // when it reaches the goal) — generic per enemy type, not hardcoded per-kill.
-// Bounty convention established by the tier-1 roster below: bounty ≈ health
-// (roughly 1:1), with a small flat bump for the very cheapest enemy so it's
-// not worth nothing. Tier 2's bounties follow the same 1:1 ratio directly —
-// tadpole 20, baby frog 30, poison dart frog 50, matching their health.
+// Bounty was originally set to roughly match health 1:1 (with a small flat
+// bump for the very cheapest enemy so it's not worth nothing), but a later
+// balance pass doubled every enemy's base health (Ant 1->2, Worm 5->10,
+// Tiny Isopod 10->20, Giant Beetle 50->100, Tadpole 20->40, Baby Frog
+// 30->60, Poison Dart Frog 50->100, Boss Toad 100->200) without touching
+// bounty — so the ratio is now roughly 1:2 (bounty ≈ half of health), not
+// 1:1 any more. Noted here so a future addition doesn't "restore" a 1:1
+// ratio that's no longer the actual convention.
 const ENEMY_TYPES = {
-  ant: { name: 'Ant', speedMultiplier: 0.5, health: 1, color: '#8d6e63', radius: 8, bounty: 2 },
-  worm: { name: 'Worm', speedMultiplier: 0.6, health: 5, color: '#c0ca33', radius: 10, bounty: 5 },
-  tinyIsopod: { name: 'Tiny Isopod', speedMultiplier: 0.7, health: 10, color: '#78909c', radius: 12, bounty: 10 },
+  ant: { name: 'Ant', speedMultiplier: 0.5, health: 2, color: '#8d6e63', radius: 8, bounty: 2 },
+  worm: { name: 'Worm', speedMultiplier: 0.6, health: 10, color: '#c0ca33', radius: 10, bounty: 5 },
+  tinyIsopod: { name: 'Tiny Isopod', speedMultiplier: 0.7, health: 20, color: '#78909c', radius: 12, bounty: 10 },
   // Tier 2 — unlocks after round 25 (see getUnlockedEnemyTypes), same
   // progressive-unlock mechanism as tier 1, just gated to start later.
   // A lighter olive than a real tadpole's near-black so it still reads
   // clearly against the forest floor's own dark green.
-  tadpole: { name: 'Tadpole', speedMultiplier: 0.7, health: 20, color: '#5a7a3a', radius: 7, bounty: 20 },
-  babyFrog: { name: 'Baby Frog', speedMultiplier: 0.6, health: 30, color: '#66bb6a', radius: 10, bounty: 30 },
-  poisonDartFrog: { name: 'Poison Dart Frog', speedMultiplier: 0.65, health: 50, color: '#2979ff', radius: 9, bounty: 50 },
+  tadpole: { name: 'Tadpole', speedMultiplier: 0.7, health: 40, color: '#5a7a3a', radius: 7, bounty: 20 },
+  babyFrog: { name: 'Baby Frog', speedMultiplier: 0.6, health: 60, color: '#66bb6a', radius: 10, bounty: 30 },
+  poisonDartFrog: { name: 'Poison Dart Frog', speedMultiplier: 0.65, health: 100, color: '#2979ff', radius: 9, bounty: 50 },
 };
 
 // Intro/difficulty order for tier 1 (unlocked from round 1) and tier 2
@@ -41,10 +45,10 @@ const ENEMY_ORDER_TIER2 = ['tadpole', 'babyFrog', 'poisonDartFrog'];
 // Add more tiers here as they're designed — getBossForRound() falls back to
 // the strongest designed tier for any round whose tier isn't here yet.
 const BOSS_TYPES = {
-  1: { name: 'Giant Beetle', speedMultiplier: 0.4, health: 50, color: '#4e342e', radius: 18, bounty: 50 },
+  1: { name: 'Giant Beetle', speedMultiplier: 0.4, health: 100, color: '#4e342e', radius: 18, bounty: 50 },
   // Bounty follows the same ~1:1-with-health convention as the regular
-  // roster above.
-  2: { name: 'Boss Toad', speedMultiplier: 0.4, health: 100, color: '#558b2f', radius: 24, bounty: 100 },
+  // roster above (based on the pre-doubling health values, left as-is).
+  2: { name: 'Boss Toad', speedMultiplier: 0.4, health: 200, color: '#558b2f', radius: 24, bounty: 100 },
 };
 
 const BOSS_INTERVAL = 25;

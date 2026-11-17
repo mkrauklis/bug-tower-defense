@@ -9,7 +9,7 @@ test('round 1 wave is just Ants, scaled to a baseline count/health', () => {
   assert.equal(wave.length, 1);
   assert.equal(wave[0].enemyKey, 'ant');
   assert.equal(wave[0].count, 3);
-  assert.equal(wave[0].health, 1);
+  assert.equal(wave[0].health, 2); // Ant's doubled base health
   assert.equal(wave[0].bounty, game.ENEMY_TYPES.ant.bounty);
 });
 
