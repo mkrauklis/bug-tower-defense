@@ -55,7 +55,58 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 2 — not yet designed.
+      {
+        name: 'Fire Path',
+        upgrades: [
+          {
+            name: 'Spark',
+            description: 'Attack speed doubles; sunflower becomes slightly smaller and gains a small flame on its head.',
+            cost: 50,
+            effects: { attackIntervalMultiplier: 0.5, sizeMultiplier: 0.8, flame: 'small' },
+          },
+          {
+            // No name given in the spec — picked to fit the magma-puddle
+            // mechanic this upgrade introduces (the sunflower's building
+            // internal heat, about to start erupting).
+            name: 'Molten Core',
+            description:
+              'Sunflower turns more orange; attack speed doubles again (4x from base); damage doubles; ' +
+              'periodically spits a magma puddle that burns bugs standing in it.',
+            cost: 300,
+            effects: {
+              color: '#ff7043',
+              attackIntervalMultiplier: 0.5,
+              damageMultiplier: 2,
+              // Baseline numbers, not balanced/tuned: a puddle every 5s,
+              // lasting 2.5s, dealing 12 dmg/s to anything standing in its
+              // 40px radius.
+              puddle: { interval: 5, duration: 2.5, damagePerSecond: 12, radius: 40 },
+            },
+          },
+          {
+            name: 'Flamewall',
+            description: 'Sunflower grows 3x in size and is engulfed in a large flame; damage doubles again.',
+            cost: 1000,
+            effects: { sizeMultiplier: 3, flame: 'large', damageMultiplier: 2 },
+          },
+          {
+            name: 'Wildfire',
+            description:
+              "Sunflower's attack becomes a thrown fireball; damage doubles again; " +
+              'gains fireball embers that continuously orbit it, burning any bug they touch.',
+            cost: 2500,
+            effects: {
+              attackType: 'fireball',
+              damageMultiplier: 2,
+              // Baseline numbers, not balanced/tuned: 3 embers circling at
+              // 65px radius (kept outside Flamewall's ~53px flame so they
+              // stay visible instead of blending into it), one full orbit
+              // every 2s, each dealing 15 dmg/s to anything within 8px of it.
+              orbit: { count: 3, radius: 65, angularSpeed: Math.PI, damagePerSecond: 15, emberRadius: 8 },
+            },
+          },
+        ],
+      },
       null, // Path 3 — not yet designed.
     ],
   },
@@ -73,6 +124,12 @@ function createTower(typeKey) {
     attackType: 'projectile',
     glow: null,
     burn: null,
+    flame: null, // 'small' | 'large' — a visual-only flame overlay
+    puddle: null, // magma-puddle config, once bought
+    puddleCooldown: 0,
+    activePuddles: [], // live puddle instances: {x, y, radius, damagePerSecond, remaining}
+    orbit: null, // orbiting-ember config, once bought
+    orbitAngle: 0,
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
   };
@@ -99,10 +156,17 @@ function purchaseUpgrade(tower, pathIndex) {
   const effects = upgrade.effects;
   if (effects.damageMultiplier) tower.stats.damage *= effects.damageMultiplier;
   if (effects.sizeMultiplier) tower.stats.size *= effects.sizeMultiplier;
+  if (effects.attackIntervalMultiplier) tower.stats.attackInterval *= effects.attackIntervalMultiplier;
   if (effects.color) tower.stats.color = effects.color;
   if (effects.glow) tower.glow = effects.glow;
+  if (effects.flame) tower.flame = effects.flame;
   if (effects.attackType) tower.attackType = effects.attackType;
   if (effects.burn) tower.burn = effects.burn;
+  if (effects.puddle) {
+    tower.puddle = effects.puddle;
+    tower.puddleCooldown = effects.puddle.interval; // don't fire instantly on purchase
+  }
+  if (effects.orbit) tower.orbit = effects.orbit;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -113,14 +177,49 @@ function purchaseUpgrade(tower, pathIndex) {
 function renderTower(ctx, tower, x, y) {
   if (tower.type === 'sunflower') {
     drawSunflower(ctx, x, y, tower.stats.size, tower.stats.color, tower.glow);
-    return;
+  } else {
+    // Fallback for any future tower type without custom art yet.
+    ctx.fillStyle = tower.stats.color;
+    ctx.beginPath();
+    ctx.arc(x, y, tower.stats.size, 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  // Fallback for any future tower type without custom art yet.
-  ctx.fillStyle = tower.stats.color;
+  if (tower.flame === 'small') drawFlame(ctx, x, y - tower.stats.size * 0.9, tower.stats.size * 0.35, '#ff7043');
+  if (tower.flame === 'large') drawFlame(ctx, x, y, tower.stats.size * 1.1, '#ff5722');
+
+  if (tower.orbit) renderTowerOrbit(ctx, tower, x, y);
+}
+
+function drawFlame(ctx, x, y, size, color) {
+  ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(x, y, tower.stats.size, 0, Math.PI * 2);
+  ctx.moveTo(x, y - size);
+  ctx.quadraticCurveTo(x + size * 0.6, y - size * 0.2, x, y + size * 0.4);
+  ctx.quadraticCurveTo(x - size * 0.6, y - size * 0.2, x, y - size);
   ctx.fill();
+}
+
+function renderTowerOrbit(ctx, tower, x, y) {
+  const { count, radius, emberRadius } = tower.orbit;
+  for (let i = 0; i < count; i += 1) {
+    const angle = tower.orbitAngle + (i * 2 * Math.PI) / count;
+    ctx.fillStyle = '#ff5722';
+    ctx.beginPath();
+    ctx.arc(x + radius * Math.cos(angle), y + radius * Math.sin(angle), emberRadius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Ground-layer effects (e.g. magma puddles) — drawn separately so callers
+// can put them underneath towers/enemies instead of on top.
+function renderTowerGroundEffects(ctx, tower) {
+  tower.activePuddles.forEach((puddle) => {
+    ctx.fillStyle = 'rgba(255, 87, 34, 0.5)';
+    ctx.beginPath();
+    ctx.arc(puddle.x, puddle.y, puddle.radius, 0, Math.PI * 2);
+    ctx.fill();
+  });
 }
 
 function drawSunflower(ctx, x, y, size, color, glow) {

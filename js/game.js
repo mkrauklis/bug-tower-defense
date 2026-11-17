@@ -32,11 +32,53 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   tower.target = findNearestEnemyInRange(x, y, tower.stats.range);
 
   tower.attackCooldown = Math.max(0, tower.attackCooldown - deltaSeconds);
-  if (!tower.target || tower.attackCooldown > 0) return;
+  if (tower.target && tower.attackCooldown <= 0) {
+    damageEnemy(tower.target, tower.stats.damage);
+    if (tower.burn) applyBurn(tower.target, tower.burn);
+    tower.attackCooldown = tower.stats.attackInterval;
+  }
 
-  damageEnemy(tower.target, tower.stats.damage);
-  if (tower.burn) applyBurn(tower.target, tower.burn);
-  tower.attackCooldown = tower.stats.attackInterval;
+  if (tower.puddle) updateTowerPuddle(tower, deltaSeconds);
+  if (tower.orbit) updateTowerOrbit(tower, x, y, deltaSeconds);
+}
+
+function updateTowerPuddle(tower, deltaSeconds) {
+  tower.puddleCooldown -= deltaSeconds;
+  if (tower.puddleCooldown <= 0) {
+    tower.puddleCooldown = tower.puddle.interval;
+    // Only spawns if something's actually in range to spit at — otherwise
+    // just waits for the next cycle rather than wasting a puddle on nothing.
+    if (tower.target) {
+      tower.activePuddles.push({
+        x: tower.target.x,
+        y: tower.target.y,
+        radius: tower.puddle.radius,
+        damagePerSecond: tower.puddle.damagePerSecond,
+        remaining: tower.puddle.duration,
+      });
+    }
+  }
+
+  tower.activePuddles.forEach((puddle) => {
+    puddle.remaining -= deltaSeconds;
+    getEnemiesInRadius(puddle.x, puddle.y, puddle.radius).forEach((enemy) => {
+      damageEnemy(enemy, puddle.damagePerSecond * deltaSeconds);
+    });
+  });
+  tower.activePuddles = tower.activePuddles.filter((puddle) => puddle.remaining > 0);
+}
+
+function updateTowerOrbit(tower, x, y, deltaSeconds) {
+  tower.orbitAngle += tower.orbit.angularSpeed * deltaSeconds;
+
+  for (let i = 0; i < tower.orbit.count; i += 1) {
+    const angle = tower.orbitAngle + (i * 2 * Math.PI) / tower.orbit.count;
+    const emberX = x + tower.orbit.radius * Math.cos(angle);
+    const emberY = y + tower.orbit.radius * Math.sin(angle);
+    getEnemiesInRadius(emberX, emberY, tower.orbit.emberRadius).forEach((enemy) => {
+      damageEnemy(enemy, tower.orbit.damagePerSecond * deltaSeconds);
+    });
+  }
 }
 
 function update(deltaSeconds) {
@@ -58,6 +100,18 @@ function drawTowerWithRay(tower, x, y) {
     ctx.moveTo(x, y);
     ctx.lineTo(tower.target.x, tower.target.y);
     ctx.stroke();
+  } else if (tower.attackType === 'fireball' && tower.target) {
+    // Kept simple like the ray attack, no real projectile physics: the
+    // ember's drawn position is just interpolated along the tower->target
+    // line by how far through the current attack cooldown we are, purely
+    // for visual flavor — damage itself still applies instantly on cooldown.
+    const progress = 1 - tower.attackCooldown / tower.stats.attackInterval;
+    const fx = x + (tower.target.x - x) * progress;
+    const fy = y + (tower.target.y - y) * progress;
+    ctx.fillStyle = '#ff5722';
+    ctx.beginPath();
+    ctx.arc(fx, fy, 6, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   renderTower(ctx, tower, x, y);
@@ -65,6 +119,9 @@ function drawTowerWithRay(tower, x, y) {
 
 function render() {
   renderMap(ctx, canvas);
+
+  if (sunflower) renderTowerGroundEffects(ctx, sunflower);
+  placedTowers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
 
   if (sunflower) drawTowerWithRay(sunflower, sunflower.x, sunflower.y);
   placedTowers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
@@ -85,17 +142,22 @@ function renderPanel() {
 
   if (!sunflower) {
     statsEl.innerHTML = 'Buy a Sunflower from the Shop to manage its upgrades here.';
-    const path0Btn = document.querySelector('button[data-path="0"]');
-    path0Btn.disabled = true;
-    path0Btn.textContent = 'Buy a Sunflower first';
+    ['0', '1'].forEach((pathIndex) => {
+      const btn = document.querySelector(`button[data-path="${pathIndex}"]`);
+      btn.disabled = true;
+      btn.textContent = 'Buy a Sunflower first';
+    });
     return;
   }
 
   statsEl.innerHTML = `
     Damage: ${sunflower.stats.damage.toFixed(1)}<br>
     Size: ${sunflower.stats.size.toFixed(1)}<br>
+    Attack interval: ${sunflower.stats.attackInterval.toFixed(2)}s<br>
     Attack: ${sunflower.attackType}<br>
-    Burn: ${sunflower.burn ? `${sunflower.burn.damagePerSecond}/s for ${sunflower.burn.duration}s` : 'none'}
+    Burn: ${sunflower.burn ? `${sunflower.burn.damagePerSecond}/s for ${sunflower.burn.duration}s` : 'none'}<br>
+    Puddle: ${sunflower.puddle ? `${sunflower.puddle.damagePerSecond}/s every ${sunflower.puddle.interval}s` : 'none'}<br>
+    Orbit: ${sunflower.orbit ? `${sunflower.orbit.count} embers, ${sunflower.orbit.damagePerSecond}/s each` : 'none'}
   `;
 
   for (let pathIndex = 0; pathIndex < 3; pathIndex += 1) {

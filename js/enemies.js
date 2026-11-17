@@ -144,6 +144,14 @@ function findNearestEnemyInRange(x, y, range) {
   return closest;
 }
 
+// Unlike findNearestEnemyInRange (single-target), this returns every live
+// enemy within radius — for AoE effects like a magma puddle or orbiting embers.
+function getEnemiesInRadius(x, y, radius) {
+  return activeEnemies.filter(
+    (enemy) => enemy.spawned && enemy.health > 0 && Math.hypot(enemy.x - x, enemy.y - y) <= radius
+  );
+}
+
 function damageEnemy(enemy, amount) {
   enemy.health -= amount;
 }
