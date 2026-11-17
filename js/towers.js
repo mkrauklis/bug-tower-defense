@@ -276,6 +276,12 @@ function createTower(typeKey) {
     vineInterval: 0,
     vineCooldown: 0,
     vineRangeMultiplier: 1,
+    // Per-vine lash-animation state, one entry per vine (grown alongside
+    // vineCount in purchaseUpgrade). { timeRemaining, angle } — set by
+    // updateTowerVines() in game.js whenever that specific vine actually
+    // hits something, so renderRoseVines() can swing it toward the target
+    // and back instead of leaving it at its fixed idle angle.
+    vineLashes: [],
     moreThorns: false, // visual-only denser thorn spikes, once bought
     tallStem: false, // visual-only taller stem, once bought
     attackCooldown: 0, // seconds until this tower can attack again
@@ -340,7 +346,10 @@ function purchaseUpgrade(tower, pathIndex) {
     tower.vineInterval = effects.vine.interval;
     tower.vineCooldown = effects.vine.interval; // don't fire instantly on purchase
   }
-  if (effects.addVines) tower.vineCount += effects.addVines;
+  if (effects.addVines) {
+    tower.vineCount += effects.addVines;
+    while (tower.vineLashes.length < tower.vineCount) tower.vineLashes.push({ timeRemaining: 0, angle: 0 });
+  }
   if (effects.moreThorns) tower.moreThorns = true;
   if (effects.vineRangeMultiplier) tower.vineRangeMultiplier *= effects.vineRangeMultiplier;
   if (effects.tallStem) tower.tallStem = true;
@@ -650,12 +659,41 @@ function drawRose(ctx, x, y, size, color, glow, time, flashAmount, tallStem) {
 // game.js's updateTowerVines(), driven by the same tower.vineCount this
 // reads. moreThorns (Puncture) just densifies the tick marks, same spirit
 // as flame's small/large or sparks' overlay.
+// How long a vine's lash-toward-target-and-back animation lasts once it
+// hits something — kept short so it reads as a quick whip, not a slow
+// swing, and comfortably finishes within a 1s vine interval. Also used by
+// game.js's updateTowerVines() to start the per-vine timer.
+const VINE_LASH_DURATION = 0.3;
+
+// Shortest signed angular distance from `from` to `to`, wrapped to
+// [-PI, PI] — lets the lash swing take the short way around regardless of
+// where a vine's idle angle happens to sit relative to its target.
+function shortestAngleDiff(from, to) {
+  let diff = (to - from) % (Math.PI * 2);
+  if (diff > Math.PI) diff -= Math.PI * 2;
+  if (diff < -Math.PI) diff += Math.PI * 2;
+  return diff;
+}
+
 function renderRoseVines(ctx, tower, x, y, time) {
-  const length = tower.stats.size * 1.8 * tower.vineRangeMultiplier;
+  const baseLength = tower.stats.size * 1.8 * tower.vineRangeMultiplier;
   const thornTicks = tower.moreThorns ? 4 : 2;
 
   for (let i = 0; i < tower.vineCount; i += 1) {
-    const angle = (i / tower.vineCount) * Math.PI * 2 + Math.sin(time * 0.6 + i) * 0.05;
+    const idleAngle = (i / tower.vineCount) * Math.PI * 2 + Math.sin(time * 0.6 + i) * 0.05;
+    let angle = idleAngle;
+    let length = baseLength;
+
+    const lash = tower.vineLashes[i];
+    if (lash && lash.timeRemaining > 0) {
+      // 0 right when it fires -> 1 once the lash finishes; sin() of that
+      // gives a swing-out-and-back motion rather than a linear snap.
+      const swingT = 1 - lash.timeRemaining / VINE_LASH_DURATION;
+      const swingAmount = Math.sin(swingT * Math.PI);
+      angle = idleAngle + shortestAngleDiff(idleAngle, lash.angle) * swingAmount;
+      length = baseLength * (1 + 0.2 * swingAmount); // a little extra reach at the peak of the whip
+    }
+
     const tipX = x + Math.cos(angle) * length;
     const tipY = y + Math.sin(angle) * length;
     const midX = x + Math.cos(angle) * length * 0.55;

@@ -38,6 +38,59 @@ test('a single vine ticks once a second for its own damage, independent of the b
   assert.equal(target.health, 10000 - tower.vineDamage);
 });
 
+test('a vine that hits starts its lash-toward-target animation, aimed at the real target angle', () => {
+  const game = loadFullGameContext();
+  const tower = game.createTower('rose');
+  tower.x = 0;
+  tower.y = 0;
+  game.purchaseUpgrade(tower, 0); // Thorns: 1 vine
+
+  const target = makeTestEnemy({ x: 0, y: 100 }); // straight "down" from the tower
+  game.getActiveEnemies().push(target);
+  tower.attackCooldown = 999;
+
+  assert.equal(tower.vineLashes[0].timeRemaining, 0); // idle before any tick
+
+  game.updateTowerAttack(tower, tower.x, tower.y, tower.vineInterval);
+
+  assert.ok(tower.vineLashes[0].timeRemaining > 0);
+  assert.ok(Math.abs(tower.vineLashes[0].angle - Math.PI / 2) < 1e-9); // atan2(100, 0) = PI/2 ("down")
+});
+
+test('the lash timer decays back to 0 over time and does not go negative', () => {
+  const game = loadFullGameContext();
+  const tower = game.createTower('rose');
+  tower.x = 0;
+  tower.y = 0;
+  game.purchaseUpgrade(tower, 0);
+
+  game.getActiveEnemies().push(makeTestEnemy({ x: 50, y: 0 }));
+  tower.attackCooldown = 999;
+
+  game.updateTowerAttack(tower, tower.x, tower.y, tower.vineInterval); // triggers the lash
+  assert.ok(tower.vineLashes[0].timeRemaining > 0);
+
+  // Advance well past the lash's own (short) duration but short of a full
+  // vineInterval, so the vine doesn't fire again and restart the timer.
+  for (let i = 0; i < 30; i += 1) game.updateTowerAttack(tower, tower.x, tower.y, 1 / 60); // 0.5s
+
+  assert.equal(tower.vineLashes[0].timeRemaining, 0);
+});
+
+test('an idle vine (nothing in range) never starts a lash animation', () => {
+  const game = loadFullGameContext();
+  const tower = game.createTower('rose');
+  tower.x = 0;
+  tower.y = 0;
+  game.purchaseUpgrade(tower, 0);
+  tower.attackCooldown = 999;
+  // No enemies pushed at all.
+
+  game.updateTowerAttack(tower, tower.x, tower.y, tower.vineInterval);
+
+  assert.equal(tower.vineLashes[0].timeRemaining, 0);
+});
+
 test('multiple vines can all hit the same single nearby enemy in one tick', () => {
   const game = loadFullGameContext();
   const tower = game.createTower('rose');

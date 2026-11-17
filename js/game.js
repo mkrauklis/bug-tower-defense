@@ -232,6 +232,9 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.shockwave) updateTowerShockwave(tower, x, y, deltaSeconds);
   if (tower.clouds) tower.cloudsAngle += tower.clouds.angularSpeed * deltaSeconds;
   if (tower.vineCount > 0) updateTowerVines(tower, x, y, deltaSeconds);
+  tower.vineLashes.forEach((lash) => {
+    lash.timeRemaining = Math.max(0, lash.timeRemaining - deltaSeconds);
+  });
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
 }
 
@@ -317,7 +320,14 @@ function updateTowerVines(tower, x, y, deltaSeconds) {
     const vineRange = tower.stats.range * tower.vineRangeMultiplier;
     for (let i = 0; i < tower.vineCount; i += 1) {
       const target = findNearestEnemyInRange(x, y, vineRange);
-      if (target) damageEnemy(target, tower.vineDamage);
+      if (target) {
+        damageEnemy(target, tower.vineDamage);
+        // Starts that specific vine's lash-toward-target animation (see
+        // renderRoseVines in towers.js) — only when it actually hit
+        // something, so an idle vine with nothing in range stays put.
+        tower.vineLashes[i].timeRemaining = VINE_LASH_DURATION;
+        tower.vineLashes[i].angle = Math.atan2(target.y - y, target.x - x);
+      }
     }
   }
 }
