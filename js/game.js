@@ -181,6 +181,7 @@ function render() {
 
   renderEnemies(ctx);
   renderProjectiles(ctx);
+  updateNextRoundButton();
 
   if (selectedShopItem && mouseX !== null) {
     const buildable = money >= selectedShopItem.cost && !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN);
@@ -325,6 +326,15 @@ function renderWaveInfo() {
   waveInfoEl.innerHTML = `Round: ${round}<br>${lines.join('<br>')}`;
 }
 
+// Only one wave runs at a time: the Next Round button stays disabled until
+// every enemy from the current wave is gone (dead or reached the goal).
+function updateNextRoundButton() {
+  const btn = document.getElementById('next-round-btn');
+  const waveInProgress = activeEnemies.length > 0;
+  btn.disabled = waveInProgress;
+  btn.textContent = waveInProgress ? 'Wave in progress…' : 'Next Round';
+}
+
 document.querySelectorAll('button[data-path]').forEach((btn) => {
   btn.addEventListener('click', () => {
     if (!selectedTower) return;
@@ -342,15 +352,19 @@ document.querySelectorAll('button[data-path]').forEach((btn) => {
 });
 
 document.getElementById('next-round-btn').addEventListener('click', () => {
+  if (activeEnemies.length > 0) return; // belt-and-suspenders; the button is disabled too
+
   round += 1;
   currentWave = generateWave(round);
   spawnWave(currentWave);
   renderWaveInfo();
+  updateNextRoundButton();
 });
 
 renderPanel();
 renderWaveInfo();
 renderShop();
+updateNextRoundButton();
 
 let lastTime = 0;
 
