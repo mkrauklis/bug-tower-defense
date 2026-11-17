@@ -24,6 +24,12 @@ const ENEMY_TYPES = {
   ant: { name: 'Ant', speedMultiplier: 0.5, health: 2, color: '#8d6e63', radius: 8, bounty: 2 },
   worm: { name: 'Worm', speedMultiplier: 0.6, health: 10, color: '#c0ca33', radius: 10, bounty: 5 },
   tinyIsopod: { name: 'Tiny Isopod', speedMultiplier: 0.7, health: 20, color: '#78909c', radius: 12, bounty: 10 },
+  // Fastest tier-1 enemy by a wide margin (1x vs. 0.5-0.7x for the other
+  // three) but fragile — introduced last in tier 1 (see ENEMY_ORDER) so the
+  // "fast bug" challenge shows up once a player already has some defense
+  // established, rather than complicating round 1. Bounty: ~HP/2 like the
+  // rest of the roster, rounded to the nearest dollar (3/2 = 1.5 -> 2).
+  fly: { name: 'Fly', speedMultiplier: 1, health: 3, color: '#424242', radius: 6, bounty: 2 },
   // Tier 2 — unlocks after round 25 (see getUnlockedEnemyTypes), same
   // progressive-unlock mechanism as tier 1, just gated to start later.
   // A lighter olive than a real tadpole's near-black so it still reads
@@ -38,7 +44,7 @@ const ENEMY_TYPES = {
 // two separate lists rather than one long ENEMY_ORDER so each tier unlocks
 // on its own progressive every-5-rounds cadence instead of one continuous
 // count across both.
-const ENEMY_ORDER = ['ant', 'worm', 'tinyIsopod'];
+const ENEMY_ORDER = ['ant', 'worm', 'tinyIsopod', 'fly'];
 const ENEMY_ORDER_TIER2 = ['tadpole', 'babyFrog', 'poisonDartFrog'];
 
 // Bosses, keyed by boss tier (tier 1 = round 25, tier 2 = round 50, ...).
@@ -84,16 +90,27 @@ function getUnlockedEnemyTypes(round) {
   return unlocked;
 }
 
-// How many of each unlocked enemy type spawn per regular (non-boss) wave —
-// fixed, not round-scaled. Round-over-round difficulty comes from
-// healthMultiplier below and from unlocking new enemy types (see
-// getUnlockedEnemyTypes), not from ever-larger waves.
-const BASE_ENEMY_COUNT = 3;
+// Total enemies across a regular (non-boss) wave — reinstated per direct
+// request, superseding an earlier change that kept wave size flat (that
+// turned out to make every round feel the same, since the only real
+// progression was per-enemy health). Scales linearly from
+// WAVE_SIZE_AT_ROUND_1 at round 1 up to WAVE_SIZE_AT_ROUND_25 at round 25,
+// then holds flat at that cap for every round after — a deliberate choice
+// so very late waves don't grow unbounded; round-over-round difficulty past
+// 25 keeps climbing via healthMultiplier (below) and the ongoing tier-2
+// type unlocks instead of an ever-larger enemy count.
+const WAVE_SIZE_AT_ROUND_1 = 5;
+const WAVE_SIZE_AT_ROUND_25 = 25;
 
-// Round-over-round scaling: enemies get tougher (health), but a wave's
-// total enemy count stays flat — per direct request, rounds shouldn't keep
-// spawning more enemies as the game goes on, only harder ones (plus new
-// types unlocking every 5 rounds, as before). Not tuned — just a reasonable
+function getTotalWaveSize(round) {
+  if (round >= 25) return WAVE_SIZE_AT_ROUND_25;
+  const progress = (round - 1) / 24; // 0 at round 1, 1 at round 25
+  return Math.round(WAVE_SIZE_AT_ROUND_1 + (WAVE_SIZE_AT_ROUND_25 - WAVE_SIZE_AT_ROUND_1) * progress);
+}
+
+// Round-over-round health scaling — unchanged, and still stacks with the
+// count curve above rather than replacing it: rounds now get both more
+// numerous and individually tougher enemies. Not tuned — just a reasonable
 // baseline curve: +10% health every 3 rounds.
 function getRoundScaling(round) {
   return {
@@ -123,6 +140,10 @@ function generateWave(round) {
 
   const scaling = getRoundScaling(round);
   const unlocked = getUnlockedEnemyTypes(round);
+  // Spread this round's total wave size evenly across whichever types are
+  // currently unlocked, so per-type count self-adjusts as new types unlock
+  // rather than needing its own separate curve.
+  const perTypeCount = Math.max(1, Math.round(getTotalWaveSize(round) / unlocked.length));
 
   return unlocked.map((key) => {
     const type = ENEMY_TYPES[key];
@@ -131,7 +152,7 @@ function generateWave(round) {
       name: type.name,
       color: type.color,
       radius: type.radius,
-      count: BASE_ENEMY_COUNT,
+      count: perTypeCount,
       health: Math.round(type.health * scaling.healthMultiplier),
       speedMultiplier: type.speedMultiplier,
       isBoss: false,
@@ -153,7 +174,15 @@ let activeEnemies = [];
 // Tadpole/Baby Frog/Poison Dart Frog have no strong left/right "head" side
 // in their art (see draw functions below), so 0 is as good a default as
 // any for them.
-const ENEMY_FACING_OFFSET = { ant: Math.PI, worm: 0, tinyIsopod: 0, tadpole: 0, babyFrog: 0, poisonDartFrog: 0 };
+const ENEMY_FACING_OFFSET = {
+  ant: Math.PI,
+  worm: 0,
+  tinyIsopod: 0,
+  fly: 0, // symmetric top-down silhouette, no strong head side
+  tadpole: 0,
+  babyFrog: 0,
+  poisonDartFrog: 0,
+};
 // Keyed by enemyKey (e.g. 'boss-tier-1'), same as ENEMY_FACING_OFFSET,
 // since different boss tiers can have different default facing directions
 // baked into their own art.
@@ -364,6 +393,32 @@ function drawTinyIsopod(ctx, e) {
   });
 }
 
+// Small, round body with a pair of translucent wings and red compound eyes
+// — the fastest tier-1 enemy, so a silhouette distinct enough to spot at a
+// glance amid slower bugs.
+function drawFly(ctx, e) {
+  ctx.fillStyle = 'rgba(224, 224, 224, 0.55)';
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.3, e.y - e.radius * 0.5, e.radius * 0.55, e.radius * 0.3, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.3, e.y - e.radius * 0.5, e.radius * 0.55, e.radius * 0.3, 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.6, e.radius * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#c62828';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.25, e.y - e.radius * 0.5, e.radius * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.25, e.y - e.radius * 0.5, e.radius * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawGiantBeetle(ctx, e) {
   ctx.fillStyle = e.color;
   ctx.beginPath();
@@ -547,6 +602,8 @@ function drawEnemyShape(ctx, enemy) {
     drawWorm(ctx, enemy);
   } else if (enemy.enemyKey === 'tinyIsopod') {
     drawTinyIsopod(ctx, enemy);
+  } else if (enemy.enemyKey === 'fly') {
+    drawFly(ctx, enemy);
   } else if (enemy.enemyKey === 'tadpole') {
     drawTadpole(ctx, enemy);
   } else if (enemy.enemyKey === 'babyFrog') {

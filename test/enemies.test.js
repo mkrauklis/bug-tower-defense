@@ -2,44 +2,53 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadGameContext } = require('./support/loadGame');
 
-test('round 1 wave is just Ants, scaled to a baseline count/health', () => {
+test('round 1 wave is just 5 Ants, scaled to a baseline count/health', () => {
   const game = loadGameContext();
   const wave = game.generateWave(1);
 
   assert.equal(wave.length, 1);
   assert.equal(wave[0].enemyKey, 'ant');
-  assert.equal(wave[0].count, 3);
+  assert.equal(wave[0].count, 5); // WAVE_SIZE_AT_ROUND_1, undivided (1 unlocked type)
   assert.equal(wave[0].health, 2); // Ant's doubled base health
   assert.equal(wave[0].bounty, game.ENEMY_TYPES.ant.bounty);
 });
 
-test('wave size per enemy type stays flat across rounds — only health scales up', () => {
+test('total wave size scales from 5 at round 1 up to 25 at round 25, then holds flat', () => {
   const game = loadGameContext();
-  const round1Count = game.generateWave(1)[0].count;
-  const round10Counts = game.generateWave(10).map((entry) => entry.count);
-  const round40Counts = game.generateWave(40).map((entry) => entry.count);
+  const totalAt = (round) => game.generateWave(round).reduce((sum, entry) => sum + entry.count, 0);
 
-  round10Counts.concat(round40Counts).forEach((count) => assert.equal(count, round1Count));
+  const round1Total = totalAt(1);
+  const round13Total = totalAt(13); // midpoint
+  const round25Total = totalAt(25);
+  const round60Total = totalAt(60); // well past 25
 
-  // Health, meanwhile, keeps climbing — the one remaining scaling lever
-  // besides unlocking new enemy types.
+  assert.equal(round1Total, 5);
+  assert.ok(round13Total > round1Total && round13Total < round25Total);
+  assert.equal(round25Total, 25);
+  assert.equal(round60Total, 25); // capped, not still climbing
+
+  // Health, meanwhile, keeps climbing regardless — the count curve is an
+  // additional lever on top of it, not a replacement for it.
   const round1Health = game.generateWave(1)[0].health;
   const round10Health = game.generateWave(10).find((entry) => entry.enemyKey === 'ant').health;
   assert.ok(round10Health > round1Health);
 });
 
-test('more enemy types unlock as rounds progress', () => {
+test('more enemy types unlock as rounds progress, Fly joining last in tier 1', () => {
   const game = loadGameContext();
   assert.deepEqual(game.getUnlockedEnemyTypes(5), ['ant']);
   assert.deepEqual(game.getUnlockedEnemyTypes(6), ['ant', 'worm']);
   assert.deepEqual(game.getUnlockedEnemyTypes(11), ['ant', 'worm', 'tinyIsopod']);
-  // Tier 1 stays maxed out through round 25 — tier 2 hasn't started yet.
-  assert.deepEqual(game.getUnlockedEnemyTypes(25), ['ant', 'worm', 'tinyIsopod']);
+  // Tier 1 stays at 3 types through round 15 — Fly hasn't unlocked yet.
+  assert.deepEqual(game.getUnlockedEnemyTypes(15), ['ant', 'worm', 'tinyIsopod']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(16), ['ant', 'worm', 'tinyIsopod', 'fly']);
+  // Tier 1 stays maxed out (all 4) through round 25 — tier 2 hasn't started yet.
+  assert.deepEqual(game.getUnlockedEnemyTypes(25), ['ant', 'worm', 'tinyIsopod', 'fly']);
 });
 
 test('tier-2 enemies unlock progressively starting the round after the round-25 boss', () => {
   const game = loadGameContext();
-  const tier1 = ['ant', 'worm', 'tinyIsopod'];
+  const tier1 = ['ant', 'worm', 'tinyIsopod', 'fly'];
   assert.deepEqual(game.getUnlockedEnemyTypes(26), [...tier1, 'tadpole']);
   assert.deepEqual(game.getUnlockedEnemyTypes(31), [...tier1, 'tadpole', 'babyFrog']);
   assert.deepEqual(game.getUnlockedEnemyTypes(36), [...tier1, 'tadpole', 'babyFrog', 'poisonDartFrog']);
@@ -78,7 +87,7 @@ test('spawnWave lays out the right number of enemy instances, staggered', () => 
   game.spawnWave(game.generateWave(1));
   const active = game.getActiveEnemies();
 
-  assert.equal(active.length, 3); // 3 Ants
+  assert.equal(active.length, 5); // 5 Ants (round 1's wave size)
   assert.equal(active[0].spawnDelay, 0);
   assert.ok(active[1].spawnDelay > active[0].spawnDelay);
 });
