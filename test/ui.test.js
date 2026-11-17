@@ -153,6 +153,7 @@ test('activateRegion refuses an upgrade the player cannot afford', () => {
 
 test('activateRegion starts the next round only when no wave is in progress', () => {
   const game = loadFullGameContext();
+  game.startGame('medium'); // next-round only makes sense once a mode/game is active
   const roundBefore = game.getRound();
 
   game.activateRegion({ id: 'next-round', data: { waveInProgress: true } });

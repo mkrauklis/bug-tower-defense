@@ -188,37 +188,99 @@ const ENEMY_FACING_OFFSET = {
 // baked into their own art.
 const BOSS_FACING_OFFSET = { 'boss-tier-1': Math.PI, 'boss-tier-2': 0 };
 
+function getInitialPathHeading() {
+  const dx = MAP_PATH_WAYPOINTS[1].x - MAP_PATH_WAYPOINTS[0].x;
+  const dy = MAP_PATH_WAYPOINTS[1].y - MAP_PATH_WAYPOINTS[0].y;
+  return Math.atan2(dy, dx);
+}
+
+// Shared by spawnWave() and spawnSingleEnemy() (Sandbox mode) so the two
+// spawning paths can't drift apart on the enemy object's own shape —
+// that's bitten this file before (immobilizedRemaining was added in one
+// place and had to be remembered everywhere else enemies get created).
+function createEnemyInstance(entry, spawnDelay) {
+  return {
+    enemyKey: entry.enemyKey,
+    name: entry.name,
+    color: entry.color,
+    radius: entry.radius,
+    maxHealth: entry.health,
+    health: entry.health,
+    speed: BASE_SPEED * entry.speedMultiplier,
+    isBoss: entry.isBoss,
+    bounty: entry.bounty,
+    waypointIndex: 0,
+    x: MAP_PATH_WAYPOINTS[0].x,
+    y: MAP_PATH_WAYPOINTS[0].y,
+    heading: getInitialPathHeading(),
+    spawnDelay,
+    spawned: false,
+    immobilizedRemaining: 0, // seconds left held in place by Root Path's Tanglement grab, if any
+  };
+}
+
 function spawnWave(composition) {
   activeEnemies = [];
   let spawnDelay = 0;
 
-  const initialDx = MAP_PATH_WAYPOINTS[1].x - MAP_PATH_WAYPOINTS[0].x;
-  const initialDy = MAP_PATH_WAYPOINTS[1].y - MAP_PATH_WAYPOINTS[0].y;
-  const initialHeading = Math.atan2(initialDy, initialDx);
-
   composition.forEach((entry) => {
     for (let i = 0; i < entry.count; i += 1) {
-      activeEnemies.push({
-        enemyKey: entry.enemyKey,
-        name: entry.name,
-        color: entry.color,
-        radius: entry.radius,
-        maxHealth: entry.health,
-        health: entry.health,
-        speed: BASE_SPEED * entry.speedMultiplier,
-        isBoss: entry.isBoss,
-        bounty: entry.bounty,
-        waypointIndex: 0,
-        x: MAP_PATH_WAYPOINTS[0].x,
-        y: MAP_PATH_WAYPOINTS[0].y,
-        heading: initialHeading,
-        spawnDelay,
-        spawned: false,
-        immobilizedRemaining: 0, // seconds left held in place by Root Path's Tanglement grab, if any
-      });
+      activeEnemies.push(createEnemyInstance(entry, spawnDelay));
       spawnDelay += 0.5; // stagger spawns half a second apart so they don't overlap
     }
   });
+}
+
+// Sandbox mode: spawns exactly one enemy immediately (no stagger delay —
+// this is a deliberate single click, not part of a wave), appended to
+// whatever's already alive rather than replacing it like spawnWave() does.
+function spawnSingleEnemy(entry) {
+  activeEnemies.push(createEnemyInstance(entry, 0));
+}
+
+// Tier-1 + tier-2 regular enemies, then every designed boss tier, in that
+// order — used by Sandbox's spawn palette (see
+// renderSandboxSpawnSection() in game.js) to list every enemy type that
+// could ever be spawnable, regardless of whether it's been unlocked yet.
+function getAllSpawnableEnemyKeys() {
+  const bossKeys = Object.keys(BOSS_TYPES).map((tier) => `boss-tier-${tier}`);
+  return [...ENEMY_ORDER, ...ENEMY_ORDER_TIER2, ...bossKeys];
+}
+
+// Looks up a spawn-ready entry (same shape generateWave() produces, base
+// stats only — Sandbox doesn't apply round/mode scaling) for any key
+// getAllSpawnableEnemyKeys() can return. Returns null for an unknown key
+// rather than throwing, so a bad/renamed key just fails to spawn instead
+// of crashing the panel.
+function getSpawnEntryForEnemyKey(key) {
+  if (key.startsWith('boss-tier-')) {
+    const tier = Number(key.slice('boss-tier-'.length));
+    const boss = BOSS_TYPES[tier];
+    if (!boss) return null;
+    return {
+      enemyKey: key,
+      name: boss.name,
+      color: boss.color,
+      radius: boss.radius,
+      health: boss.health,
+      speedMultiplier: boss.speedMultiplier,
+      isBoss: true,
+      bounty: boss.bounty,
+    };
+  }
+
+  const type = ENEMY_TYPES[key];
+  if (!type) return null;
+  return {
+    enemyKey: key,
+    name: type.name,
+    color: type.color,
+    radius: type.radius,
+    health: type.health,
+    speedMultiplier: type.speedMultiplier,
+    isBoss: false,
+    bounty: type.bounty,
+  };
 }
 
 // Combat helpers — kept here alongside the enemy data/state they act on.

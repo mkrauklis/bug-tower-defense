@@ -109,7 +109,26 @@ const FULL_LOAD_ORDER = [
   'js/game.js',
 ];
 
-function loadFullGameContext() {
+// A minimal in-memory localStorage stand-in. Backed by a plain object a
+// caller can supply and keep a reference to, so two separate
+// loadFullGameContext() calls (two fresh vm contexts, standing in for two
+// separate page loads) can share the same backing store to test that
+// something actually persists "across sessions" — the real
+// window.localStorage's whole point, which a brand-new stub object per
+// call wouldn't exercise at all.
+function createLocalStorageStub(store) {
+  return {
+    getItem: (key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null),
+    setItem: (key, value) => {
+      store[key] = String(value);
+    },
+    removeItem: (key) => {
+      delete store[key];
+    },
+  };
+}
+
+function loadFullGameContext({ localStorageStore = {} } = {}) {
   const { document } = createDomStub();
   const context = {
     console,
@@ -125,6 +144,7 @@ function loadFullGameContext() {
     // (not "stacked") panel layout by default.
     window: { innerWidth: 1280, addEventListener: () => {} },
     performance: { now: () => Date.now() },
+    localStorage: createLocalStorageStub(localStorageStore),
   };
   vm.createContext(context);
 
@@ -159,6 +179,13 @@ function loadFullGameContext() {
       getRound: () => round,
       getGameSpeed: () => gameSpeed,
       getTowers: () => towers,
+      startGame, GAME_MODES,
+      getGameState: () => gameState,
+      getCurrentMode: () => currentMode,
+      applyModeToWaveComposition,
+      getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey, spawnSingleEnemy,
+      getDefeatedEnemyKeys: () => [...defeatedEnemyKeys],
+      recordDefeatedEnemy,
     };
     `,
     context
