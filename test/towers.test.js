@@ -18,10 +18,18 @@ test('createTower throws for an unknown tower type', () => {
   assert.throws(() => game.createTower('nope'));
 });
 
-test('getAvailableUpgrade returns null for an undesigned path', () => {
+test('getAvailableUpgrade returns null for an undesigned path (generic engine behavior)', () => {
   const game = loadGameContext();
-  const tower = game.createTower('sunflower');
-  assert.equal(game.getAvailableUpgrade(tower, 2), null); // Path 3 is still undesigned
+  // The Sunflower's own three paths are all designed now (Solar, Fire,
+  // Storm) — synthesize a minimal type with an undesigned path so the
+  // engine's generic null-path handling still has direct coverage.
+  game.TOWER_TYPES.__testType = {
+    name: 'Test Tower',
+    baseStats: { damage: 1, size: 1, color: '#fff', range: 1, attackInterval: 1 },
+    upgradePaths: [null, null, null],
+  };
+  const tower = game.createTower('__testType');
+  assert.equal(game.getAvailableUpgrade(tower, 0), null);
 });
 
 test('purchasing a path\'s first upgrade locks out the other two paths', () => {
@@ -94,9 +102,43 @@ test('Fire Path stacks attack interval, size, and damage as specified', () => {
   assert.ok(tower.orbit);
 });
 
-test('an undesigned path (Path 3) stays unavailable even with no path chosen yet', () => {
+test('Storm Path stacks attack speed and reaches both periodic effects (Jolt -> Shock -> Conductor -> Shockwave)', () => {
   const game = loadGameContext();
   const tower = game.createTower('sunflower');
-  assert.equal(game.purchaseUpgrade(tower, 2), false);
-  assert.equal(tower.chosenPath, null);
+  const baseInterval = tower.stats.attackInterval;
+  const baseRange = tower.stats.range;
+  const baseSize = tower.stats.size;
+  const closeEnough = (a, b) => Math.abs(a - b) < 1e-9;
+
+  game.purchaseUpgrade(tower, 2); // Jolt: +15% attack speed
+  assert.ok(closeEnough(tower.stats.attackInterval, baseInterval / 1.15));
+  assert.equal(tower.sparks, 'small');
+
+  game.purchaseUpgrade(tower, 2); // Shock: another +50%, on top of Jolt
+  assert.ok(closeEnough(tower.stats.attackInterval, baseInterval / 1.15 / 1.5));
+  assert.equal(tower.glow, '#fff59d');
+
+  game.purchaseUpgrade(tower, 2); // Conductor: another +15%, range doubles, single-target jolt
+  assert.ok(closeEnough(tower.stats.attackInterval, baseInterval / 1.15 / 1.5 / 1.15));
+  assert.ok(closeEnough(tower.stats.range, baseRange * 2));
+  assert.equal(tower.boltMark, true);
+  assert.deepEqual(tower.spark, { interval: 1, damage: 7 });
+
+  game.purchaseUpgrade(tower, 2); // Shockwave: another +25%, size doubles, AoE pulse
+  assert.ok(closeEnough(tower.stats.attackInterval, baseInterval / 1.15 / 1.5 / 1.15 / 1.25));
+  assert.ok(closeEnough(tower.stats.size, baseSize * 2));
+  assert.deepEqual(tower.shockwave, { interval: 2.5, damage: 15 });
+  assert.ok(tower.clouds);
+  // Conductor's single-target jolt is still active alongside Shockwave's
+  // AoE pulse — buying Shockwave doesn't replace it.
+  assert.deepEqual(tower.spark, { interval: 1, damage: 7 });
+});
+
+test('Storm Path locks out the other two paths once its first upgrade is bought', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('sunflower');
+  game.purchaseUpgrade(tower, 2); // Jolt
+  assert.equal(tower.chosenPath, 2);
+  assert.equal(game.getAvailableUpgrade(tower, 0), null); // Solar Path locked out
+  assert.equal(game.getAvailableUpgrade(tower, 1), null); // Fire Path locked out
 });

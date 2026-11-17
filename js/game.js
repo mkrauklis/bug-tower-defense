@@ -225,6 +225,10 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
 
   if (tower.puddle) updateTowerPuddle(tower, deltaSeconds);
   if (tower.orbit) updateTowerOrbit(tower, x, y, deltaSeconds);
+  if (tower.spark) updateTowerSpark(tower, x, y, deltaSeconds);
+  if (tower.shockwave) updateTowerShockwave(tower, x, y, deltaSeconds);
+  if (tower.clouds) tower.cloudsAngle += tower.clouds.angularSpeed * deltaSeconds;
+  tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
 }
 
 function updateTowerPuddle(tower, deltaSeconds) {
@@ -266,6 +270,35 @@ function updateTowerOrbit(tower, x, y, deltaSeconds) {
   }
 }
 
+// Storm Path's single-target periodic jolt (Conductor) — unlike the puddle/
+// orbit AoE effects above, this only ever hits the single closest enemy
+// currently in range, same targeting rule the tower's main attack uses.
+function updateTowerSpark(tower, x, y, deltaSeconds) {
+  tower.sparkCooldown -= deltaSeconds;
+  if (tower.sparkCooldown <= 0) {
+    tower.sparkCooldown = tower.spark.interval;
+    const target = findNearestEnemyInRange(x, y, tower.stats.range);
+    if (target) damageEnemy(target, tower.spark.damage);
+  }
+}
+
+// How long the shockwave's expanding-ring visual lasts — purely cosmetic,
+// unrelated to the shockwave's own damage interval.
+const SHOCKWAVE_PULSE_DURATION = 0.4;
+
+// Storm Path's AoE periodic pulse (Shockwave) — hits every enemy currently
+// within the tower's range at once, independent of (and stacking with)
+// Conductor's single-target spark above; buying this doesn't replace that
+// effect, both keep ticking on their own schedules.
+function updateTowerShockwave(tower, x, y, deltaSeconds) {
+  tower.shockwaveCooldown -= deltaSeconds;
+  if (tower.shockwaveCooldown <= 0) {
+    tower.shockwaveCooldown = tower.shockwave.interval;
+    getEnemiesInRadius(x, y, tower.stats.range).forEach((enemy) => damageEnemy(enemy, tower.shockwave.damage));
+    tower.shockwavePulse = SHOCKWAVE_PULSE_DURATION;
+  }
+}
+
 function update(deltaSeconds) {
   animationTime += deltaSeconds;
   updateWildlife(wildlife, deltaSeconds);
@@ -295,6 +328,15 @@ function drawTowerWithRay(tower, x, y) {
   }
 
   renderTower(ctx, tower, x, y, animationTime);
+
+  if (tower.shockwavePulse > 0) {
+    const progress = 1 - tower.shockwavePulse / SHOCKWAVE_PULSE_DURATION; // 0 -> 1 as it expands/fades
+    ctx.strokeStyle = `rgba(255, 245, 157, ${1 - progress})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, tower.stats.range * progress, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   if (tower === selectedTower) {
     ctx.strokeStyle = '#ffffff';
