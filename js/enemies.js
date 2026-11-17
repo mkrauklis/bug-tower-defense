@@ -122,12 +122,43 @@ function spawnWave(composition) {
   });
 }
 
+// Combat helpers — kept here alongside the enemy data/state they act on.
+function findNearestEnemyInRange(x, y, range) {
+  let closest = null;
+  let closestDist = Infinity;
+
+  activeEnemies.forEach((enemy) => {
+    if (!enemy.spawned || enemy.health <= 0) return;
+    const dist = Math.hypot(enemy.x - x, enemy.y - y);
+    if (dist <= range && dist < closestDist) {
+      closest = enemy;
+      closestDist = dist;
+    }
+  });
+
+  return closest;
+}
+
+function damageEnemy(enemy, amount) {
+  enemy.health -= amount;
+}
+
+function applyBurn(enemy, burn) {
+  enemy.burn = { damagePerSecond: burn.damagePerSecond, remaining: burn.duration };
+}
+
 function updateEnemies(deltaSeconds) {
   activeEnemies.forEach((enemy) => {
     if (!enemy.spawned) {
       enemy.spawnDelay -= deltaSeconds;
       if (enemy.spawnDelay > 0) return;
       enemy.spawned = true;
+    }
+
+    if (enemy.burn) {
+      damageEnemy(enemy, enemy.burn.damagePerSecond * deltaSeconds);
+      enemy.burn.remaining -= deltaSeconds;
+      if (enemy.burn.remaining <= 0) enemy.burn = null;
     }
 
     let remaining = enemy.speed * deltaSeconds;
@@ -150,9 +181,10 @@ function updateEnemies(deltaSeconds) {
     }
   });
 
-  // Drop enemies that reached the final waypoint (the base/goal, for now).
+  // Drop enemies that died or reached the final waypoint (the base/goal,
+  // for now — there's no base-health/lose-condition system yet).
   activeEnemies = activeEnemies.filter(
-    (enemy) => enemy.waypointIndex < MAP_PATH_WAYPOINTS.length - 1
+    (enemy) => enemy.health > 0 && enemy.waypointIndex < MAP_PATH_WAYPOINTS.length - 1
   );
 }
 
@@ -268,8 +300,15 @@ function renderEnemies(ctx) {
 
     drawEnemyShape(ctx, enemy);
 
+    if (enemy.burn) {
+      ctx.fillStyle = '#ff6600';
+      ctx.beginPath();
+      ctx.arc(enemy.x + enemy.radius * 0.7, enemy.y - enemy.radius * 0.7, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     const barWidth = enemy.radius * 2;
-    const healthRatio = enemy.health / enemy.maxHealth;
+    const healthRatio = Math.max(0, enemy.health / enemy.maxHealth);
     ctx.fillStyle = '#000';
     ctx.fillRect(enemy.x - barWidth / 2, enemy.y - enemy.radius - 8, barWidth, 4);
     ctx.fillStyle = '#e53935';

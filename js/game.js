@@ -7,15 +7,27 @@ let round = 1;
 let currentWave = generateWave(round);
 spawnWave(currentWave);
 
-function update(deltaSeconds) {
-  updateEnemies(deltaSeconds);
-}
-
 // Fixed demo spot on the forest floor, off the dirt path — there's no
 // tower-placement system yet, so this just stands in for "placed on
 // buildable ground" until one exists.
 const SUNFLOWER_DEMO_X = 650;
 const SUNFLOWER_DEMO_Y = 320;
+
+function updateTowerAttack(tower, x, y, deltaSeconds) {
+  tower.target = findNearestEnemyInRange(x, y, tower.stats.range);
+
+  tower.attackCooldown = Math.max(0, tower.attackCooldown - deltaSeconds);
+  if (!tower.target || tower.attackCooldown > 0) return;
+
+  damageEnemy(tower.target, tower.stats.damage);
+  if (tower.burn) applyBurn(tower.target, tower.burn);
+  tower.attackCooldown = tower.stats.attackInterval;
+}
+
+function update(deltaSeconds) {
+  updateEnemies(deltaSeconds);
+  updateTowerAttack(sunflower, SUNFLOWER_DEMO_X, SUNFLOWER_DEMO_Y, deltaSeconds);
+}
 
 function render() {
   renderMap(ctx, canvas);
@@ -23,12 +35,12 @@ function render() {
   const x = SUNFLOWER_DEMO_X;
   const y = SUNFLOWER_DEMO_Y;
 
-  if (sunflower.attackType === 'ray') {
+  if (sunflower.attackType === 'ray' && sunflower.target) {
     ctx.strokeStyle = sunflower.burn ? '#ff6600' : '#fff59d';
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineTo(canvas.width - 40, y);
+    ctx.lineTo(sunflower.target.x, sunflower.target.y);
     ctx.stroke();
   }
 

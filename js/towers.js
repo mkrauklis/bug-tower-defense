@@ -17,6 +17,9 @@ const TOWER_TYPES = {
       damage: 5,
       size: 20,
       color: '#e6c229',
+      range: 170, // px — baseline pick: covers the path segments nearest a
+                  // typical placement without reaching across the whole map.
+      attackInterval: 0.6, // seconds between attacks — baseline cadence, not balanced.
     },
     upgradePaths: [
       {
@@ -70,6 +73,8 @@ function createTower(typeKey) {
     attackType: 'projectile',
     glow: null,
     burn: null,
+    attackCooldown: 0, // seconds until this tower can attack again
+    target: null, // the enemy it's currently aiming at, if any
   };
 }
 
