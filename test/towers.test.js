@@ -194,11 +194,55 @@ test('Rose\'s Thorn Path grows vine count 1 -> 2 -> 5 -> 8, scaling damage and s
   assert.equal(tower.stats.damage / tower.vineDamage, baseDamage / 2);
 });
 
-test('Rose\'s Path 2 and Path 3 are scaffolded as undesigned, same as Sunflower\'s were', () => {
+test('Rose\'s Path 3 is still scaffolded as entirely undesigned', () => {
   const game = loadGameContext();
   const tower = game.createTower('rose');
-  assert.equal(game.getAvailableUpgrade(tower, 1), null);
   assert.equal(game.getAvailableUpgrade(tower, 2), null);
-  assert.equal(game.purchaseUpgrade(tower, 1), false);
   assert.equal(game.purchaseUpgrade(tower, 2), false);
+});
+
+test('Rooting (Root Path tier 1) boosts damage 1.5x and spawns 3 root traps on the path near the tower', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+  // Deliberately close to the path's (220, 80)-(220, 300) vertical segment,
+  // well within ROOT_SPAWN_RADIUS, so root placement has real path to work with.
+  tower.x = 220;
+  tower.y = 150;
+  const baseDamage = tower.stats.damage;
+
+  assert.equal(game.purchaseUpgrade(tower, 1), true);
+
+  assert.ok(Math.abs(tower.stats.damage - baseDamage * 1.5) < 1e-9);
+  assert.equal(tower.roots.length, 3);
+  tower.roots.forEach((root) => {
+    assert.equal(root.damage, 2);
+    assert.ok(game.isPointOnPath(root.x, root.y, 0)); // lands exactly on the path, not just "nearby"
+  });
+
+  // The 3 roots shouldn't be stacked on top of each other.
+  const [a, b, c] = tower.roots;
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 30);
+  assert.ok(Math.hypot(a.x - c.x, a.y - c.y) >= 30);
+  assert.ok(Math.hypot(b.x - c.x, b.y - c.y) >= 30);
+});
+
+test('Root Path\'s remaining tiers (2-4) are still undesigned placeholders', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+  tower.x = 220;
+  tower.y = 150;
+  game.purchaseUpgrade(tower, 1); // Rooting
+
+  assert.equal(game.getAvailableUpgrade(tower, 1), null);
+  assert.equal(game.purchaseUpgrade(tower, 1), false);
+});
+
+test('Rooting locks out the other two paths once bought', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+  tower.x = 220;
+  tower.y = 150;
+  game.purchaseUpgrade(tower, 1); // Rooting
+  assert.equal(tower.chosenPath, 1);
+  assert.equal(game.getAvailableUpgrade(tower, 0), null); // Thorn Path locked out
 });

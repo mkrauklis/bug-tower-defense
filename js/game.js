@@ -235,7 +235,24 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   tower.vineLashes.forEach((lash) => {
     lash.timeRemaining = Math.max(0, lash.timeRemaining - deltaSeconds);
   });
+  if (tower.roots.length > 0) updateTowerRoots(tower);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
+}
+
+// Root Path's ground traps (Rooting) — fixed spots placed once at purchase
+// time (see spawnRoseRoots() in towers.js), each single-use: the first
+// enemy found within ROOT_TRIGGER_RADIUS of a root is damaged and that
+// root is removed from the list for good (no respawn — a deliberate, the
+// simplest valid choice for this first tier; a later tier could add one).
+const ROOT_TRIGGER_RADIUS = 14;
+
+function updateTowerRoots(tower) {
+  tower.roots = tower.roots.filter((root) => {
+    const [victim] = getEnemiesInRadius(root.x, root.y, ROOT_TRIGGER_RADIUS);
+    if (!victim) return true;
+    damageEnemy(victim, root.damage);
+    return false; // consumed
+  });
 }
 
 function updateTowerPuddle(tower, deltaSeconds) {
@@ -527,6 +544,7 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
       selectedTower.vineCount > 0
         ? `${selectedTower.vineCount}, ${selectedTower.vineDamage}/hit every ${selectedTower.vineInterval}s`
         : 'none';
+    const rootsText = selectedTower.roots.length > 0 ? `${selectedTower.roots.length} armed` : 'none';
     const lines = [
       `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
       `Size: ${selectedTower.stats.size.toFixed(1)}`,
@@ -536,6 +554,7 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
       `Puddle: ${puddleText}`,
       `Orbit: ${orbitText}`,
       `Vines: ${vineText}`,
+      `Roots: ${rootsText}`,
     ];
     y = uiDrawTextLines(ctx, lines, x, y, 14, '#ccc', '12px sans-serif') + 8;
   }
@@ -609,6 +628,26 @@ function renderUpgradePaths(ctx, x, width, startY) {
     colY += 16;
 
     path.upgrades.forEach((upgrade, tierIndex) => {
+      // A path can be partially designed — some tiers real, later ones
+      // still `null` placeholders (same "Not yet designed" idea as an
+      // entirely-undesigned path above, just one tier at a time). Muted,
+      // no hit region, so it can't be hovered/clicked.
+      if (!upgrade) {
+        uiRoundRect(ctx, colX, colY, columnWidth, tierHeight, 4);
+        ctx.fillStyle = '#14161b';
+        ctx.fill();
+        ctx.strokeStyle = '#24272e';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = '#555';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('Not yet designed', colX + 4, colY + 11);
+        colY += tierHeight + tierGap;
+        return;
+      }
+
       const bought = Boolean(selectedTower) && selectedTower.chosenPath === pathIndex && tierIndex < selectedTower.upgradesPurchased;
       const isNextInLine =
         Boolean(selectedTower) &&

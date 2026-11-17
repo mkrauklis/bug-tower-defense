@@ -19,10 +19,14 @@ const path = require('path');
 const vm = require('vm');
 
 const GAME_ROOT = path.join(__dirname, '..', '..');
-const LOAD_ORDER = ['js/towers.js', 'js/map.js', 'js/enemies.js'];
+// random.js needs to come before towers.js now that purchaseUpgrade's root-
+// trap placement (Rose's Root Path) calls the shared random() — matches
+// the real index.html load order, and random.js itself only needs
+// location/URLSearchParams (stubbed below), not anything from later files.
+const LOAD_ORDER = ['js/random.js', 'js/towers.js', 'js/map.js', 'js/enemies.js'];
 
 function loadGameContext() {
-  const context = { console, Math, Object };
+  const context = { console, Math, Object, location: { search: '' }, URLSearchParams };
   vm.createContext(context);
 
   LOAD_ORDER.forEach((file) => {

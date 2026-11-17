@@ -231,7 +231,34 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 2 — not yet designed.
+      {
+        // Only the first tier has been specified so far — the rest will
+        // follow later. Named "Root Path" provisionally to match the
+        // "<theme> Path" convention already set by Thorn Path; revisit once
+        // the remaining tiers (and whatever they're actually about) exist,
+        // same as how a path can also be entirely undesigned (`null`).
+        name: 'Root Path',
+        upgrades: [
+          {
+            name: 'Rooting',
+            description:
+              '3 root traps sprout along the path near the Rose; the first bug to step on one takes 2 damage ' +
+              "(single-use — each root is spent after one hit); the Rose's own attack damage increases 1.5x.",
+            cost: 150,
+            effects: {
+              damageMultiplier: 1.5,
+              // count/damage only — where exactly they land is worked out
+              // at purchase time (see spawnRoseRoots()), since it depends
+              // on the tower's own position and the map's path shape, not
+              // anything fixed in this data.
+              roots: { count: 3, damage: 2 },
+            },
+          },
+          null, // Tier 2 — not yet designed.
+          null, // Tier 3 — not yet designed.
+          null, // Tier 4 — not yet designed.
+        ],
+      },
       null, // Path 3 — not yet designed.
     ],
   },
@@ -284,6 +311,12 @@ function createTower(typeKey) {
     vineLashes: [],
     moreThorns: false, // visual-only denser thorn spikes, once bought
     tallStem: false, // visual-only taller stem, once bought
+    // Root traps (Rose's Root Path): fixed ground spots near the tower,
+    // placed once at purchase time (see spawnRoseRoots()), each one-shot —
+    // the first enemy to touch one is damaged and it's removed from this
+    // list. { x, y, damage } per entry; checked every frame in game.js's
+    // updateTowerRoots().
+    roots: [],
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
@@ -353,9 +386,83 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.moreThorns) tower.moreThorns = true;
   if (effects.vineRangeMultiplier) tower.vineRangeMultiplier *= effects.vineRangeMultiplier;
   if (effects.tallStem) tower.tallStem = true;
+  if (effects.roots) {
+    const spots = spawnRoseRoots(tower.x, tower.y, effects.roots.count);
+    spots.forEach((spot) => tower.roots.push({ x: spot.x, y: spot.y, damage: effects.roots.damage }));
+  }
 
   tower.upgradesPurchased += 1;
   return true;
+}
+
+// Root spots have to land somewhere an enemy can actually reach — enemies
+// (enemies.js's updateEnemies) walk the map's path polyline exactly along
+// its centerline, not anywhere within the path's visual width, so a root
+// placed just "near the tower" at random could easily miss the path
+// entirely. This instead samples points that lie ON the path within
+// ROOT_SPAWN_RADIUS of (cx, cy): it walks each path segment in short steps,
+// keeps the sub-stretches that fall within range, then picks `count` points
+// from that combined coverage using the game's own seeded random() (not
+// Math.random(), per the determinism work) — rerolling a pick that lands
+// too close to one already chosen so the roots read as 3 separate spots,
+// not a cluster. Gives up after a bounded number of attempts and returns
+// however many distinct points it found (including none, if no path
+// segment is in range at all — e.g. a tower placed in a far corner).
+const ROOT_SPAWN_RADIUS = 100;
+const ROOT_MIN_SEPARATION = 30;
+
+function spawnRoseRoots(cx, cy, count) {
+  const coverage = [];
+  let totalLength = 0;
+
+  for (let i = 0; i < MAP_PATH_WAYPOINTS.length - 1; i += 1) {
+    const a = MAP_PATH_WAYPOINTS[i];
+    const b = MAP_PATH_WAYPOINTS[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const segmentLength = Math.hypot(dx, dy);
+    if (segmentLength === 0) continue;
+
+    const steps = Math.max(2, Math.ceil(segmentLength / 5));
+    let runStart = null;
+    for (let s = 0; s <= steps; s += 1) {
+      const t = s / steps;
+      const within = Math.hypot(a.x + dx * t - cx, a.y + dy * t - cy) <= ROOT_SPAWN_RADIUS;
+      if (within && runStart === null) runStart = t;
+      if ((!within || s === steps) && runStart !== null) {
+        const runEnd = within ? t : (s - 1) / steps;
+        const length = (runEnd - runStart) * segmentLength;
+        if (length > 0) {
+          coverage.push({ a, dx, dy, tStart: runStart, tEnd: runEnd, length });
+          totalLength += length;
+        }
+        runStart = null;
+      }
+    }
+  }
+
+  if (totalLength === 0) return [];
+
+  const points = [];
+  let attempts = 0;
+  while (points.length < count && attempts < count * 20) {
+    attempts += 1;
+    let target = random() * totalLength;
+    const run = coverage.find((candidate) => {
+      if (target <= candidate.length) return true;
+      target -= candidate.length;
+      return false;
+    });
+    if (!run) continue;
+
+    const t = run.tStart + (target / run.length) * (run.tEnd - run.tStart);
+    const x = run.a.x + run.dx * t;
+    const y = run.a.y + run.dy * t;
+    if (points.some((p) => Math.hypot(p.x - x, p.y - y) < ROOT_MIN_SEPARATION)) continue;
+    points.push({ x, y });
+  }
+
+  return points;
 }
 
 // Lightens (positive percent) or darkens (negative) a "#rrggbb" color —
@@ -519,6 +626,32 @@ function renderTowerGroundEffects(ctx, tower) {
     ctx.beginPath();
     ctx.arc(puddle.x, puddle.y, puddle.radius, 0, Math.PI * 2);
     ctx.fill();
+  });
+
+  // A couple of small thorny root spikes poking out of the ground at each
+  // trap — deliberately small and plain so it doesn't get confused with the
+  // bigger, moving thorn vines radiating from the tower itself.
+  // Roots land exactly on the path centerline (see spawnRoseRoots), which
+  // is a mid-brown — a dark brown spike was nearly invisible against it in
+  // testing, so this uses the Rose's own pink/red (plus a dark outline for
+  // contrast against the lighter grass too) instead, reading as "this is
+  // the Rose's trap" rather than blending into the dirt.
+  tower.roots.forEach((root) => {
+    ctx.strokeStyle = '#1b0e10';
+    ctx.lineWidth = 2.5;
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(root.x + side * 5, root.y + 4);
+      ctx.lineTo(root.x + side * 2, root.y - 7);
+      ctx.stroke();
+    });
+    ctx.fillStyle = '#e91e63';
+    ctx.beginPath();
+    ctx.arc(root.x, root.y, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#1b0e10';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   });
 }
 
