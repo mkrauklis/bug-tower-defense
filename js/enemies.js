@@ -100,9 +100,23 @@ function generateWave(round) {
 // Live enemy instances for the current wave.
 let activeEnemies = [];
 
+// Facing direction baked into each type's hand-drawn art (the angle, in the
+// un-rotated drawing, that the enemy's "front" points toward) — used to
+// offset the computed movement heading so the art actually turns to face
+// where it's walking instead of just rotating around an arbitrary pivot.
+// Ant/Giant Beetle draw their head/mandibles on the -x side; Worm draws its
+// eyes on the +x side; Tiny Isopod has no directional features, so its
+// offset is arbitrary.
+const ENEMY_FACING_OFFSET = { ant: Math.PI, worm: 0, tinyIsopod: 0 };
+const BOSS_FACING_OFFSET = Math.PI;
+
 function spawnWave(composition) {
   activeEnemies = [];
   let spawnDelay = 0;
+
+  const initialDx = MAP_PATH_WAYPOINTS[1].x - MAP_PATH_WAYPOINTS[0].x;
+  const initialDy = MAP_PATH_WAYPOINTS[1].y - MAP_PATH_WAYPOINTS[0].y;
+  const initialHeading = Math.atan2(initialDy, initialDx);
 
   composition.forEach((entry) => {
     for (let i = 0; i < entry.count; i += 1) {
@@ -119,6 +133,7 @@ function spawnWave(composition) {
         waypointIndex: 0,
         x: MAP_PATH_WAYPOINTS[0].x,
         y: MAP_PATH_WAYPOINTS[0].y,
+        heading: initialHeading,
         spawnDelay,
         spawned: false,
       });
@@ -184,6 +199,7 @@ function updateEnemies(deltaSeconds) {
       const dx = target.x - enemy.x;
       const dy = target.y - enemy.y;
       const dist = Math.hypot(dx, dy);
+      enemy.heading = Math.atan2(dy, dx);
 
       if (dist <= remaining) {
         enemy.x = target.x;
@@ -366,7 +382,19 @@ function renderEnemies(ctx) {
   activeEnemies.forEach((enemy) => {
     if (!enemy.spawned) return;
 
+    // Rotate the art to face the enemy's current movement heading, correcting
+    // for that type's own baked-in default facing direction (see
+    // ENEMY_FACING_OFFSET/BOSS_FACING_OFFSET above). Pivoting around the
+    // enemy's own (x, y) means drawEnemyShape's existing e.x/e.y-based
+    // drawing code needs no changes — it's drawn exactly as before, just
+    // inside a rotated context.
+    const facingOffset = enemy.isBoss ? BOSS_FACING_OFFSET : (ENEMY_FACING_OFFSET[enemy.enemyKey] ?? 0);
+    ctx.save();
+    ctx.translate(enemy.x, enemy.y);
+    ctx.rotate(enemy.heading + facingOffset);
+    ctx.translate(-enemy.x, -enemy.y);
     drawEnemyShape(ctx, enemy);
+    ctx.restore();
 
     if (enemy.burn) {
       ctx.fillStyle = '#ff6600';
