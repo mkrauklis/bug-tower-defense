@@ -539,7 +539,7 @@ function drawTowerWithRay(tower, x, y) {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y, Math.max(tower.stats.size, MIN_SELECT_RADIUS) + 6, 0, Math.PI * 2);
+    ctx.arc(x, y, Math.max(getTowerVisualSize(tower), MIN_SELECT_RADIUS) + 6, 0, Math.PI * 2);
     ctx.stroke();
   }
 }
@@ -1268,7 +1268,7 @@ function findTowerAt(x, y) {
   let closestDist = Infinity;
 
   towers.forEach((tower) => {
-    const hitRadius = Math.max(tower.stats.size, MIN_SELECT_RADIUS);
+    const hitRadius = Math.max(getTowerVisualSize(tower), MIN_SELECT_RADIUS);
     const dist = Math.hypot(tower.x - x, tower.y - y);
     if (dist <= hitRadius && dist < closestDist) {
       closest = tower;

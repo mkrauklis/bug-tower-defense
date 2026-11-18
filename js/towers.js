@@ -558,10 +558,28 @@ function shadeColor(hex, percent) {
 // game's own deterministic simulation clock (seconds), used for idle
 // animation — not wall-clock time, so animation speed is tied to game
 // speed/pausing rather than real time.
+// A tower's real `size` stat (used for nothing mechanical — no damage/
+// range/etc. is derived from it, only rendering and click hit-testing) is
+// capped here for rendering/hit-testing purposes. Sunflower's biggest tier
+// (Flamewall) tops out well under this; Rose's Root Path Tanglement can
+// push the real stat to ~200+ (11.5x base), which an earlier fix (capping
+// just the stem height) didn't fully address — the bloom itself still
+// rendered that big and could swallow nearby towers/path/enemies
+// regardless of where it was placed. Both renderTower() below and game.js's
+// hit-testing (click-to-select, the selection ring) read a tower's visual
+// size through getTowerVisualSize() so what's drawn and what's clickable
+// always agree; tower.stats.size itself is left uncapped, since nothing
+// mechanical reads it and there's no reason to lose the real number.
+const MAX_TOWER_VISUAL_SIZE = 65;
+function getTowerVisualSize(tower) {
+  return Math.min(tower.stats.size, MAX_TOWER_VISUAL_SIZE);
+}
+
 function renderTower(ctx, tower, x, y, time) {
+  const size = getTowerVisualSize(tower);
   const flashAmount = tower.attackFlash / ATTACK_FLASH_DURATION;
   if (tower.type === 'sunflower') {
-    drawSunflower(ctx, x, y, tower.stats.size, tower.stats.color, tower.glow, time, flashAmount);
+    drawSunflower(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
   } else if (tower.type === 'rose') {
     // Vines are rooted appendages, not decoration riding on top of the
     // flower — drawn first so the bloom and stem render over their bases.
@@ -570,7 +588,7 @@ function renderTower(ctx, tower, x, y, time) {
       ctx,
       x,
       y,
-      tower.stats.size,
+      size,
       tower.stats.color,
       tower.glow,
       time,
@@ -584,16 +602,16 @@ function renderTower(ctx, tower, x, y, time) {
     // Fallback for any future tower type without custom art yet.
     ctx.fillStyle = tower.stats.color;
     ctx.beginPath();
-    ctx.arc(x, y, tower.stats.size, 0, Math.PI * 2);
+    ctx.arc(x, y, size, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  if (tower.flame === 'small') drawFlame(ctx, x, y - tower.stats.size * 0.9, tower.stats.size * 0.35, '#ff7043');
-  if (tower.flame === 'large') drawFlame(ctx, x, y, tower.stats.size * 1.1, '#ff5722');
+  if (tower.flame === 'small') drawFlame(ctx, x, y - size * 0.9, size * 0.35, '#ff7043');
+  if (tower.flame === 'large') drawFlame(ctx, x, y, size * 1.1, '#ff5722');
 
-  if (tower.sparks === 'small') drawSparks(ctx, x, y, tower.stats.size);
-  if (tower.boltMark) drawBoltMark(ctx, x, y, tower.stats.size);
-  if (tower.fireMark) drawFireMark(ctx, x, y, tower.stats.size);
+  if (tower.sparks === 'small') drawSparks(ctx, x, y, size);
+  if (tower.boltMark) drawBoltMark(ctx, x, y, size);
+  if (tower.fireMark) drawFireMark(ctx, x, y, size);
 
   if (tower.orbit) renderTowerOrbit(ctx, tower, x, y);
   if (tower.clouds) renderTowerClouds(ctx, tower, x, y);
