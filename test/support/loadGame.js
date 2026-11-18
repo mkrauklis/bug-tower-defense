@@ -187,6 +187,8 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey, spawnSingleEnemy,
       getDefeatedEnemyKeys: () => [...defeatedEnemyKeys],
       recordDefeatedEnemy,
+      getAutoContinue: () => autoContinue,
+      setAutoContinue: (value) => { autoContinue = value; },
     };
     `,
     context

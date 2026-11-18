@@ -277,3 +277,63 @@ test('getTooltipLines explains the sell refund and its rate', () => {
   assert.ok(lines.some((line) => line.includes('37')));
   assert.ok(lines.some((line) => line.includes('50%')));
 });
+
+test('activateRegion toggles auto-continue on and off', () => {
+  const game = loadFullGameContext();
+  assert.equal(game.getAutoContinue(), false);
+
+  game.activateRegion({ id: 'auto-continue-toggle', data: {} });
+  assert.equal(game.getAutoContinue(), true);
+
+  game.activateRegion({ id: 'auto-continue-toggle', data: {} });
+  assert.equal(game.getAutoContinue(), false);
+});
+
+test('auto-continue starts the next round itself the instant the wave clears', () => {
+  const game = loadFullGameContext();
+  game.startGame('medium');
+  game.setAutoContinue(true);
+  const roundBefore = game.getRound();
+
+  // Clear the wave exactly like a real clear would leave things: empty.
+  game.getActiveEnemies().length = 0;
+  game.update(1 / 60);
+
+  assert.equal(game.getRound(), roundBefore + 1);
+  assert.ok(game.getActiveEnemies().length > 0); // the next round's wave is already spawned
+});
+
+test('auto-continue does nothing while the wave is still in progress', () => {
+  const game = loadFullGameContext();
+  game.startGame('medium'); // round 1's wave auto-spawns, so activeEnemies is non-empty
+  game.setAutoContinue(true);
+  const roundBefore = game.getRound();
+
+  game.update(1 / 60);
+
+  assert.equal(game.getRound(), roundBefore);
+});
+
+test('auto-continue never fires in Sandbox, even if left on from an earlier real-mode game', () => {
+  const game = loadFullGameContext();
+  game.startGame('medium');
+  game.setAutoContinue(true);
+  game.startGame('sandbox'); // autoContinue is not reset by startGame()
+  assert.equal(game.getAutoContinue(), true);
+
+  game.getActiveEnemies().length = 0; // Sandbox is always "empty" between manual spawns
+  game.update(1 / 60); // must not try to generateWave()/spawnWave() a round that doesn't exist here
+
+  assert.equal(game.getRound(), 1); // untouched — Sandbox has no rounds to advance
+});
+
+test('auto-continue is off by default and does not fire on its own', () => {
+  const game = loadFullGameContext();
+  game.startGame('medium');
+  const roundBefore = game.getRound();
+
+  game.getActiveEnemies().length = 0;
+  game.update(1 / 60);
+
+  assert.equal(game.getRound(), roundBefore);
+});

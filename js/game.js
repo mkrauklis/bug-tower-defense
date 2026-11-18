@@ -15,12 +15,19 @@ const WORLD_HEIGHT = 640;
 const PANEL_WIDTH_SIDE = 320;
 const PANEL_PADDING = 14;
 // Fixed height budget for the panel's content (Shop + Selected Tower incl.
-// both upgrade columns + Wave incl. both buttons) — the same in both
-// layouts since neither saves much room by being wider: most of the panel's
-// height comes from fixed-size rows (shop tiles, upgrade tiers, buttons),
-// not text wrapping. If it ever overflows, body's own overflow-y:auto (see
-// style.css) lets the page scroll rather than clipping anything.
-const PANEL_HEIGHT = 500;
+// both upgrade columns + Wave incl. both buttons, the Back-to-Menu button,
+// and Auto-Continue) — the same in both layouts since neither saves much
+// room by being wider: most of the panel's height comes from fixed-size
+// rows (shop tiles, upgrade tiers, buttons), not text wrapping. This is a
+// hard limit, not just a starting guess with a safety net — canvas.height
+// is derived from it (see applyLayout() below), so content drawn past it
+// is genuinely clipped by the canvas's own pixel buffer, not just scrolled
+// out of view (confirmed directly: Auto-Continue's button silently drew
+// itself off the bottom of the canvas here once the panel grew past this
+// value, with no error or visual sign anything was wrong). Bump this
+// whenever a new panel section is added, rather than assuming there's
+// slack — verify there actually is some left, live, after adding one.
+const PANEL_HEIGHT = 760;
 const NARROW_BREAKPOINT = 820;
 
 let layoutMode = 'side'; // 'side' | 'stacked'
@@ -608,6 +615,13 @@ function update(deltaSeconds) {
 
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
   updateProjectiles(deltaSeconds);
+
+  // Fires exactly once per clear: the instant activeEnemies hits 0 (the
+  // same condition the manual Next Round button's own waveInProgress gate
+  // checks), starting the next round immediately repopulates activeEnemies
+  // via spawnWave(), so this naturally can't re-trigger on the very next
+  // frame without a separate "already triggered" flag.
+  if (autoContinue && !currentMode.sandbox && activeEnemies.length === 0) startNextRound();
 }
 
 function drawTowerWithRay(tower, x, y) {
@@ -632,6 +646,17 @@ function drawTowerWithRay(tower, x, y) {
   }
 
   if (tower === selectedTower) {
+    // Cheap given the selection ring already exists — the same real
+    // current range (including any range-boosting upgrades) a buildable-
+    // spot preview would show, just for an already-placed tower.
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.arc(x, y, tower.stats.range, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -673,6 +698,19 @@ function render() {
     ctx.beginPath();
     ctx.arc(mouseX, mouseY, 20, 0, Math.PI * 2);
     ctx.fill();
+
+    // The tower's attack-range preview, so the player can see coverage
+    // before committing — this already updates continuously on hover
+    // since it's drawn every frame the shop item is armed and the mouse is
+    // over a world point, not just at click time.
+    const range = TOWER_TYPES[selectedShopItem.typeKey].baseStats.range;
+    ctx.strokeStyle = buildable ? 'rgba(76, 175, 80, 0.7)' : 'rgba(229, 57, 53, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, range, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   renderUI(ctx);
@@ -1021,6 +1059,18 @@ function renderWaveSection(ctx, x, width, startY) {
   uiRegisterRegion('speed-toggle', x, y, width, 30, {});
   y += 38;
 
+  uiDrawButton(ctx, {
+    x,
+    y,
+    w: width,
+    h: 26,
+    label: autoContinue ? 'Auto-Continue: On' : 'Auto-Continue: Off',
+    state: autoContinue ? 'accent' : 'default',
+    hovered: Boolean(hoverRegion) && hoverRegion.id === 'auto-continue-toggle',
+  });
+  uiRegisterRegion('auto-continue-toggle', x, y, width, 26, {});
+  y += 34;
+
   if (damageBoostRemaining > 0) {
     ctx.fillStyle = '#ff8a65';
     ctx.font = '12px sans-serif';
@@ -1279,6 +1329,13 @@ function getTooltipLines(region) {
 
   if (region.id === 'speed-toggle') return ['Toggle 1x / 2x simulation speed.'];
 
+  if (region.id === 'auto-continue-toggle') {
+    return [
+      autoContinue ? 'Auto-Continue is on.' : 'Auto-Continue is off.',
+      'When on, the next round starts itself as soon as the current wave fully clears.',
+    ];
+  }
+
   if (region.id === 'sell-tower') {
     return [`Sell this tower for $${region.data.refund}`, `(${Math.round(SELL_REFUND_RATE * 100)}% of what was spent on it)`];
   }
@@ -1329,9 +1386,12 @@ function activateRegion(region) {
 
   if (region.id === 'next-round') {
     if (region.data.waveInProgress) return;
-    round += 1;
-    currentWave = applyModeToWaveComposition(generateWave(round));
-    spawnWave(currentWave);
+    startNextRound();
+    return;
+  }
+
+  if (region.id === 'auto-continue-toggle') {
+    autoContinue = !autoContinue;
     return;
   }
 
@@ -1519,6 +1579,22 @@ canvas.addEventListener(
 // accumulator below — covers enemy movement, attack cooldowns, every
 // DoT/puddle/orbit tick, everything, since they all run through update().
 let gameSpeed = 1;
+
+// When on, starts the next round itself the instant the current wave
+// fully clears, instead of waiting for a manual Next Round click. Not
+// reset by startGame(), so the preference carries across a "Back to Menu"
+// and a fresh game — update()'s own check still guards against Sandbox
+// (no rounds to auto-advance there) in case it was left on from an
+// earlier real-mode game.
+let autoContinue = false;
+
+// Shared by the manual Next Round button and auto-continue below, so the
+// two can never drift apart on what "starting the next round" means.
+function startNextRound() {
+  round += 1;
+  currentWave = applyModeToWaveComposition(generateWave(round));
+  spawnWave(currentWave);
+}
 
 // Fixed-timestep accumulator: the simulation always advances in constant
 // FIXED_DT slices, however ragged the display's actual frame times are —
