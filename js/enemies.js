@@ -37,15 +37,33 @@ const ENEMY_TYPES = {
   tadpole: { name: 'Tadpole', speedMultiplier: 0.7, health: 40, color: '#5a7a3a', radius: 7, bounty: 20 },
   babyFrog: { name: 'Baby Frog', speedMultiplier: 0.6, health: 60, color: '#66bb6a', radius: 10, bounty: 30 },
   poisonDartFrog: { name: 'Poison Dart Frog', speedMultiplier: 0.65, health: 100, color: '#2979ff', radius: 9, bounty: 50 },
+  // Tier 3 — unlocks after round 50 (see getUnlockedEnemyTypes), same
+  // progressive-unlock mechanism as the earlier tiers. Bounty: ~HP/2, same
+  // convention as every tier before it.
+  hammerheadWorm: { name: 'Hammerhead Worm', speedMultiplier: 0.6, health: 50, color: '#8d6e63', radius: 11, bounty: 25 },
+  // Baby/Armored Millipede and Giant Centipede are the "millipede family"
+  // (see MILLIPEDE_FAMILY_KEYS below) — Hammerhead Worm isn't included
+  // despite being introduced alongside them, since it's a worm, not a
+  // milli/centipede (direct judgment call from the brief).
+  babyMillipede: { name: 'Baby Millipede', speedMultiplier: 0.7, health: 60, color: '#795548', radius: 7, bounty: 30 },
+  armoredMillipede: { name: 'Armored Millipede', speedMultiplier: 0.7, health: 100, color: '#5d4037', radius: 8, bounty: 50 },
+  giantCentipede: { name: 'Giant Centipede', speedMultiplier: 0.6, health: 250, color: '#bf360c', radius: 10, bounty: 125 },
 };
 
-// Intro/difficulty order for tier 1 (unlocked from round 1) and tier 2
-// (unlocked starting after round 25 — see getUnlockedEnemyTypes). Kept as
-// two separate lists rather than one long ENEMY_ORDER so each tier unlocks
-// on its own progressive every-5-rounds cadence instead of one continuous
-// count across both.
+// The 3 enemy types whose body visibly curls around corners as a chain of
+// segments following the head's own recent path, instead of the single
+// rigid heading every other enemy (including Hammerhead Worm) uses — see
+// ENEMY_TRAIL_LENGTH / recordTrailPoint() / renderMillipedeBody() below.
+const MILLIPEDE_FAMILY_KEYS = new Set(['babyMillipede', 'armoredMillipede', 'giantCentipede']);
+
+// Intro/difficulty order for tier 1 (unlocked from round 1), tier 2
+// (unlocked starting after round 25), and tier 3 (unlocked starting after
+// round 50) — see getUnlockedEnemyTypes. Kept as separate lists rather
+// than one long ENEMY_ORDER so each tier unlocks on its own progressive
+// every-5-rounds cadence instead of one continuous count across all of them.
 const ENEMY_ORDER = ['ant', 'worm', 'tinyIsopod', 'fly'];
 const ENEMY_ORDER_TIER2 = ['tadpole', 'babyFrog', 'poisonDartFrog'];
+const ENEMY_ORDER_TIER3 = ['hammerheadWorm', 'babyMillipede', 'armoredMillipede', 'giantCentipede'];
 
 // Bosses, keyed by boss tier (tier 1 = round 25, tier 2 = round 50, ...).
 // Add more tiers here as they're designed — getBossForRound() falls back to
@@ -85,6 +103,15 @@ function getUnlockedEnemyTypes(round) {
     const roundsSinceTier2Start = round - (BOSS_INTERVAL + 1);
     const tier2Count = Math.min(ENEMY_ORDER_TIER2.length, Math.floor(roundsSinceTier2Start / 5) + 1);
     unlocked.push(...ENEMY_ORDER_TIER2.slice(0, tier2Count));
+  }
+
+  // Tier 3 starts unlocking the round right after the round-50 boss, same
+  // cadence again (round 51 unlocks the first tier-3 type, 56 the second,
+  // 61 the third, 66 the fourth).
+  if (round > BOSS_INTERVAL * 2) {
+    const roundsSinceTier3Start = round - (BOSS_INTERVAL * 2 + 1);
+    const tier3Count = Math.min(ENEMY_ORDER_TIER3.length, Math.floor(roundsSinceTier3Start / 5) + 1);
+    unlocked.push(...ENEMY_ORDER_TIER3.slice(0, tier3Count));
   }
 
   return unlocked;
@@ -182,6 +209,9 @@ const ENEMY_FACING_OFFSET = {
   tadpole: 0,
   babyFrog: 0,
   poisonDartFrog: 0,
+  hammerheadWorm: 0, // hammerhead bar is on the +x side, like Worm's own eyes
+  // Millipede-family keys deliberately have no entry here — they never go
+  // through this single-rotation path at all (see renderMillipedeBody()).
 };
 // Keyed by enemyKey (e.g. 'boss-tier-1'), same as ENEMY_FACING_OFFSET,
 // since different boss tiers can have different default facing directions
@@ -216,6 +246,12 @@ function createEnemyInstance(entry, spawnDelay) {
     spawnDelay,
     spawned: false,
     immobilizedRemaining: 0, // seconds left held in place by Root Path's Tanglement grab, if any
+    // Millipede-family only: a trail of recent head positions, spaced by
+    // arc length (not time), that trailing body segments read their own
+    // position from — see recordTrailPoint()/renderMillipedeBody() below.
+    // null (not []) for everything else, so the cheap `enemy.trail &&` check
+    // in updateEnemies skips non-millipede enemies with no work at all.
+    trail: MILLIPEDE_FAMILY_KEYS.has(entry.enemyKey) ? [] : null,
   };
 }
 
@@ -244,7 +280,7 @@ function spawnSingleEnemy(entry) {
 // could ever be spawnable, regardless of whether it's been unlocked yet.
 function getAllSpawnableEnemyKeys() {
   const bossKeys = Object.keys(BOSS_TYPES).map((tier) => `boss-tier-${tier}`);
-  return [...ENEMY_ORDER, ...ENEMY_ORDER_TIER2, ...bossKeys];
+  return [...ENEMY_ORDER, ...ENEMY_ORDER_TIER2, ...ENEMY_ORDER_TIER3, ...bossKeys];
 }
 
 // Looks up a spawn-ready entry (same shape generateWave() produces, base
@@ -360,6 +396,8 @@ function updateEnemies(deltaSeconds) {
         remaining = 0;
       }
     }
+
+    if (enemy.trail) recordTrailPoint(enemy);
   });
 
   // Enemies that died this frame (for bounty payout) — distinct from ones
@@ -438,6 +476,35 @@ function drawWorm(ctx, e) {
   ctx.fill();
   ctx.beginPath();
   ctx.arc(e.x + frontOffset + e.radius * 0.15, e.y + e.radius * 0.2, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Same ribbed-segment body as the plain Worm, but with a flattened T-shaped
+// "hammerhead" bar up front instead of a round head — the real animal's
+// signature feature, and enough on its own to read as a distinct enemy at
+// a glance.
+function drawHammerheadWorm(ctx, e) {
+  const segments = 3;
+  for (let i = 0; i < segments; i += 1) {
+    const offset = (i - (segments - 1) / 2) * e.radius * 0.8;
+    ctx.fillStyle = i % 2 === 0 ? e.color : shadeColor(e.color, -15);
+    ctx.beginPath();
+    ctx.arc(e.x + offset, e.y, e.radius * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const frontOffset = ((segments - 1) / 2) * e.radius * 0.8;
+  ctx.fillStyle = shadeColor(e.color, -10);
+  ctx.beginPath();
+  ctx.ellipse(e.x + frontOffset + e.radius * 0.3, e.y, e.radius * 0.25, e.radius * 0.9, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#212121';
+  ctx.beginPath();
+  ctx.arc(e.x + frontOffset + e.radius * 0.3, e.y - e.radius * 0.55, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x + frontOffset + e.radius * 0.3, e.y + e.radius * 0.55, e.radius * 0.1, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -680,6 +747,8 @@ function drawEnemyShape(ctx, enemy) {
     drawBabyFrog(ctx, enemy);
   } else if (enemy.enemyKey === 'poisonDartFrog') {
     drawPoisonDartFrog(ctx, enemy);
+  } else if (enemy.enemyKey === 'hammerheadWorm') {
+    drawHammerheadWorm(ctx, enemy);
   } else {
     // Fallback for any future enemy type without custom art yet.
     ctx.fillStyle = enemy.color;
@@ -689,25 +758,143 @@ function drawEnemyShape(ctx, enemy) {
   }
 }
 
+// How far apart (in pixels actually walked, not time) consecutive trail
+// points are recorded — independent of frame rate or game speed, since
+// it's driven by distance moved, not frames elapsed.
+const TRAIL_POINT_SPACING = 4;
+
+// How many segments trail the head, and how far apart they sit — both
+// tuned per type (a Giant Centipede is both bigger and meant to look more
+// "many-legged", so it gets more, wider-spaced segments than a Baby
+// Millipede). Segment spacing is expressed as a multiple of the type's own
+// radius so it scales sensibly with body size.
+const MILLIPEDE_BODY = {
+  babyMillipede: { segmentCount: 4, spacingFactor: 1.3 },
+  armoredMillipede: { segmentCount: 5, spacingFactor: 1.3 },
+  giantCentipede: { segmentCount: 7, spacingFactor: 1.4 },
+};
+
+// Appends the enemy's current (x, y) to its trail once it's moved at least
+// TRAIL_POINT_SPACING since the last recorded point — called from
+// updateEnemies() after the normal waypoint-following movement above, so
+// the trail only grows when the head actually moves (an immobilized enemy
+// just doesn't add points, which is correct: its trailing segments
+// shouldn't advance either while it's held in place). Trimmed to just
+// enough points to cover the longest body this type will ever need, so the
+// array doesn't grow unbounded over a long-lived enemy's lifetime.
+function recordTrailPoint(enemy) {
+  const last = enemy.trail[enemy.trail.length - 1];
+  if (last && Math.hypot(enemy.x - last.x, enemy.y - last.y) < TRAIL_POINT_SPACING) return;
+
+  enemy.trail.push({ x: enemy.x, y: enemy.y });
+
+  const body = MILLIPEDE_BODY[enemy.enemyKey];
+  const maxPoints = Math.ceil((body.segmentCount * enemy.radius * body.spacingFactor) / TRAIL_POINT_SPACING) + 4;
+  if (enemy.trail.length > maxPoints) enemy.trail.shift();
+}
+
+// Walks backward from the head through the trail, returning the point
+// `distance` px of arc length behind it (interpolating between the two
+// trail points straddling that distance for a smooth result, not just
+// snapping to the nearest recorded sample). If the enemy hasn't moved far
+// enough yet to have that much trail (e.g. it just spawned), returns the
+// oldest point available rather than extrapolating past real data.
+function getTrailPointAtDistance(enemy, distance) {
+  let prevX = enemy.x;
+  let prevY = enemy.y;
+  let remaining = distance;
+
+  for (let i = enemy.trail.length - 1; i >= 0; i -= 1) {
+    const point = enemy.trail[i];
+    const segmentLength = Math.hypot(prevX - point.x, prevY - point.y);
+    if (segmentLength >= remaining) {
+      const t = segmentLength === 0 ? 0 : remaining / segmentLength;
+      return { x: prevX + (point.x - prevX) * t, y: prevY + (point.y - prevY) * t };
+    }
+    remaining -= segmentLength;
+    prevX = point.x;
+    prevY = point.y;
+  }
+
+  return enemy.trail.length ? enemy.trail[0] : { x: enemy.x, y: enemy.y };
+}
+
+// Draws one tapering, shaded body segment (reusing shadeColor from
+// towers.js) at its own position and heading — the same "curved legs +
+// shading" level of detail the single-piece enemies above use, just
+// repeated per segment instead of once for the whole body.
+function drawMillipedeSegment(ctx, x, y, radius, color, heading, segmentIndex) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(heading);
+
+  ctx.fillStyle = segmentIndex % 2 === 0 ? color : shadeColor(color, -14);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius, radius * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(color, -30);
+  ctx.lineWidth = 1.2;
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(0, side * radius * 0.6);
+    ctx.lineTo(radius * 0.5, side * radius * 1.1);
+    ctx.stroke();
+  });
+
+  ctx.restore();
+}
+
+// The millipede-family renderer: draws the head at the enemy's own (x, y)/
+// heading like any other enemy, then walks the trail to place each
+// trailing segment at a fixed arc-length distance behind it, each with its
+// own heading computed from the segment just ahead of it — this is what
+// actually produces the "curls around corners" look instead of the whole
+// body snapping to one rotation.
+function renderMillipedeBody(ctx, enemy) {
+  const body = MILLIPEDE_BODY[enemy.enemyKey];
+  const spacing = enemy.radius * body.spacingFactor;
+
+  drawMillipedeSegment(ctx, enemy.x, enemy.y, enemy.radius, enemy.color, enemy.heading, 0);
+
+  let prevX = enemy.x;
+  let prevY = enemy.y;
+  for (let i = 1; i <= body.segmentCount; i += 1) {
+    const point = getTrailPointAtDistance(enemy, i * spacing);
+    const heading = Math.atan2(point.y - prevY, point.x - prevX) + Math.PI; // facing back toward the segment ahead
+    const taper = Math.max(0.4, 1 - i * 0.09);
+    drawMillipedeSegment(ctx, point.x, point.y, enemy.radius * taper, enemy.color, heading, i);
+    prevX = point.x;
+    prevY = point.y;
+  }
+}
+
 function renderEnemies(ctx) {
   activeEnemies.forEach((enemy) => {
     if (!enemy.spawned) return;
 
-    // Rotate the art to face the enemy's current movement heading, correcting
-    // for that type's own baked-in default facing direction (see
-    // ENEMY_FACING_OFFSET/BOSS_FACING_OFFSET above). Pivoting around the
-    // enemy's own (x, y) means drawEnemyShape's existing e.x/e.y-based
-    // drawing code needs no changes — it's drawn exactly as before, just
-    // inside a rotated context.
-    const facingOffset = enemy.isBoss
-      ? (BOSS_FACING_OFFSET[enemy.enemyKey] ?? 0)
-      : (ENEMY_FACING_OFFSET[enemy.enemyKey] ?? 0);
-    ctx.save();
-    ctx.translate(enemy.x, enemy.y);
-    ctx.rotate(enemy.heading + facingOffset);
-    ctx.translate(-enemy.x, -enemy.y);
-    drawEnemyShape(ctx, enemy);
-    ctx.restore();
+    if (enemy.trail) {
+      // Millipede family: each body segment has its own position (read
+      // from the trail) and its own heading, rather than the whole body
+      // snapping to one rigid rotation — see renderMillipedeBody() below.
+      renderMillipedeBody(ctx, enemy);
+    } else {
+      // Rotate the art to face the enemy's current movement heading,
+      // correcting for that type's own baked-in default facing direction
+      // (see ENEMY_FACING_OFFSET/BOSS_FACING_OFFSET above). Pivoting
+      // around the enemy's own (x, y) means drawEnemyShape's existing
+      // e.x/e.y-based drawing code needs no changes — it's drawn exactly
+      // as before, just inside a rotated context.
+      const facingOffset = enemy.isBoss
+        ? (BOSS_FACING_OFFSET[enemy.enemyKey] ?? 0)
+        : (ENEMY_FACING_OFFSET[enemy.enemyKey] ?? 0);
+      ctx.save();
+      ctx.translate(enemy.x, enemy.y);
+      ctx.rotate(enemy.heading + facingOffset);
+      ctx.translate(-enemy.x, -enemy.y);
+      drawEnemyShape(ctx, enemy);
+      ctx.restore();
+    }
 
     if (enemy.burn) {
       ctx.fillStyle = '#ff6600';

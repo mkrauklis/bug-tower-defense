@@ -202,3 +202,117 @@ test('applyBurn sets a fresh damage-over-time window on the enemy', () => {
   game.applyBurn(enemy, { damagePerSecond: 10, duration: 5 });
   assert.deepEqual(enemy.burn, { damagePerSecond: 10, duration: 5 });
 });
+
+test('tier-3 enemies unlock progressively starting the round after the round-50 boss', () => {
+  const game = loadGameContext();
+  const tier1and2 = ['ant', 'worm', 'tinyIsopod', 'fly', 'tadpole', 'babyFrog', 'poisonDartFrog'];
+  assert.deepEqual(game.getUnlockedEnemyTypes(50), tier1and2); // round 50 itself is still the boss round's gate
+  assert.deepEqual(game.getUnlockedEnemyTypes(51), [...tier1and2, 'hammerheadWorm']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(56), [...tier1and2, 'hammerheadWorm', 'babyMillipede']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(61), [...tier1and2, 'hammerheadWorm', 'babyMillipede', 'armoredMillipede']);
+  assert.deepEqual(
+    game.getUnlockedEnemyTypes(66),
+    [...tier1and2, 'hammerheadWorm', 'babyMillipede', 'armoredMillipede', 'giantCentipede']
+  );
+});
+
+test('round 50 is a boss wave (Boss Toad), not the tier-3 regular roster', () => {
+  const game = loadGameContext();
+  const wave = game.generateWave(50);
+  assert.equal(wave.length, 1);
+  assert.equal(wave[0].isBoss, true);
+  assert.equal(wave[0].name, 'Boss Toad');
+});
+
+test('tier-3 bounties follow the ~HP/2 convention', () => {
+  const game = loadGameContext();
+  assert.equal(game.ENEMY_TYPES.hammerheadWorm.bounty, 25); // 50/2
+  assert.equal(game.ENEMY_TYPES.babyMillipede.bounty, 30); // 60/2
+  assert.equal(game.ENEMY_TYPES.armoredMillipede.bounty, 50); // 100/2
+  assert.equal(game.ENEMY_TYPES.giantCentipede.bounty, 125); // 250/2
+});
+
+test('only the 3 milli/centipede types are in the millipede family, not Hammerhead Worm', () => {
+  const game = loadGameContext();
+  assert.deepEqual(
+    [...game.MILLIPEDE_FAMILY_KEYS].sort(),
+    ['armoredMillipede', 'babyMillipede', 'giantCentipede']
+  );
+  assert.equal(game.MILLIPEDE_FAMILY_KEYS.has('hammerheadWorm'), false);
+});
+
+test('a millipede-family enemy gets a trail array; a non-millipede enemy does not', () => {
+  const game = loadGameContext();
+  game.spawnWave([
+    { enemyKey: 'babyMillipede', name: 'Baby Millipede', color: '#000', radius: 7, count: 1, health: 60, speedMultiplier: 0.7, isBoss: false, bounty: 30 },
+    { enemyKey: 'hammerheadWorm', name: 'Hammerhead Worm', color: '#000', radius: 11, count: 1, health: 50, speedMultiplier: 0.6, isBoss: false, bounty: 25 },
+  ]);
+  const [millipede, worm] = game.getActiveEnemies();
+  assert.deepEqual(millipede.trail, []);
+  assert.equal(worm.trail, null);
+});
+
+test('recordTrailPoint only adds a point once the enemy has moved far enough', () => {
+  const game = loadGameContext();
+  const enemy = { x: 0, y: 0, radius: 7, enemyKey: 'babyMillipede', trail: [] };
+
+  game.recordTrailPoint(enemy); // first point always recorded
+  assert.equal(enemy.trail.length, 1);
+
+  enemy.x = 1; // well under TRAIL_POINT_SPACING (4px)
+  game.recordTrailPoint(enemy);
+  assert.equal(enemy.trail.length, 1); // too soon, no new point
+
+  enemy.x = 10; // now far enough from the last recorded point
+  game.recordTrailPoint(enemy);
+  assert.equal(enemy.trail.length, 2);
+});
+
+test('getTrailPointAtDistance walks back through the trail by arc length, interpolating between points', () => {
+  const game = loadGameContext();
+  const enemy = {
+    x: 20, y: 0,
+    trail: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ],
+  };
+
+  // 5px behind the head (20,0): between the trail's (10,0) and the head itself.
+  const halfway = game.getTrailPointAtDistance(enemy, 5);
+  assert.ok(Math.abs(halfway.x - 15) < 1e-9);
+  assert.ok(Math.abs(halfway.y - 0) < 1e-9);
+
+  // Exactly at the oldest trail point (20px behind the head).
+  const atOldest = game.getTrailPointAtDistance(enemy, 20);
+  assert.ok(Math.abs(atOldest.x - 0) < 1e-9);
+});
+
+test('getTrailPointAtDistance returns the oldest point when asked for more distance than the trail has', () => {
+  const game = loadGameContext();
+  const enemy = { x: 5, y: 0, trail: [{ x: 0, y: 0 }] };
+  const result = game.getTrailPointAtDistance(enemy, 1000);
+  assert.deepEqual(result, { x: 0, y: 0 });
+});
+
+test('a millipede that walks around a corner leaves a trail that actually bends, not a straight line', () => {
+  const game = loadGameContext();
+  game.spawnWave([
+    { enemyKey: 'babyMillipede', name: 'Baby Millipede', color: '#000', radius: 7, count: 1, health: 60, speedMultiplier: 1, isBoss: false, bounty: 30 },
+  ]);
+  const [enemy] = game.getActiveEnemies();
+  enemy.spawned = true;
+  enemy.x = 215; // just before the path's first corner at (220, 80) -> (220, 300)
+  enemy.y = 80;
+  enemy.waypointIndex = 0;
+
+  for (let i = 0; i < 180; i += 1) game.updateEnemies(1 / 60); // walk well past the corner
+
+  // The trail should contain points from both the horizontal approach
+  // (y ~ 80) and the vertical departure (x ~ 220) — i.e. it actually
+  // curls around the corner instead of being a single straight run.
+  const nearHorizontal = enemy.trail.some((p) => Math.abs(p.y - 80) < 2);
+  const nearVertical = enemy.trail.some((p) => Math.abs(p.x - 220) < 2 && p.y > 85);
+  assert.ok(nearHorizontal, 'expected some trail points still on the horizontal approach');
+  assert.ok(nearVertical, 'expected some trail points on the vertical departure past the corner');
+});

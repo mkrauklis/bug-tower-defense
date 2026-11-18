@@ -84,6 +84,7 @@ test('getAllSpawnableEnemyKeys lists every regular enemy then every boss tier', 
   assert.deepEqual(game.getAllSpawnableEnemyKeys(), [
     'ant', 'worm', 'tinyIsopod', 'fly',
     'tadpole', 'babyFrog', 'poisonDartFrog',
+    'hammerheadWorm', 'babyMillipede', 'armoredMillipede', 'giantCentipede',
     'boss-tier-1', 'boss-tier-2',
   ]);
 });

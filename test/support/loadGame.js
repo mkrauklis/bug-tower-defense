@@ -44,6 +44,7 @@ function loadGameContext() {
       findNearestEnemyInRange, damageEnemy, applyBurn, getEnemiesInRadius,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath,
       getActiveEnemies: () => activeEnemies,
+      MILLIPEDE_FAMILY_KEYS, recordTrailPoint, getTrailPointAtDistance,
     };
     `,
     context
