@@ -299,7 +299,59 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 3 — not yet designed.
+      {
+        // Not named in the spec — picked to describe the path's signature
+        // new mechanic (a ranged thorn-shooting attack), matching the
+        // "<theme> Path" convention the other two paths already use.
+        name: 'Projectile Path',
+        upgrades: [
+          {
+            name: 'Poke',
+            description:
+              "Rose's attack damage increases 1.5x. (Thorn Path's vines would grow 2x longer here, but Path 1 " +
+              'and Path 3 are mutually exclusive — on a Projectile Path Rose there are never any vines to ' +
+              'lengthen, so this has no visible effect; included for data completeness, not a bug.)',
+            cost: 50,
+            effects: { damageMultiplier: 1.5, vineRangeMultiplier: 2 },
+          },
+          {
+            name: 'Projectiles',
+            description:
+              'Rose gains a new ranged attack: shoots a thorn at the nearest bug for 2 damage every 1.5s, ' +
+              "alongside its normal attack; the Rose's own (base) attack speed increases 20%. (Also: more " +
+              'thorns would grow on the vines here — same inert caveat as Poke.)',
+            cost: 250,
+            effects: {
+              // Introduces the thorn-shot subsystem once, at its own
+              // starting damage/cadence — same pattern Thorn Path's `vine`
+              // effect used for vines.
+              thornShot: { damage: 2, interval: 1.5 },
+              attackIntervalMultiplier: 1 / 1.2,
+              moreThorns: true, // inert without vines — see Poke's note
+            },
+          },
+          {
+            name: 'Even More Projectiles',
+            description:
+              'The thorn-shot attack now fires 3 thorns at once instead of 1 (interpreted as "more thorns per ' +
+              'volley", not a faster cadence); base attack speed increases another 20%; Rose turns greenish.',
+            cost: 450,
+            effects: { thornShotCountMultiplier: 3, attackIntervalMultiplier: 1 / 1.2, color: '#6b8e4e' },
+          },
+          {
+            name: 'Poison Projectiles',
+            description:
+              'Shot thorns now poison on hit, dealing 5 damage/sec for 3 seconds; Rose turns fully green; ' +
+              'damage doubles (base attack and thorn-shot alike, the usual shared multiplier).',
+            cost: 850,
+            effects: {
+              thornShotPoison: { damagePerSecond: 5, duration: 3 },
+              color: '#2e7d32',
+              damageMultiplier: 2,
+            },
+          },
+        ],
+      },
     ],
   },
 };
@@ -368,6 +420,16 @@ function createTower(typeKey) {
     rootGrabChance: 0,
     rootGrabDamage: 0,
     rootGrabDuration: 0,
+    // Thorn-shot (Rose's Projectile Path): a second, independent ranged
+    // attack alongside the base one — same spirit as Thorn Path's vines,
+    // just a travel-time projectile instead of a melee-style tick. See
+    // updateTowerThornShot()/spawnThornProjectile() in game.js.
+    hasThornShot: false,
+    thornShotDamage: 0,
+    thornShotInterval: 0,
+    thornShotCooldown: 0,
+    thornShotCount: 1, // projectiles fired per shot, once hasThornShot is true
+    thornShotPoison: null, // {damagePerSecond, duration} once bought
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
@@ -395,10 +457,11 @@ function purchaseUpgrade(tower, pathIndex) {
   const effects = upgrade.effects;
   if (effects.damageMultiplier) {
     tower.stats.damage *= effects.damageMultiplier;
-    // Applies to vine damage too, same "on top of current" stacking as the
-    // base attack — vines don't have their own separate damageMultiplier
-    // chain, they just ride along with the tower's.
+    // Applies to vine/thorn-shot damage too, same "on top of current"
+    // stacking as the base attack — neither has its own separate
+    // damageMultiplier chain, they just ride along with the tower's.
     if (tower.vineDamage) tower.vineDamage *= effects.damageMultiplier;
+    if (tower.thornShotDamage) tower.thornShotDamage *= effects.damageMultiplier;
   }
   if (effects.sizeMultiplier) tower.stats.size *= effects.sizeMultiplier;
   if (effects.attackIntervalMultiplier) tower.stats.attackInterval *= effects.attackIntervalMultiplier;
@@ -452,6 +515,14 @@ function purchaseUpgrade(tower, pathIndex) {
     tower.rootGrabDamage = effects.rootGrab.damage;
     tower.rootGrabDuration = effects.rootGrab.duration;
   }
+  if (effects.thornShot) {
+    tower.hasThornShot = true;
+    tower.thornShotDamage = effects.thornShot.damage;
+    tower.thornShotInterval = effects.thornShot.interval;
+    tower.thornShotCooldown = effects.thornShot.interval; // don't fire instantly on purchase
+  }
+  if (effects.thornShotCountMultiplier) tower.thornShotCount *= effects.thornShotCountMultiplier;
+  if (effects.thornShotPoison) tower.thornShotPoison = effects.thornShotPoison;
 
   tower.upgradesPurchased += 1;
   return true;

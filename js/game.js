@@ -326,6 +326,22 @@ function renderProjectiles(ctx) {
       return;
     }
 
+    if (projectile.shape === 'thorn') {
+      // A small triangular spike, point-first along its direction of travel.
+      ctx.save();
+      ctx.translate(projectile.x, projectile.y);
+      ctx.rotate(Math.atan2(projectile.vy, projectile.vx));
+      ctx.fillStyle = projectile.color;
+      ctx.beginPath();
+      ctx.moveTo(7, 0);
+      ctx.lineTo(-5, -3);
+      ctx.lineTo(-5, 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
     // A small petal: an ellipse oriented along its direction of travel.
     ctx.save();
     ctx.translate(projectile.x, projectile.y);
@@ -366,7 +382,47 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
     lash.timeRemaining = Math.max(0, lash.timeRemaining - deltaSeconds);
   });
   if (tower.roots.length > 0) updateTowerRoots(tower);
+  if (tower.hasThornShot) updateTowerThornShot(tower, x, y, deltaSeconds);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
+}
+
+// Rose's Projectile Path: a second, independent ranged attack alongside the
+// base one — fires tower.thornShotCount thorn projectiles each cooldown,
+// each re-querying the nearest enemy (same "multiple projectiles can
+// converge on one target" precedent already set by the vines). Reuses the
+// existing travel-time projectile pipeline (spawnThornProjectile below
+// just adds a differently-shaped entry to the same `projectiles` array
+// updateProjectiles()/resolveProjectile() already handle generically).
+function updateTowerThornShot(tower, x, y, deltaSeconds) {
+  tower.thornShotCooldown -= deltaSeconds;
+  if (tower.thornShotCooldown <= 0) {
+    tower.thornShotCooldown = tower.thornShotInterval;
+    for (let i = 0; i < tower.thornShotCount; i += 1) {
+      const target = findNearestEnemyInRange(x, y, tower.stats.range);
+      if (target) spawnThornProjectile(tower, target);
+    }
+  }
+}
+
+function spawnThornProjectile(tower, target) {
+  const dx = target.x - tower.x;
+  const dy = target.y - tower.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  projectiles.push({
+    x: tower.x,
+    y: tower.y,
+    vx: (dx / distance) * PROJECTILE_SPEED,
+    vy: (dy / distance) * PROJECTILE_SPEED,
+    distanceLeft: distance,
+    aimX: target.x,
+    aimY: target.y,
+    target,
+    damage: tower.thornShotDamage,
+    burn: tower.thornShotPoison, // same {damagePerSecond, duration} shape applyBurn/resolveProjectile already expect
+    color: '#4e342e',
+    shape: 'thorn',
+    resolved: false,
+  });
 }
 
 // Root Path's ground traps (Rooting) — fixed spots placed once at purchase
@@ -699,6 +755,11 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
         ? `${selectedTower.vineCount}, ${selectedTower.vineDamage}/hit every ${selectedTower.vineInterval}s`
         : 'none';
     const rootsText = selectedTower.roots.length > 0 ? `${selectedTower.roots.length} armed` : 'none';
+    const thornShotText = selectedTower.hasThornShot
+      ? `${selectedTower.thornShotCount}x ${selectedTower.thornShotDamage}/hit every ${selectedTower.thornShotInterval}s${
+          selectedTower.thornShotPoison ? ', poisons' : ''
+        }`
+      : 'none';
     const lines = [
       `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
       `Size: ${selectedTower.stats.size.toFixed(1)}`,
@@ -709,6 +770,7 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
       `Orbit: ${orbitText}`,
       `Vines: ${vineText}`,
       `Roots: ${rootsText}`,
+      `Thorn Shot: ${thornShotText}`,
     ];
     y = uiDrawTextLines(ctx, lines, x, y, 14, '#ccc', '12px sans-serif') + 8;
   }

@@ -194,11 +194,16 @@ test('Rose\'s Thorn Path grows vine count 1 -> 2 -> 5 -> 8, scaling damage and s
   assert.equal(tower.stats.damage / tower.vineDamage, baseDamage / 2);
 });
 
-test('Rose\'s Path 3 is still scaffolded as entirely undesigned', () => {
+test('Projectile Path (Poke) boosts damage 1.5x with no visible effect from the vine-length note', () => {
   const game = loadGameContext();
   const tower = game.createTower('rose');
-  assert.equal(game.getAvailableUpgrade(tower, 2), null);
-  assert.equal(game.purchaseUpgrade(tower, 2), false);
+  const baseDamage = tower.stats.damage;
+
+  assert.equal(game.purchaseUpgrade(tower, 2), true);
+
+  assert.ok(Math.abs(tower.stats.damage - baseDamage * 1.5) < 1e-9);
+  assert.equal(tower.vineCount, 0); // no vines exist on a Path-3 Rose — the "2x longer" note is a documented no-op
+  assert.equal(tower.hasThornShot, false); // not introduced until Projectiles
 });
 
 test('Rooting (Root Path tier 1) boosts damage 1.5x and spawns 3 root traps on the path near the tower', () => {
@@ -291,4 +296,45 @@ test('Rooting locks out the other two paths once bought', () => {
   game.purchaseUpgrade(tower, 1); // Rooting
   assert.equal(tower.chosenPath, 1);
   assert.equal(game.getAvailableUpgrade(tower, 0), null); // Thorn Path locked out
+});
+
+test('Projectile Path tiers 2-4 introduce and stack the thorn-shot attack as specified', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+  const baseDamage = tower.stats.damage;
+  const baseInterval = tower.stats.attackInterval;
+  const closeEnough = (a, b) => Math.abs(a - b) < 1e-9;
+
+  game.purchaseUpgrade(tower, 2); // Poke: x1.5 damage
+  assert.ok(closeEnough(tower.stats.damage, baseDamage * 1.5));
+
+  game.purchaseUpgrade(tower, 2); // Projectiles: thorn-shot introduced, +20% base attack speed
+  assert.equal(tower.hasThornShot, true);
+  assert.equal(tower.thornShotDamage, 2);
+  assert.equal(tower.thornShotInterval, 1.5);
+  assert.equal(tower.thornShotCount, 1);
+  assert.equal(tower.thornShotPoison, null);
+  assert.ok(closeEnough(tower.stats.attackInterval, baseInterval / 1.2));
+
+  game.purchaseUpgrade(tower, 2); // Even More Projectiles: x3 thorns, +20% base attack speed, greenish
+  assert.equal(tower.thornShotCount, 3);
+  assert.equal(tower.thornShotDamage, 2); // unaffected — this tier has no damageMultiplier
+  assert.ok(closeEnough(tower.stats.attackInterval, baseInterval / 1.2 / 1.2));
+  assert.equal(tower.stats.color, '#6b8e4e');
+
+  game.purchaseUpgrade(tower, 2); // Poison Projectiles: poison + x2 damage (base and thorn-shot alike)
+  assert.deepEqual(tower.thornShotPoison, { damagePerSecond: 5, duration: 3 });
+  assert.ok(closeEnough(tower.stats.damage, baseDamage * 1.5 * 2));
+  assert.equal(tower.thornShotDamage, 4); // 2 * 2
+  assert.equal(tower.stats.color, '#2e7d32');
+  assert.equal(tower.thornShotCount, 3); // untouched by this tier
+});
+
+test('Projectile Path locks out the other two paths once bought', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('rose');
+  game.purchaseUpgrade(tower, 2); // Poke
+  assert.equal(tower.chosenPath, 2);
+  assert.equal(game.getAvailableUpgrade(tower, 0), null); // Thorn Path locked out
+  assert.equal(game.getAvailableUpgrade(tower, 1), null); // Root Path locked out
 });
