@@ -164,7 +164,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getActiveEnemies: () => activeEnemies,
       update,
       uiBeginFrame, uiRegisterRegion, uiHitTest, uiWrapText,
-      getCanvasPoint, isWorldPoint, activateRegion, getTooltipLines,
+      getCanvasPoint, isWorldPoint, activateRegion, getTooltipLines, handleCanvasTap,
       renderUI, getSellRefund,
       // Top-level \`let\`/\`const\` bindings from a vm-run classic script
       // aren't reachable off globalThis (same as a browser <script> tag),
@@ -189,6 +189,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       recordDefeatedEnemy,
       getAutoContinue: () => autoContinue,
       setAutoContinue: (value) => { autoContinue = value; },
+      canAfford,
     };
     `,
     context

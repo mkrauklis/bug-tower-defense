@@ -116,7 +116,7 @@ const GAME_MODES = {
     name: 'Sandbox',
     description:
       'No waves or rounds. Freely spawn any enemy type you’ve defeated before, to test builds. ' +
-      'Normal shop and economy still apply.',
+      'Unlimited money — place, upgrade, and sell towers freely.',
     healthMultiplier: 1,
     speedMultiplier: 1,
     bountyMultiplier: 1,
@@ -137,6 +137,15 @@ let currentWave = [];
 // for, nothing about starting money differing per mode, so this doesn't
 // vary either.
 let money = 50;
+
+// Sandbox gets unlimited money: every affordability check below goes
+// through this instead of a raw `money >= cost` comparison. `money` itself
+// is left completely alone (still earns bounties, still gets spent) — it's
+// just never checked or displayed as a real number while in Sandbox, so it
+// can't go "weird" (overflow, drift) no matter how it changes underneath.
+function canAfford(cost) {
+  return Boolean(currentMode && currentMode.sandbox) || money >= cost;
+}
 
 // Buyable towers. Scaffolded as a list so more towers can be added later;
 // only the Sunflower is a real purchasable option for now.
@@ -693,7 +702,7 @@ function render() {
   renderWildlife(ctx, wildlife, animationTime, 'firefly'); // glowing, drawn on top so it reads over everything
 
   if (selectedShopItem && mouseX !== null && isWorldPoint(mouseX, mouseY)) {
-    const buildable = money >= selectedShopItem.cost && !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN);
+    const buildable = canAfford(selectedShopItem.cost) && !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN);
     ctx.fillStyle = buildable ? 'rgba(76, 175, 80, 0.4)' : 'rgba(229, 57, 53, 0.4)';
     ctx.beginPath();
     ctx.arc(mouseX, mouseY, 20, 0, Math.PI * 2);
@@ -757,7 +766,7 @@ function renderShopSection(ctx, x, width, startY) {
   ctx.fillStyle = '#c0ca33';
   ctx.font = '13px sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText(`$${money}`, x + width, y + 1);
+  ctx.fillText(currentMode && currentMode.sandbox ? '∞' : `$${money}`, x + width, y + 1);
   ctx.textAlign = 'left';
   y += 26;
 
@@ -769,7 +778,7 @@ function renderShopSection(ctx, x, width, startY) {
       rowY += SHOP_TILE_SIZE + SHOP_TILE_GAP;
     }
 
-    const affordable = money >= item.cost;
+    const affordable = canAfford(item.cost);
     const selected = selectedShopItem === item;
     const regionId = `shop:${item.typeKey}`;
     const hovered = hoverRegion && hoverRegion.id === regionId;
@@ -948,7 +957,7 @@ function renderUpgradePaths(ctx, x, width, startY) {
         !isLockedOut &&
         ((selectedTower.chosenPath === pathIndex && tierIndex === selectedTower.upgradesPurchased) ||
           (selectedTower.chosenPath === null && tierIndex === 0));
-      const affordable = isNextInLine && money >= upgrade.cost;
+      const affordable = isNextInLine && canAfford(upgrade.cost);
 
       let fill = '#181b22';
       let border = '#2e333e';
@@ -1368,7 +1377,7 @@ function activateRegion(region) {
   if (region.id.startsWith('upgrade:')) {
     const { pathIndex, upgrade, isNextInLine } = region.data;
     if (!isNextInLine || !selectedTower) return;
-    if (money < upgrade.cost) return;
+    if (!canAfford(upgrade.cost)) return;
     if (purchaseUpgrade(selectedTower, pathIndex)) {
       money -= upgrade.cost;
       selectedTower.moneySpent += upgrade.cost;
@@ -1447,7 +1456,7 @@ function findTowerAt(x, y) {
 // instead (see the click/touch handlers).
 function handleCanvasTap(x, y) {
   if (selectedShopItem) {
-    if (money < selectedShopItem.cost) return;
+    if (!canAfford(selectedShopItem.cost)) return;
     if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
 
     const tower = createTower(selectedShopItem.typeKey);
