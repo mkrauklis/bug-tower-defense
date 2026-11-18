@@ -158,7 +158,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
     `
     globalThis.__fullExports = {
       createTower, purchaseUpgrade,
-      damageEnemy, applyBurn, findNearestEnemyInRange,
+      damageEnemy, applyBurn, findNearestEnemyInRange, getEnemiesInRadius,
       updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies,
       getProjectiles: () => projectiles,
       getActiveEnemies: () => activeEnemies,

@@ -354,6 +354,72 @@ const TOWER_TYPES = {
       },
     ],
   },
+  mushroom: {
+    name: 'Mushroom',
+    baseStats: {
+      damage: 3,
+      size: 18,
+      color: '#a1887f', // plain tan cap — Decay is the first upgrade to actually turn it green
+      range: 170, // unspecified by the brief — matches Sunflower/Rose's own baseline rather than inventing a new number
+      attackInterval: 1, // "every second" baseline, as specified
+    },
+    upgradePaths: [
+      {
+        // Not named in the spec — picked to describe the path's signature
+        // mechanic (decay/rot, culminating in the zombie mechanic),
+        // matching the "<theme> Path" convention the other towers use.
+        name: 'Decay Path',
+        upgrades: [
+          {
+            name: 'Decay',
+            description:
+              'Bugs hit by spores turn pale and take 1 damage/sec for 5 seconds, on top of the direct hit; ' +
+              'Mushroom turns green and grows slightly taller.',
+            cost: 250,
+            // Reuses the exact same burn shape/pipeline Solar Path's Solar
+            // Ray already introduced — applyBurn()/resolveProjectile()
+            // don't care which tower's projectile carries it.
+            effects: { burn: { damagePerSecond: 1, duration: 5 }, color: '#4caf50', capHeightMultiplier: 1.15 },
+          },
+          {
+            name: 'Zombify',
+            description:
+              'When a spore lands the killing blow on a non-boss bug (never any other damage source), 20% ' +
+              'chance it rises as a zombie instead of dying outright — shambling backward toward the path’s ' +
+              'start until it either collides with a living bug (dealing 3 damage and exploding) or reaches the ' +
+              'start (exploding harmlessly off-screen); Mushroom turns darker green, looks a little decayed, ' +
+              'and grows taller again.',
+            cost: 750,
+            effects: { zombifyChance: 0.2, zombieExplosionDamage: 3, color: '#2e7d32', capHeightMultiplier: 1.15 },
+          },
+          {
+            name: 'Undead Army',
+            description:
+              'Spore damage increases 2.5x; zombify chance rises to 30% (replacing 20%, not stacking with it); ' +
+              'Mushroom gains a skull on its head and gas wafts off its body.',
+            cost: 1750,
+            effects: { damageMultiplier: 2.5, zombifyChance: 0.3, hasSkull: true, gasColor: '#66bb6a' },
+          },
+          {
+            name: 'Necro-Mush',
+            description:
+              'Damage doubles again; zombify chance rises to 50% (replacing 30%); a zombie’s explosion now ' +
+              'deals 10 damage instead of 3; Mushroom and its gas both turn purple.',
+            cost: 2250,
+            effects: {
+              damageMultiplier: 2,
+              zombifyChance: 0.5,
+              zombieExplosionDamage: 10,
+              color: '#6a1b9a',
+              gasColor: '#9c27b0',
+            },
+          },
+        ],
+      },
+      null, // Path 2 — not yet designed.
+      null, // Path 3 — not yet designed.
+    ],
+  },
 };
 
 function createTower(typeKey) {
@@ -430,6 +496,16 @@ function createTower(typeKey) {
     thornShotCooldown: 0,
     thornShotCount: 1, // projectiles fired per shot, once hasThornShot is true
     thornShotPoison: null, // {damagePerSecond, duration} once bought
+    // Mushroom's Decay Path: zombifyChance/zombieExplosionDamage feed into
+    // every spore projectile this tower fires (see spawnProjectile() in
+    // game.js) — resolveProjectile() rolls the zombify chance itself when
+    // a spore's hit is the killing blow. capHeightMultiplier/hasSkull/
+    // gasColor are purely visual (drawMushroom()).
+    capHeightMultiplier: 1,
+    zombifyChance: 0,
+    zombieExplosionDamage: 0,
+    hasSkull: false,
+    gasColor: null,
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
@@ -523,6 +599,14 @@ function purchaseUpgrade(tower, pathIndex) {
   }
   if (effects.thornShotCountMultiplier) tower.thornShotCount *= effects.thornShotCountMultiplier;
   if (effects.thornShotPoison) tower.thornShotPoison = effects.thornShotPoison;
+  if (effects.capHeightMultiplier) tower.capHeightMultiplier *= effects.capHeightMultiplier;
+  // zombifyChance/zombieExplosionDamage REPLACE the previous value (each
+  // tier states its own new number outright — "30%, replacing 20%"), not
+  // compound with it, unlike every multiplier-based effect above.
+  if (effects.zombifyChance !== undefined) tower.zombifyChance = effects.zombifyChance;
+  if (effects.zombieExplosionDamage) tower.zombieExplosionDamage = effects.zombieExplosionDamage;
+  if (effects.hasSkull) tower.hasSkull = true;
+  if (effects.gasColor) tower.gasColor = effects.gasColor;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -668,6 +752,20 @@ function renderTower(ctx, tower, x, y, time) {
       tower.bodyRootGrowths,
       tower.bodyFlowerGrowths,
       tower.longThorns
+    );
+  } else if (tower.type === 'mushroom') {
+    drawMushroom(
+      ctx,
+      x,
+      y,
+      size,
+      tower.stats.color,
+      tower.glow,
+      time,
+      flashAmount,
+      tower.capHeightMultiplier,
+      tower.hasSkull,
+      tower.gasColor
     );
   } else {
     // Fallback for any future tower type without custom art yet.
@@ -1094,4 +1192,100 @@ function renderRoseVines(ctx, tower, x, y, time) {
       ctx.stroke();
     }
   }
+}
+
+function drawMushroom(ctx, x, y, size, color, glow, time, flashAmount, capHeightMultiplier, hasSkull, gasColor) {
+  const stemHeight = size * 0.9 * capHeightMultiplier;
+  const groundY = y + stemHeight;
+  const sway = Math.sin(time * 1.1 + x * 0.011) * 0.04;
+
+  ctx.save();
+  ctx.translate(x, groundY);
+  ctx.rotate(sway);
+  ctx.translate(-x, -groundY);
+
+  // A slightly tapered stem — wider at the cap than at the ground.
+  ctx.fillStyle = '#fff8e1';
+  ctx.strokeStyle = '#d7ccc8';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.22, groundY);
+  ctx.quadraticCurveTo(x - size * 0.26, y + stemHeight * 0.4, x - size * 0.16, y);
+  ctx.lineTo(x + size * 0.16, y);
+  ctx.quadraticCurveTo(x + size * 0.26, y + stemHeight * 0.4, x + size * 0.22, groundY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // The cap pulses slightly bigger right after an attack, same cue as the other towers.
+  ctx.translate(x, y);
+  ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
+  ctx.translate(-x, -y);
+
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 20;
+  }
+
+  // The cap: a half-dome with a darker underside rim for a touch of depth.
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.75, size * 0.55, 0, Math.PI, 0, false);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(color, -22);
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.75, size * 0.14, 0, 0, Math.PI, false);
+  ctx.fill();
+
+  // Classic toadstool spots.
+  ctx.fillStyle = '#fff8e1';
+  [
+    [-0.35, -0.28],
+    [0.12, -0.42],
+    [0.42, -0.18],
+    [-0.05, -0.12],
+  ].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(x + dx * size, y + dy * size, size * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  if (hasSkull) drawMushroomSkull(ctx, x, y - size * 0.55, size * 0.22);
+  if (gasColor) drawMushroomGas(ctx, x, y, size, gasColor, time);
+
+  ctx.restore();
+}
+
+// A small skull sitting on the cap (Undead Army and later) — a simple
+// pale circle with two dark eye sockets, enough to read at tower scale.
+function drawMushroomSkull(ctx, x, y, size) {
+  ctx.fillStyle = '#fafafa';
+  ctx.beginPath();
+  ctx.arc(x, y, size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#212121';
+  ctx.beginPath();
+  ctx.arc(x - size * 0.35, y, size * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + size * 0.35, y, size * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A few soft, rising, fading puffs of gas (Undead Army and later) — color
+// comes from tower.gasColor (greenish, then purple at Necro-Mush), cycling
+// on the game's own deterministic clock so it stays in sync with
+// everything else instead of drifting on real time.
+function drawMushroomGas(ctx, x, y, size, color, time) {
+  ctx.fillStyle = color;
+  [0, 1, 2].forEach((i) => {
+    const t = (time * 0.4 + i / 3) % 1;
+    const gx = x + Math.sin(time * 0.7 + i * 2) * size * 0.4;
+    const gy = y - size * 0.5 - t * size * 1.3;
+    ctx.globalAlpha = 0.35 * (1 - t);
+    ctx.beginPath();
+    ctx.arc(gx, gy, size * 0.16 * (1 + t * 0.6), 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
 }

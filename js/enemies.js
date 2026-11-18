@@ -252,6 +252,14 @@ function createEnemyInstance(entry, spawnDelay) {
     // null (not []) for everything else, so the cheap `enemy.trail &&` check
     // in updateEnemies skips non-millipede enemies with no work at all.
     trail: MILLIPEDE_FAMILY_KEYS.has(entry.enemyKey) ? [] : null,
+    // Mushroom's Zombify: a spore kill can raise a non-boss enemy as a
+    // zombie instead of removing it — see turnIntoZombie()/
+    // updateZombieMovement() below. zombieExplosionDamage is carried per-
+    // zombie (set when it's created) rather than read from a shared
+    // constant, since different Mushroom towers can be at different tiers.
+    isZombie: false,
+    markedForRemoval: false,
+    zombieExplosionDamage: 0,
   };
 }
 
@@ -325,7 +333,9 @@ function findNearestEnemyInRange(x, y, range) {
   let closestDist = Infinity;
 
   activeEnemies.forEach((enemy) => {
-    if (!enemy.spawned || enemy.health <= 0) return;
+    // Zombies (Mushroom's Zombify) are deliberately excluded — "not
+    // targetable/attackable by towers" — same as the spawn/health checks.
+    if (!enemy.spawned || enemy.health <= 0 || enemy.isZombie) return;
     const dist = Math.hypot(enemy.x - x, enemy.y - y);
     if (dist <= range && dist < closestDist) {
       closest = enemy;
@@ -340,7 +350,8 @@ function findNearestEnemyInRange(x, y, range) {
 // enemy within radius — for AoE effects like a magma puddle or orbiting embers.
 function getEnemiesInRadius(x, y, radius) {
   return activeEnemies.filter(
-    (enemy) => enemy.spawned && enemy.health > 0 && Math.hypot(enemy.x - x, enemy.y - y) <= radius
+    (enemy) =>
+      enemy.spawned && enemy.health > 0 && !enemy.isZombie && Math.hypot(enemy.x - x, enemy.y - y) <= radius
   );
 }
 
@@ -357,6 +368,17 @@ function updateEnemies(deltaSeconds) {
     // Already dead, just waiting to be swept up below — don't let it take
     // another burn tick or keep moving for the one extra frame before removal.
     if (enemy.health <= 0) return;
+
+    // A zombie (Mushroom's Zombify) is a completely separate little state
+    // machine — it shambles backward toward the path's start instead of
+    // forward, doesn't spawn-delay/burn/get held, and is removed via its
+    // own markedForRemoval flag rather than health reaching 0 (a zombie's
+    // health is kept positive specifically so it's immune to the normal
+    // "killed" sweep below — see turnIntoZombie()).
+    if (enemy.isZombie) {
+      updateZombieMovement(enemy, deltaSeconds);
+      return;
+    }
 
     if (!enemy.spawned) {
       enemy.spawnDelay -= deltaSeconds;
@@ -401,16 +423,85 @@ function updateEnemies(deltaSeconds) {
   });
 
   // Enemies that died this frame (for bounty payout) — distinct from ones
-  // that merely reached the final waypoint, which pay no bounty.
-  const killed = activeEnemies.filter((enemy) => enemy.health <= 0);
+  // that merely reached the final waypoint, which pay no bounty. Zombies
+  // are excluded here even though a zombie's own origin enemy did die (that
+  // death just never reached this point — see turnIntoZombie(), called
+  // from resolveProjectile() before this sweep ever sees it as "killed")
+  // — a zombie's own eventual removal (below) is never a bounty-eligible
+  // kill either.
+  const killed = activeEnemies.filter((enemy) => enemy.health <= 0 && !enemy.isZombie);
 
   // Drop enemies that died or reached the final waypoint (the base/goal,
-  // for now — there's no base-health/lose-condition system yet).
-  activeEnemies = activeEnemies.filter(
-    (enemy) => enemy.health > 0 && enemy.waypointIndex < MAP_PATH_WAYPOINTS.length - 1
-  );
+  // for now — there's no base-health/lose-condition system yet) — or, for
+  // a zombie, that it exploded (collided with a living enemy, or reached
+  // the path's start) this frame.
+  activeEnemies = activeEnemies.filter((enemy) => {
+    if (enemy.isZombie) return !enemy.markedForRemoval;
+    return enemy.health > 0 && enemy.waypointIndex < MAP_PATH_WAYPOINTS.length - 1;
+  });
 
   return killed;
+}
+
+// Converts a just-killed, non-boss enemy into a zombie instead of letting
+// it be swept up as a normal kill — called from resolveProjectile() in
+// game.js the instant a Mushroom spore's zombify roll succeeds, which
+// happens *after* this frame's updateEnemies() has already run (see
+// update()'s call order in game.js), so setting health back to a positive
+// number here is enough to keep the enemy out of the next frame's normal
+// "killed" sweep for good; isZombie routes it to updateZombieMovement()
+// instead of ordinary forward movement from here on.
+function turnIntoZombie(enemy, explosionDamage) {
+  enemy.isZombie = true;
+  enemy.health = 1;
+  enemy.zombieExplosionDamage = explosionDamage;
+  // enemy.waypointIndex is left as-is: it's already "the waypoint behind
+  // the enemy's current position" (forward movement always targets
+  // waypointIndex + 1), which is exactly the first target a backward walk
+  // needs.
+}
+
+// How close a zombie needs to get to a living enemy to detonate.
+const ZOMBIE_COLLISION_RADIUS = 18;
+
+// Walks a zombie backward through the waypoint list (the mirror image of
+// the forward-movement loop above) and checks for a collision with a
+// living enemy after moving. Marks the zombie markedForRemoval — rather
+// than setting health <= 0, which the normal sweep would treat as a real
+// kill — whether it reached the start or blew up on something.
+function updateZombieMovement(enemy, deltaSeconds) {
+  let remaining = enemy.speed * deltaSeconds;
+  while (remaining > 0 && enemy.waypointIndex >= 0) {
+    const target = MAP_PATH_WAYPOINTS[enemy.waypointIndex];
+    const dx = target.x - enemy.x;
+    const dy = target.y - enemy.y;
+    const dist = Math.hypot(dx, dy);
+    enemy.heading = Math.atan2(dy, dx);
+
+    if (dist <= remaining) {
+      enemy.x = target.x;
+      enemy.y = target.y;
+      enemy.waypointIndex -= 1;
+      remaining -= dist;
+    } else {
+      enemy.x += (dx / dist) * remaining;
+      enemy.y += (dy / dist) * remaining;
+      remaining = 0;
+    }
+  }
+
+  if (enemy.waypointIndex < 0) {
+    enemy.markedForRemoval = true; // reached the start — explodes harmlessly off-screen
+    return;
+  }
+
+  // getEnemiesInRadius already excludes zombies (and the dead/unspawned),
+  // so whatever it finds here is a legitimate, living, non-zombie victim.
+  const [victim] = getEnemiesInRadius(enemy.x, enemy.y, ZOMBIE_COLLISION_RADIUS);
+  if (victim) {
+    damageEnemy(victim, enemy.zombieExplosionDamage);
+    enemy.markedForRemoval = true;
+  }
 }
 
 // Simple, distinguishable silhouettes per enemy type — canvas primitives
@@ -869,6 +960,25 @@ function renderMillipedeBody(ctx, enemy) {
   }
 }
 
+// A small toadstool sitting just above a zombie's head — the one visual
+// cue that reads regardless of the zombie's original body shape/color.
+function drawZombieMushroomCap(ctx, x, y, size) {
+  ctx.fillStyle = '#c62828';
+  ctx.beginPath();
+  ctx.ellipse(x, y, size, size * 0.6, 0, Math.PI, 0, false);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff8e1';
+  [[-0.4, -0.15], [0, -0.3], [0.4, -0.15]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(x + dx * size, y + dy * size, size * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = '#efebe9';
+  ctx.fillRect(x - size * 0.15, y, size * 0.3, size * 0.45);
+}
+
 function renderEnemies(ctx) {
   activeEnemies.forEach((enemy) => {
     if (!enemy.spawned) return;
@@ -892,8 +1002,19 @@ function renderEnemies(ctx) {
       ctx.translate(enemy.x, enemy.y);
       ctx.rotate(enemy.heading + facingOffset);
       ctx.translate(-enemy.x, -enemy.y);
-      drawEnemyShape(ctx, enemy);
+      if (enemy.isZombie) {
+        // Zombies render green regardless of their original type's color —
+        // cheapest way to reuse every type's existing art is to draw it
+        // with enemy.color swapped out for the duration of this one call.
+        const originalColor = enemy.color;
+        enemy.color = '#4caf50';
+        drawEnemyShape(ctx, enemy);
+        enemy.color = originalColor;
+      } else {
+        drawEnemyShape(ctx, enemy);
+      }
       ctx.restore();
+      if (enemy.isZombie) drawZombieMushroomCap(ctx, enemy.x, enemy.y - enemy.radius - 6, enemy.radius * 0.55);
     }
 
     if (enemy.burn) {

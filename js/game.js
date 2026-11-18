@@ -136,6 +136,7 @@ let money = 50;
 const SHOP_ITEMS = [
   { typeKey: 'sunflower', name: 'Sunflower', cost: 25 },
   { typeKey: 'rose', name: 'Rose', cost: 45 },
+  { typeKey: 'mushroom', name: 'Mushroom', cost: 75 }, // cost confirmed directly with the user
 ];
 
 // How far a placed tower's center must stay from the path's centerline,
@@ -285,7 +286,14 @@ function spawnProjectile(tower, target) {
     damage: getEffectiveDamage(tower),
     burn: tower.burn,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
-    shape: tower.attackType === 'fireball' ? 'fireball' : 'petal',
+    shape: tower.attackType === 'fireball' ? 'fireball' : tower.type === 'mushroom' ? 'spore' : 'petal',
+    // Mushroom's Zombify: carried per-projectile (not read from the tower
+    // at resolve time) since the tower that fired it is the one and only
+    // source of truth for "was this a spore, and at what chance/damage" —
+    // resolveProjectile() below doesn't need a reference back to the tower.
+    isSpore: tower.type === 'mushroom',
+    zombifyChance: tower.type === 'mushroom' ? tower.zombifyChance : 0,
+    zombieExplosionDamage: tower.type === 'mushroom' ? tower.zombieExplosionDamage : 0,
     resolved: false,
   });
 }
@@ -299,6 +307,21 @@ function resolveProjectile(projectile) {
 
   damageEnemy(target, projectile.damage);
   if (projectile.burn) applyBurn(target, projectile.burn);
+
+  // Zombify: only a spore's own killing blow counts (never any other
+  // damage source — burn, a root, another tower entirely, etc. — and never
+  // a boss). This check runs immediately after the damage above, so
+  // target.health <= 0 here specifically means *this* hit was the one
+  // that finished it off.
+  if (
+    projectile.isSpore &&
+    target.health <= 0 &&
+    !target.isBoss &&
+    projectile.zombifyChance > 0 &&
+    random() < projectile.zombifyChance
+  ) {
+    turnIntoZombie(target, projectile.zombieExplosionDamage);
+  }
 }
 
 function updateProjectiles(deltaSeconds) {
@@ -339,6 +362,23 @@ function renderProjectiles(ctx) {
       ctx.closePath();
       ctx.fill();
       ctx.restore();
+      return;
+    }
+
+    if (projectile.shape === 'spore') {
+      // A small puff — a round cloud with a lighter core, no directional
+      // orientation needed (spores drift, they don't fly point-first).
+      ctx.fillStyle = projectile.color;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.arc(projectile.x, projectile.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff8e1';
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(projectile.x, projectile.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
       return;
     }
 

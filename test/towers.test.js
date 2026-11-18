@@ -338,3 +338,57 @@ test('Projectile Path locks out the other two paths once bought', () => {
   assert.equal(game.getAvailableUpgrade(tower, 0), null); // Thorn Path locked out
   assert.equal(game.getAvailableUpgrade(tower, 1), null); // Root Path locked out
 });
+
+test('createTower(\'mushroom\') returns Mushroom\'s own base stats with Decay Path untouched', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('mushroom');
+  assert.equal(tower.type, 'mushroom');
+  assert.deepEqual(tower.stats, game.TOWER_TYPES.mushroom.baseStats);
+  assert.equal(tower.zombifyChance, 0);
+  assert.equal(tower.hasSkull, false);
+  assert.equal(tower.gasColor, null);
+});
+
+test('Mushroom\'s Decay Path stacks damage, the reused burn DoT, cap height, and the zombify/explosion REPLACE semantics', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('mushroom');
+  const baseDamage = tower.stats.damage;
+  const baseSize = tower.stats.size;
+  const closeEnough = (a, b) => Math.abs(a - b) < 1e-9;
+
+  game.purchaseUpgrade(tower, 0); // Decay
+  assert.deepEqual(tower.burn, { damagePerSecond: 1, duration: 5 });
+  assert.equal(tower.stats.color, '#4caf50');
+  assert.ok(closeEnough(tower.capHeightMultiplier, 1.15));
+  assert.equal(tower.stats.damage, baseDamage); // Decay itself has no damageMultiplier
+
+  game.purchaseUpgrade(tower, 0); // Zombify
+  assert.equal(tower.zombifyChance, 0.2);
+  assert.equal(tower.zombieExplosionDamage, 3);
+  assert.equal(tower.stats.color, '#2e7d32');
+  assert.ok(closeEnough(tower.capHeightMultiplier, 1.15 * 1.15));
+
+  game.purchaseUpgrade(tower, 0); // Undead Army
+  assert.ok(closeEnough(tower.stats.damage, baseDamage * 2.5));
+  assert.equal(tower.zombifyChance, 0.3); // replaced, not 0.2 + 0.3
+  assert.equal(tower.zombieExplosionDamage, 3); // untouched by this tier
+  assert.equal(tower.hasSkull, true);
+  assert.equal(tower.gasColor, '#66bb6a');
+
+  game.purchaseUpgrade(tower, 0); // Necro-Mush
+  assert.ok(closeEnough(tower.stats.damage, baseDamage * 2.5 * 2));
+  assert.equal(tower.zombifyChance, 0.5); // replaced again, not additive
+  assert.equal(tower.zombieExplosionDamage, 10); // replaced, not 3 + 10
+  assert.equal(tower.stats.color, '#6a1b9a');
+  assert.equal(tower.gasColor, '#9c27b0');
+  assert.equal(tower.stats.size, baseSize); // Decay Path never touches size
+});
+
+test('Mushroom\'s Path 2 and Path 3 are scaffolded as undesigned', () => {
+  const game = loadGameContext();
+  const tower = game.createTower('mushroom');
+  assert.equal(game.getAvailableUpgrade(tower, 1), null);
+  assert.equal(game.getAvailableUpgrade(tower, 2), null);
+  assert.equal(game.purchaseUpgrade(tower, 1), false);
+  assert.equal(game.purchaseUpgrade(tower, 2), false);
+});
