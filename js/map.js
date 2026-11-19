@@ -29,19 +29,6 @@ function distanceToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(px - closestX, py - closestY);
 }
 
-// Generalized version of the old file-scoped "distance to MAP_PATH_WAYPOINTS"
-// loop — takes any waypoint list, so it works for the active map, a
-// candidate custom map being decorated, or the in-progress editor draft.
-function minDistanceToPath(x, y, waypoints) {
-  let min = Infinity;
-  for (let i = 0; i < waypoints.length - 1; i += 1) {
-    const a = waypoints[i];
-    const b = waypoints[i + 1];
-    min = Math.min(min, distanceToSegment(x, y, a.x, a.y, b.x, b.y));
-  }
-  return min;
-}
-
 function strokeMapPath(ctx, waypoints) {
   ctx.beginPath();
   ctx.moveTo(waypoints[0].x, waypoints[0].y);
@@ -336,9 +323,8 @@ const TERRAIN_THEMES = {
 };
 
 // ---------------------------------------------------------------------------
-// MAP_TYPES — the built-in maps. A custom (editor-authored) map has the same
-// shape but is built on demand from its saved JSON record rather than living
-// in this object — see createMapFromCustomRecord() below.
+// MAP_TYPES — the built-in maps (the only maps there are now that the map
+// editor/custom maps have been removed).
 // ---------------------------------------------------------------------------
 
 const MAP_TYPES = {
@@ -453,101 +439,8 @@ function renderMapIcon(ctx, map, x, y, size) {
   ctx.restore();
 }
 
-// ---------------------------------------------------------------------------
-// Procedural decor for custom (editor-authored) maps. A built-in map's decor
-// is hand-placed (above) for a curated look; a custom map's path is
-// arbitrary and unknown ahead of time, so its decor is scattered
-// deterministically instead — seeded off the map's own name, so reloading
-// the same custom map always regenerates the same layout without needing to
-// store decor positions in its saved JSON (see createMapFromCustomRecord).
-// ---------------------------------------------------------------------------
-
-// FNV-1a — small, good enough to turn a map name into a seed int; doesn't
-// need to be cryptographic, just stable and well-distributed.
-function hashStringToSeed(str) {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < str.length; i += 1) {
-    hash ^= str.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function scatterPoints(rng, waypoints, pathWidth, count, { minSpacing, pathMargin }) {
-  const points = [];
-  let attempts = 0;
-  while (points.length < count && attempts < count * 50) {
-    attempts += 1;
-    const x = rng() * MAP_WORLD_WIDTH;
-    const y = rng() * MAP_WORLD_HEIGHT;
-    if (minDistanceToPath(x, y, waypoints) < pathWidth / 2 + pathMargin) continue;
-    if (points.some((p) => Math.hypot(p.x - x, p.y - y) < minSpacing)) continue;
-    points.push({ x, y });
-  }
-  return points;
-}
-
-function generateDecorForTerrain(terrainId, waypoints, pathWidth, seedSource) {
-  const rng = createRandom(hashStringToSeed(seedSource));
-
-  if (terrainId === 'marsh') {
-    const puddles = scatterPoints(rng, waypoints, pathWidth, 8, { minSpacing: 70, pathMargin: 24 }).map((p) => ({
-      ...p,
-      r: 22 + rng() * 12,
-    }));
-    const lilyPads = [];
-    puddles.forEach((puddle) => {
-      const padCount = 2 + Math.floor(rng() * 3);
-      for (let i = 0; i < padCount; i += 1) {
-        const angle = rng() * Math.PI * 2;
-        const dist = rng() * puddle.r * 0.55;
-        lilyPads.push({
-          x: puddle.x + Math.cos(angle) * dist,
-          y: puddle.y + Math.sin(angle) * dist,
-          r: 6 + rng() * 3,
-        });
-      }
-    });
-    const duckweed = scatterPoints(rng, waypoints, pathWidth, 12, { minSpacing: 40, pathMargin: 16 }).map((p) => ({
-      ...p,
-      r: 10 + rng() * 5,
-    }));
-    const mangroves = scatterPoints(rng, waypoints, pathWidth, 10, { minSpacing: 60, pathMargin: 20 }).map((p) => ({
-      ...p,
-      r: 18 + rng() * 10,
-    }));
-    return { puddles, lilyPads, duckweed, mangroves };
-  }
-
-  const trees = scatterPoints(rng, waypoints, pathWidth, 13, { minSpacing: 70, pathMargin: 24 }).map((p) => ({
-    ...p,
-    r: 18 + rng() * 12,
-  }));
-  const bushes = scatterPoints(rng, waypoints, pathWidth, 8, { minSpacing: 40, pathMargin: 14 }).map((p) => ({
-    ...p,
-    r: 10 + rng() * 4,
-  }));
-  const grassTufts = scatterPoints(rng, waypoints, pathWidth, 12, { minSpacing: 30, pathMargin: 8 });
-  return { trees, bushes, grassTufts };
-}
-
-// Builds a live map object (same shape as a MAP_TYPES entry) from a saved
-// custom-map JSON record — see game.js's map editor for the record schema
-// and persistence. `decor` is generated fresh here rather than stored in
-// the record, both to keep the saved JSON small/stable and so a decor
-// generator tweak improves existing custom maps for free next time they're
-// loaded.
-function createMapFromCustomRecord(record) {
-  const terrain = record.terrain === 'marsh' ? 'marsh' : 'forest';
-  const pathWidth = 56;
-  return {
-    id: `custom:${record.name}`,
-    name: record.name,
-    builtin: false,
-    waypoints: record.path,
-    pathWidth,
-    pathColors: terrain === 'marsh' ? MARSH_PATH_COLORS : FOREST_PATH_COLORS,
-    terrain,
-    decor: generateDecorForTerrain(terrain, record.path, pathWidth, `custom:${record.name}`),
-  };
-}
+// The map editor (and the procedural per-custom-map decor generator it
+// needed, since a custom path's shape was unknown ahead of time unlike the
+// two built-ins' hand-placed decor above) was removed per direct request —
+// see git history. Deep Forest/Marshland and everything above this line
+// are untouched.

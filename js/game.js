@@ -210,40 +210,12 @@ function recordDefeatedEnemy(enemyKey) {
   saveDefeatedEnemyKeys();
 }
 
-// Custom (editor-authored) maps, persisted as an array of records — see
-// the map editor section below for the record schema (buildMapRecord())
-// and how they're created/imported. Each record is kept exactly as saved;
-// a live, playable map object is only built from one on demand (see
-// createMapFromCustomRecord() in js/map.js), not stored here, so a decor-
-// generator improvement benefits existing custom maps for free.
-const CUSTOM_MAPS_STORAGE_KEY = 'bugTowerDefense.customMaps';
-
-function loadCustomMaps() {
-  try {
-    const raw = localStorage.getItem(CUSTOM_MAPS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    return [];
-  }
-}
-
-function saveCustomMaps(records) {
-  try {
-    localStorage.setItem(CUSTOM_MAPS_STORAGE_KEY, JSON.stringify(records));
-  } catch (error) {
-    // Nothing to do — this run just won't persist.
-  }
-}
-
-// Every map the map-select screen can offer: the two built-ins plus a live
-// map object built from each saved custom record. Recomputed on demand
-// (called once per render of the map-select screen) rather than cached,
-// since custom maps can change (saved/imported) while that screen is up.
+// Every map the map-select screen can offer. The map editor (and the
+// custom/imported maps it produced) was removed — this now just lists the
+// built-ins, but stays its own function since renderMapSelect() already
+// calls it and shouldn't care whether the list is built-ins-only or not.
 function listAllMaps() {
-  const builtins = MAP_TYPE_ORDER.map((key) => MAP_TYPES[key]);
-  const customs = loadCustomMaps().map((record) => createMapFromCustomRecord(record));
-  return [...builtins, ...customs];
+  return MAP_TYPE_ORDER.map((key) => MAP_TYPES[key]);
 }
 
 // Applies the current mode's health/speed multipliers to a wave composition
@@ -744,12 +716,6 @@ function render() {
     if (gameState === 'menu') renderMenu(ctx);
     else if (gameState === 'mapSelect') renderMapSelect(ctx);
     else renderModeSelect(ctx);
-    return;
-  }
-
-  if (gameState === 'editor') {
-    canvas.style.cursor = 'default';
-    renderEditor(ctx);
     return;
   }
 
@@ -1287,9 +1253,8 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
 // the click/hover routing in the event listeners below just works for them
 // too without a separate input system.
 //
-// Flow: 'menu' (Play / Map Editor) → 'mapSelect' (pick a map) →
-// 'modeSelect' (pick a game mode — Medium/Horde Mode/Sandbox — for that
-// map) → startGame().
+// Flow: 'menu' (Play) → 'mapSelect' (pick a map) → 'modeSelect' (pick a
+// game mode — Medium/Horde Mode/Sandbox — for that map) → startGame().
 // Both the map and the mode are picked as their own explicit step rather
 // than folded into one screen — each stays a simple tile grid/list instead
 // of needing a two-axis picker.
@@ -1320,7 +1285,15 @@ function drawMenuTooltip(ctx) {
   }
 }
 
-// Top-level menu: Play or Map Editor.
+// Top-level menu. Used to also offer a Map Editor option here — removed
+// per direct request, along with its whole UI/input flow and the JSON
+// export/import + localStorage custom-map persistence that went with it
+// (see git history for that code). Deep Forest/Marshland and the
+// generalized MAP_TYPES/per-map-roster architecture underneath this screen
+// are untouched; only the ability to author/import a custom map is gone.
+// Kept as its own screen (rather than collapsing straight into map-select
+// now that it's down to one button) since nothing asked for that flow
+// change — just the removal.
 function renderMenu(ctx) {
   uiBeginFrame();
   drawMenuTitle(ctx, 'Bug Tower Defense', 'Choose how to begin');
@@ -1333,7 +1306,6 @@ function renderMenu(ctx) {
 
   [
     { id: 'start:play', label: 'Play', description: 'Pick a map, then a mode, and start defending.' },
-    { id: 'start:editor', label: 'Map Editor', description: 'Draw your own path and terrain, save or share it as a file.' },
   ].forEach((entry, i) => {
     const y = startY + i * (buttonHeight + gap);
     const hovered = hoverRegion && hoverRegion.id === entry.id;
@@ -1477,417 +1449,11 @@ function renderModeSelect(ctx) {
   drawMenuTooltip(ctx);
 }
 
-// ---------------------------------------------------------------------------
-// Map editor — gameState === 'editor'. Lets the player draw a path (click
-// open ground to add a point, drag a point to move it, select + delete a
-// point), pick which built-in terrain theme decorates it, name it, save it
-// to localStorage, and export/import it as a standalone JSON file. See
-// buildMapRecord() for the saved/exported schema.
-//
-// Deliberately NOT built: loading an already-saved custom map back into the
-// editor for further editing (only a fresh blank draft, or an imported
-// file, can be edited) — not asked for, and real added complexity (picking
-// which saved map to reopen, reconstructing editor state from it) for a
-// first pass. Re-importing its own exported JSON is the workaround today.
-// Terrain is one of the two existing built-in themes rather than a custom
-// terrain painter — a full terrain-painting tool is a much bigger feature
-// the user didn't ask for; picking a theme is the simplest reasonable
-// default for "which decor style wraps around my custom path."
-// ---------------------------------------------------------------------------
-
-let editorPath = [];
-let editorTerrainId = 'forest'; // 'forest' | 'marsh'
-let editorMapName = '';
-let editorSelectedIndex = null;
-let editorDraggingIndex = null;
-let editorJustDragged = false; // set in mousemove while dragging; read+reset by the click handler below
-let editorPendingAdd = null; // touch-only: a tentative {x,y} to add on touchend if the finger never moved
-let editorStatus = '';
-
-const EDITOR_POINT_CLICK_RADIUS = 14;
-
-function resetEditorDraft() {
-  editorPath = [];
-  editorTerrainId = 'forest';
-  editorMapName = '';
-  editorSelectedIndex = null;
-  editorDraggingIndex = null;
-  editorJustDragged = false;
-  editorPendingAdd = null;
-  editorStatus = '';
-}
-
-function findEditorWaypointAt(x, y) {
-  for (let i = editorPath.length - 1; i >= 0; i -= 1) {
-    if (Math.hypot(editorPath[i].x - x, editorPath[i].y - y) <= EDITOR_POINT_CLICK_RADIUS) return i;
-  }
-  return -1;
-}
-
-function buildMapRecord(name) {
-  return {
-    version: 1,
-    name,
-    path: editorPath.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })),
-    terrain: editorTerrainId,
-    // Forward-compatible placeholders — not implemented yet (only path/
-    // terrain are customizable today), present as explicit nulls so a
-    // future version can start writing real values here without breaking
-    // old files (an old file simply has `waves: null`, read the same way
-    // "no wave override" would be).
-    waves: null,
-    economy: null,
-    towers: null,
-  };
-}
-
-function promptForMapName() {
-  const input = prompt('Name this map:', editorMapName || '');
-  if (!input || !input.trim()) return null;
-  return input.trim();
-}
-
-function saveEditorMap() {
-  if (editorPath.length < 2) {
-    editorStatus = 'Add at least 2 points before saving.';
-    return;
-  }
-  let name = editorMapName;
-  if (!name) {
-    name = promptForMapName();
-    if (!name) {
-      editorStatus = 'Save cancelled — a name is required.';
-      return;
-    }
-    editorMapName = name;
-  }
-
-  const customMaps = loadCustomMaps();
-  const existingIndex = customMaps.findIndex((m) => m.name === name);
-  const record = buildMapRecord(name);
-  if (existingIndex !== -1) customMaps[existingIndex] = record;
-  else customMaps.push(record);
-  saveCustomMaps(customMaps);
-  editorStatus = `Saved "${name}".`;
-}
-
-function exportEditorMap() {
-  if (editorPath.length < 2) {
-    editorStatus = 'Add at least 2 points before exporting.';
-    return;
-  }
-  let name = editorMapName;
-  if (!name) {
-    name = promptForMapName();
-    if (!name) {
-      editorStatus = 'Export cancelled — a name is required.';
-      return;
-    }
-    editorMapName = name;
-  }
-
-  const record = buildMapRecord(name);
-  const blob = new Blob([JSON.stringify(record, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${name.replace(/[^a-z0-9-_]+/gi, '_') || 'map'}.json`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-  editorStatus = `Exported "${name}.json".`;
-}
-
-function disambiguateMapName(baseName, customMaps) {
-  let candidate = `${baseName} (imported)`;
-  let suffix = 2;
-  while (customMaps.some((m) => m.name === candidate)) {
-    candidate = `${baseName} (imported ${suffix})`;
-    suffix += 1;
-  }
-  return candidate;
-}
-
-// Imports a map JSON file (from <input type=file>, see getMapImportInput)
-// into both localStorage and the editor's live draft. If its name collides
-// with an existing custom map, asks before overwriting rather than
-// silently clobbering — "Cancel" keeps the existing map and saves the
-// import under a disambiguated name instead.
-function importMapFile(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    let data;
-    try {
-      data = JSON.parse(reader.result);
-    } catch (error) {
-      editorStatus = 'Import failed — not valid JSON.';
-      return;
-    }
-    if (!data || !Array.isArray(data.path) || data.path.length < 2) {
-      editorStatus = 'Import failed — missing or too-short path.';
-      return;
-    }
-    const path = data.path
-      .filter((p) => p && typeof p.x === 'number' && typeof p.y === 'number')
-      .map((p) => ({ x: p.x, y: p.y }));
-    if (path.length < 2) {
-      editorStatus = 'Import failed — path points are malformed.';
-      return;
-    }
-
-    const name = (typeof data.name === 'string' && data.name.trim()) || 'Imported Map';
-    const terrain = data.terrain === 'marsh' ? 'marsh' : 'forest';
-    const customMaps = loadCustomMaps();
-    const existingIndex = customMaps.findIndex((m) => m.name === name);
-    let record = { version: 1, name, path, terrain, waves: null, economy: null, towers: null };
-
-    if (existingIndex !== -1) {
-      const overwrite = confirm(
-        `A custom map named "${name}" already exists. Overwrite it? Cancel saves this import as a separate map instead.`
-      );
-      if (overwrite) {
-        customMaps[existingIndex] = record;
-      } else {
-        record = { ...record, name: disambiguateMapName(name, customMaps) };
-        customMaps.push(record);
-      }
-    } else {
-      customMaps.push(record);
-    }
-
-    saveCustomMaps(customMaps);
-    editorStatus = `Imported "${record.name}".`;
-
-    editorPath = record.path.map((p) => ({ x: p.x, y: p.y }));
-    editorTerrainId = record.terrain;
-    editorMapName = record.name;
-    editorSelectedIndex = null;
-  };
-  reader.readAsText(file);
-}
-
-// A single hidden <input type=file>, created lazily — the one bit of real
-// DOM this otherwise-all-canvas game needs, since there's no canvas-native
-// way to open the OS file picker.
-let mapImportInput = null;
-function getMapImportInput() {
-  if (!mapImportInput) {
-    mapImportInput = document.createElement('input');
-    mapImportInput.type = 'file';
-    mapImportInput.accept = 'application/json';
-    mapImportInput.style.display = 'none';
-    mapImportInput.addEventListener('change', () => {
-      const file = mapImportInput.files && mapImportInput.files[0];
-      if (file) importMapFile(file);
-      mapImportInput.value = ''; // allow re-importing the same filename later
-    });
-    document.body.appendChild(mapImportInput);
-  }
-  return mapImportInput;
-}
-
-function renderEditor(ctx) {
-  uiBeginFrame();
-
-  ctx.fillStyle = '#10131a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // World-editing area: terrain color + path only — decor is deliberately
-  // not previewed here (it's regenerated fresh every time a map is
-  // actually played anyway, including for the built-ins' own variety), so
-  // skipping it keeps dragging a point cheap and the path itself legible.
-  const theme = TERRAIN_THEMES[editorTerrainId];
-  ctx.fillStyle = theme.background;
-  ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-
-  const colors = editorTerrainId === 'marsh' ? MARSH_PATH_COLORS : FOREST_PATH_COLORS;
-  if (editorPath.length >= 2) {
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = colors.outline;
-    ctx.lineWidth = 66;
-    strokeMapPath(ctx, editorPath);
-    ctx.strokeStyle = colors.fill;
-    ctx.lineWidth = 56;
-    strokeMapPath(ctx, editorPath);
-  }
-
-  editorPath.forEach((point, i) => {
-    const isStart = i === 0;
-    const isEnd = i === editorPath.length - 1 && editorPath.length > 1;
-    const isSelected = editorSelectedIndex === i;
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, isSelected ? 9 : 7, 0, Math.PI * 2);
-    ctx.fillStyle = isStart ? '#4caf50' : isEnd ? '#e53935' : '#f0f0f0';
-    ctx.fill();
-    ctx.strokeStyle = isSelected ? '#ffeb3b' : '#10131a';
-    ctx.lineWidth = isSelected ? 3 : 2;
-    ctx.stroke();
-    ctx.fillStyle = '#10131a';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), point.x, point.y + 0.5);
-  });
-
-  if (editorPath.length === 0) {
-    ctx.fillStyle = '#aaa';
-    ctx.font = '13px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText('Click anywhere here to start placing waypoints.', 16, 16);
-  }
-
-  // Side panel — same geometry as the in-game panel (renderUI), so both
-  // layouts (side/stacked) already just work here too.
-  ctx.fillStyle = '#12161c';
-  ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
-  ctx.strokeStyle = '#2a2f3a';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  if (layoutMode === 'side') {
-    ctx.moveTo(panelX + 0.5, panelY);
-    ctx.lineTo(panelX + 0.5, panelY + panelHeight);
-  } else {
-    ctx.moveTo(panelX, panelY + 0.5);
-    ctx.lineTo(panelX + panelWidth, panelY + 0.5);
-  }
-  ctx.stroke();
-
-  const contentX = panelX + PANEL_PADDING;
-  const contentWidth = panelWidth - PANEL_PADDING * 2;
-  let y = panelY + PANEL_PADDING;
-
-  ctx.fillStyle = '#f0f0f0';
-  ctx.font = 'bold 15px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText('Map Editor', contentX, y);
-  y += 24;
-
-  const nameLine = editorMapName ? `Name: ${editorMapName}` : 'Not named yet — Save/Export will ask.';
-  y = uiDrawTextLines(ctx, uiWrapText(ctx, nameLine, contentWidth), contentX, y, 15, '#aaa', '12px sans-serif');
-
-  ctx.fillStyle = '#ccc';
-  ctx.font = '12px sans-serif';
-  ctx.fillText(`Waypoints: ${editorPath.length}`, contentX, y);
-  y += 22;
-
-  y = uiDrawTextLines(
-    ctx,
-    uiWrapText(
-      ctx,
-      'Click open ground to add a point. Drag a point to move it. Click a point to select it, then use Delete Selected Point.',
-      contentWidth
-    ),
-    contentX,
-    y,
-    14,
-    '#888',
-    '11px sans-serif'
-  );
-  y += 8;
-
-  ctx.fillStyle = '#f0f0f0';
-  ctx.font = 'bold 12px sans-serif';
-  ctx.fillText('Terrain', contentX, y);
-  y += 18;
-
-  const terrainButtonWidth = (contentWidth - 8) / 2;
-  [
-    ['forest', 'Deep Forest'],
-    ['marsh', 'Marshland'],
-  ].forEach(([id, label], i) => {
-    const bx = contentX + i * (terrainButtonWidth + 8);
-    const regionId = `editor:terrain:${id}`;
-    uiDrawButton(ctx, {
-      x: bx,
-      y,
-      w: terrainButtonWidth,
-      h: 28,
-      label,
-      state: editorTerrainId === id ? 'accent' : 'default',
-      hovered: Boolean(hoverRegion) && hoverRegion.id === regionId,
-    });
-    uiRegisterRegion(regionId, bx, y, terrainButtonWidth, 28, {});
-  });
-  y += 38;
-
-  const canDelete = editorSelectedIndex !== null;
-  uiDrawButton(ctx, {
-    x: contentX,
-    y,
-    w: contentWidth,
-    h: 28,
-    label: 'Delete Selected Point',
-    state: canDelete ? 'default' : 'disabled',
-    hovered: canDelete && Boolean(hoverRegion) && hoverRegion.id === 'editor:delete-point',
-  });
-  uiRegisterRegion('editor:delete-point', contentX, y, contentWidth, 28, {});
-  y += 34;
-
-  uiDrawButton(ctx, {
-    x: contentX,
-    y,
-    w: contentWidth,
-    h: 28,
-    label: 'Clear Path',
-    hovered: Boolean(hoverRegion) && hoverRegion.id === 'editor:clear',
-  });
-  uiRegisterRegion('editor:clear', contentX, y, contentWidth, 28, {});
-  y += 40;
-
-  uiDrawButton(ctx, {
-    x: contentX,
-    y,
-    w: contentWidth,
-    h: 30,
-    label: 'Save',
-    state: 'accent',
-    hovered: Boolean(hoverRegion) && hoverRegion.id === 'editor:save',
-  });
-  uiRegisterRegion('editor:save', contentX, y, contentWidth, 30, {});
-  y += 36;
-
-  const halfWidth = (contentWidth - 8) / 2;
-  uiDrawButton(ctx, {
-    x: contentX,
-    y,
-    w: halfWidth,
-    h: 28,
-    label: 'Export JSON',
-    hovered: Boolean(hoverRegion) && hoverRegion.id === 'editor:export',
-  });
-  uiRegisterRegion('editor:export', contentX, y, halfWidth, 28, {});
-  uiDrawButton(ctx, {
-    x: contentX + halfWidth + 8,
-    y,
-    w: halfWidth,
-    h: 28,
-    label: 'Import JSON',
-    hovered: Boolean(hoverRegion) && hoverRegion.id === 'editor:import',
-  });
-  uiRegisterRegion('editor:import', contentX + halfWidth + 8, y, halfWidth, 28, {});
-  y += 36;
-
-  if (editorStatus) {
-    y = uiDrawTextLines(ctx, uiWrapText(ctx, editorStatus, contentWidth), contentX, y, 14, '#8bc34a', '11px sans-serif');
-    y += 8;
-  }
-
-  uiDrawButton(ctx, {
-    x: contentX,
-    y,
-    w: contentWidth,
-    h: 26,
-    label: '← Back to Menu',
-    hovered: Boolean(hoverRegion) && hoverRegion.id === 'editor:back',
-  });
-  uiRegisterRegion('editor:back', contentX, y, contentWidth, 26, {});
-
-  drawMenuTooltip(ctx);
-}
+// The map editor (gameState === 'editor': draw/save/export/import a
+// custom map) used to live here — removed per direct request, along with
+// its localStorage persistence and the custom-map branch of map-select's
+// listAllMaps(). Deep Forest/Marshland and the menu/mode-select screens
+// above are untouched.
 
 function renderUI(ctx) {
   uiBeginFrame();
@@ -2006,17 +1572,6 @@ function getTooltipLines(region) {
   }
 
   if (region.id === 'start:play') return ['Pick a map, then a mode.'];
-  if (region.id === 'start:editor') return ['Draw your own path and terrain.'];
-
-  if (region.id.startsWith('editor:terrain:')) {
-    return [region.id.endsWith('marsh') ? 'Marshland' : 'Deep Forest', 'Decorates your path with this theme.'];
-  }
-  if (region.id === 'editor:delete-point') return ['Delete the selected waypoint.'];
-  if (region.id === 'editor:clear') return ['Remove every waypoint and start over.'];
-  if (region.id === 'editor:save') return ['Save this map to this browser (localStorage).'];
-  if (region.id === 'editor:export') return ['Download this map as a .json file.'];
-  if (region.id === 'editor:import') return ['Load a map from a .json file.'];
-  if (region.id === 'editor:back') return ['Back to the main menu (unsaved changes are lost).'];
 
   return [];
 }
@@ -2085,11 +1640,6 @@ function activateRegion(region) {
     gameState = 'mapSelect';
     return;
   }
-  if (region.id === 'start:editor') {
-    resetEditorDraft();
-    gameState = 'editor';
-    return;
-  }
 
   if (region.id === 'mapselect:back') {
     gameState = 'menu';
@@ -2098,38 +1648,6 @@ function activateRegion(region) {
   if (region.id.startsWith('mapselect:')) {
     selectedMap = region.data.map;
     gameState = 'modeSelect';
-    return;
-  }
-
-  if (region.id.startsWith('editor:terrain:')) {
-    editorTerrainId = region.id.endsWith('marsh') ? 'marsh' : 'forest';
-    return;
-  }
-  if (region.id === 'editor:delete-point') {
-    if (editorSelectedIndex === null) return;
-    editorPath.splice(editorSelectedIndex, 1);
-    editorSelectedIndex = null;
-    return;
-  }
-  if (region.id === 'editor:clear') {
-    editorPath = [];
-    editorSelectedIndex = null;
-    return;
-  }
-  if (region.id === 'editor:save') {
-    saveEditorMap();
-    return;
-  }
-  if (region.id === 'editor:export') {
-    exportEditorMap();
-    return;
-  }
-  if (region.id === 'editor:import') {
-    getMapImportInput().click();
-    return;
-  }
-  if (region.id === 'editor:back') {
-    gameState = 'menu';
     return;
   }
 
@@ -2201,14 +1719,8 @@ canvas.addEventListener('mousemove', (event) => {
   mouseX = point.x;
   mouseY = point.y;
 
-  if (gameState === 'editor' && editorDraggingIndex !== null && isWorldPoint(mouseX, mouseY)) {
-    editorPath[editorDraggingIndex] = { x: mouseX, y: mouseY };
-    editorJustDragged = true;
-  }
-
   // On the full-screen menu states, the whole canvas is UI — there's no
-  // "world" to exclude. The editor keeps the normal world/panel split
-  // (the world area is where the path is drawn, not a UI region).
+  // "world" to exclude.
   hoverRegion = MENU_STATES.has(gameState) || !isWorldPoint(point.x, point.y) ? uiHitTest(point.x, point.y) : null;
 });
 
@@ -2216,53 +1728,10 @@ canvas.addEventListener('mouseleave', () => {
   mouseX = null;
   mouseY = null;
   hoverRegion = null;
-  editorDraggingIndex = null;
-});
-
-// Editor-only: press on an existing waypoint starts dragging it; press on
-// open ground does nothing here (adding a new point happens on 'click'
-// below, once we know the press didn't turn into a drag).
-canvas.addEventListener('mousedown', (event) => {
-  if (gameState !== 'editor') return;
-  const { x, y } = getCanvasPoint(event);
-  if (!isWorldPoint(x, y)) return;
-  const idx = findEditorWaypointAt(x, y);
-  if (idx !== -1) {
-    editorDraggingIndex = idx;
-    editorSelectedIndex = idx;
-    editorJustDragged = false;
-  }
-});
-
-canvas.addEventListener('mouseup', () => {
-  editorDraggingIndex = null;
 });
 
 canvas.addEventListener('click', (event) => {
   const { x, y } = getCanvasPoint(event);
-
-  if (gameState === 'editor') {
-    if (isWorldPoint(x, y)) {
-      // mouseup (above) already cleared editorDraggingIndex by the time
-      // this fires — editorJustDragged is what actually tells a real drag
-      // (point already moved live, nothing more to do) apart from a plain
-      // click (add/select a point).
-      if (!editorJustDragged) {
-        const idx = findEditorWaypointAt(x, y);
-        if (idx === -1) {
-          editorPath.push({ x, y });
-          editorSelectedIndex = editorPath.length - 1;
-        } else {
-          editorSelectedIndex = idx; // a plain click on an existing point selects it
-        }
-      }
-      editorJustDragged = false;
-      return;
-    }
-    const region = uiHitTest(x, y);
-    if (region) activateRegion(region);
-    return;
-  }
 
   if (MENU_STATES.has(gameState)) {
     const region = uiHitTest(x, y);
@@ -2309,24 +1778,6 @@ canvas.addEventListener(
     if (!touch) return;
     const { x, y } = getCanvasPoint(touch);
 
-    if (gameState === 'editor') {
-      if (isWorldPoint(x, y)) {
-        const idx = findEditorWaypointAt(x, y);
-        if (idx !== -1) {
-          editorDraggingIndex = idx;
-          editorSelectedIndex = idx;
-          editorPendingAdd = null;
-        } else {
-          editorDraggingIndex = null;
-          editorPendingAdd = { x, y }; // only committed on touchend if the finger never moved (see touchmove)
-        }
-        return;
-      }
-      const region = uiHitTest(x, y);
-      if (region) activateRegion(region); // editor panel buttons act immediately, same as a tap elsewhere
-      return;
-    }
-
     if (MENU_STATES.has(gameState) || !isWorldPoint(x, y)) {
       const region = uiHitTest(x, y);
       if (region) {
@@ -2348,15 +1799,6 @@ canvas.addEventListener(
     if (!touch) return;
     const { x, y } = getCanvasPoint(touch);
 
-    if (gameState === 'editor') {
-      if (editorDraggingIndex !== null && isWorldPoint(x, y)) {
-        editorPath[editorDraggingIndex] = { x, y };
-      } else if (editorPendingAdd) {
-        editorPendingAdd = null; // moved away from the empty-space touch — treat as a pan, not a tap-to-add
-      }
-      return;
-    }
-
     if (!touchHold) return;
     if (Math.hypot(x - touchHold.startX, y - touchHold.startY) > TOUCH_MOVE_CANCEL_PX) {
       touchHold = null; // dragged away — cancel outright, no tooltip, no action
@@ -2368,16 +1810,6 @@ canvas.addEventListener(
 canvas.addEventListener(
   'touchend',
   () => {
-    if (gameState === 'editor') {
-      if (editorPendingAdd) {
-        editorPath.push(editorPendingAdd);
-        editorSelectedIndex = editorPath.length - 1;
-      }
-      editorDraggingIndex = null;
-      editorPendingAdd = null;
-      return;
-    }
-
     if (!touchHold) return;
     const held = touchHold;
     touchHold = null;
