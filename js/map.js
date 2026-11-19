@@ -453,14 +453,22 @@ function drawCactus(ctx, x, y, size) {
 // A loose cluster of rounded boulders, layered light-over-dark for a
 // touch of depth — reads as "sandstone outcrop" without needing any real
 // rock texture at this scale.
+// Lightened and cooled from an earlier, more saturated brown ('#7a5a38')
+// specifically because the ground background behind it got brightened to
+// a vivid orange (TERRAIN_THEMES.desert, map.js) — that original brown
+// sat too close to the new ground's own hue/brightness and the rock
+// clusters started blending in; this tan-gray reads as clearly distinct
+// stone against the orange sand instead.
+const SANDSTONE_COLOR = '#9c8560';
+
 function drawSandstoneFormation(ctx, x, y, r) {
-  ctx.fillStyle = '#7a5a38';
+  ctx.fillStyle = SANDSTONE_COLOR;
   [[-0.4, 0.1, 1], [0.3, 0.2, 0.8], [0, -0.3, 0.65]].forEach(([dx, dy, scale]) => {
     ctx.beginPath();
     ctx.ellipse(x + dx * r, y + dy * r, r * 0.55 * scale, r * 0.4 * scale, 0, 0, Math.PI * 2);
     ctx.fill();
   });
-  ctx.fillStyle = shadeColor('#7a5a38', 18);
+  ctx.fillStyle = shadeColor(SANDSTONE_COLOR, 18);
   ctx.beginPath();
   ctx.ellipse(x - r * 0.1, y - r * 0.35, r * 0.3, r * 0.18, -0.2, 0, Math.PI * 2);
   ctx.fill();
@@ -560,10 +568,14 @@ const TERRAIN_THEMES = {
   // black olive (channels 20-36/255), so shadeColor's linear percent-of-
   // 255 scale crushes it to literal black well before -20%.
   marsh: { background: shadeColor('#1b2414', -6), renderDecor: renderMarshDecor },
-  // A dark, dusky sand-brown rather than a bright daytime tan — matches
-  // the moody-dark palette every other map (and the UI chrome around it)
-  // already uses, same reasoning as Marshland's own darkening pass.
-  desert: { background: '#241a0f', renderDecor: renderDesertDecor },
+  // Direct request: the original dark dusky sand-brown ('#241a0f', the
+  // same moody-dark reasoning Marshland's background uses) read as too
+  // muted/desaturated — bumped to a genuinely bright, saturated orange so
+  // the ground reads unmistakably as hot desert sand. Scoped to Savanah
+  // only, same as Marshland's own darkening pass was scoped to Marshland
+  // only. See SAVANAH_PATH_COLORS and drawSandstoneFormation's own
+  // comments for the related contrast adjustments this required.
+  desert: { background: '#c8601f', renderDecor: renderDesertDecor },
 };
 
 // ---------------------------------------------------------------------------
