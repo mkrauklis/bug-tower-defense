@@ -318,6 +318,32 @@ const PROJECTILE_SPEED = 400; // px/second, baseline pick — fast but visible
 const PROJECTILE_HIT_TOLERANCE = 20; // px of target drift still counted as a hit
 let projectiles = [];
 
+// Neurological's one-time tower-consumption (see consumeTowersInRange()
+// below) needs some feedback at each consumed tower's former position —
+// an expanding, fading dark ring — so it doesn't look like towers just
+// silently vanished. One entry per consumed tower, independent of the
+// infectStun mechanic's own per-frame state.
+const CONSUMED_EFFECT_DURATION = 0.6;
+let consumedTowerEffects = [];
+
+function updateConsumedTowerEffects(deltaSeconds) {
+  consumedTowerEffects.forEach((effect) => {
+    effect.remaining -= deltaSeconds;
+  });
+  consumedTowerEffects = consumedTowerEffects.filter((effect) => effect.remaining > 0);
+}
+
+function renderConsumedTowerEffects(ctx) {
+  consumedTowerEffects.forEach((effect) => {
+    const progress = 1 - effect.remaining / CONSUMED_EFFECT_DURATION; // 0 -> 1 as it expands/fades
+    ctx.strokeStyle = `rgba(123, 31, 162, ${1 - progress})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(effect.x, effect.y, 10 + progress * 40, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+}
+
 function spawnProjectile(tower, target, damageMultiplier = 1) {
   const dx = target.x - tower.x;
   const dy = target.y - tower.y;
@@ -517,7 +543,52 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   });
   if (tower.roots.length > 0) updateTowerRoots(tower);
   if (tower.hasThornShot) updateTowerThornShot(tower, x, y, deltaSeconds);
+  if (tower.infectStun) updateTowerInfectStun(tower, x, y, deltaSeconds);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
+}
+
+// Mushroom's Infect Path (all 4 tiers): once a second, independently roll
+// tower.infectStun.chance against every enemy currently in range — same
+// periodic-timer shape as updateTowerPuddle's interval cooldown above, but
+// every enemy gets its own roll each tick rather than one roll per cycle,
+// since the spec calls for an independent per-enemy chance, not an
+// all-or-nothing area proc. A hit sets enemy.infectedRemaining up to the
+// tier's duration (never down — re-infecting mid-stun just refreshes it,
+// same `Math.max` convention immobilize already uses) rather than stacking
+// durations, which would let overlapping Mushrooms chain-stun forever.
+function updateTowerInfectStun(tower, x, y, deltaSeconds) {
+  tower.infectCooldown -= deltaSeconds;
+  if (tower.infectCooldown > 0) return;
+  tower.infectCooldown += 1;
+
+  getEnemiesInRadius(x, y, tower.stats.range).forEach((enemy) => {
+    if (random() < tower.infectStun.chance) {
+      enemy.infectedRemaining = Math.max(enemy.infectedRemaining, tower.infectStun.duration);
+    }
+  });
+}
+
+// Every other tower whose center sits within `mushroom`'s own range stat —
+// the same "towers in its range" reading the Enable Path's aura already
+// uses (there it buffs them, here Neurological destroys them). A plain
+// query function, no side effects, so both the confirm-prompt preview in
+// activateRegion and consumeTowersInRange() itself can share it.
+function getTowersInRange(mushroom) {
+  return towers.filter((tower) => tower !== mushroom && Math.hypot(tower.x - mushroom.x, tower.y - mushroom.y) <= mushroom.stats.range);
+}
+
+// Neurological's one-time effect: instantly destroys every other tower
+// currently in range, no refund, the moment it's purchased — confirmed by
+// the user as a ONE-TIME effect, not an ongoing aura, so this runs once
+// from activateRegion's upgrade-purchase branch and nothing re-checks it
+// later. Towers placed afterward, or towers that move into range later,
+// are never touched by it.
+function consumeTowersInRange(mushroom) {
+  const victims = getTowersInRange(mushroom);
+  victims.forEach((tower) => {
+    consumedTowerEffects.push({ x: tower.x, y: tower.y, remaining: CONSUMED_EFFECT_DURATION });
+  });
+  towers = towers.filter((tower) => !victims.includes(tower));
 }
 
 // Rose's Projectile Path: a second, independent ranged attack alongside the
@@ -716,6 +787,7 @@ function update(deltaSeconds) {
 
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
   updateProjectiles(deltaSeconds);
+  updateConsumedTowerEffects(deltaSeconds);
 
   // Horde Mode has no wave boundary to auto-continue across — it paces
   // itself independently of autoContinue/activeEnemies, via its own timer.
@@ -803,8 +875,9 @@ function render() {
   towers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
   towers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
 
-  renderEnemies(ctx);
+  renderEnemies(ctx, animationTime);
   renderProjectiles(ctx);
+  renderConsumedTowerEffects(ctx);
   renderWildlife(ctx, wildlife, animationTime, 'firefly'); // glowing, drawn on top so it reads over everything
 
   if (selectedShopItem && mouseX !== null && isWorldPoint(mouseX, mouseY)) {
@@ -1909,9 +1982,26 @@ function activateRegion(region) {
     const { pathIndex, upgrade, isNextInLine } = region.data;
     if (!isNextInLine || !selectedTower) return;
     if (!canAfford(upgrade.cost)) return;
+
+    // Neurological's one-time tower-consumption (consumeTowersInRange,
+    // below) needs explicit confirmation before committing — there's no
+    // refund or undo once it's done, so it must never happen silently.
+    // Skipped when nothing is actually in range to consume, so an empty
+    // board isn't bothered with a pointless prompt.
+    if (upgrade.effects.consumeTowersInRange) {
+      const victims = getTowersInRange(selectedTower);
+      if (victims.length > 0) {
+        const confirmed = confirm(
+          `This will instantly destroy ${victims.length} other tower(s) in range. No refund. Continue?`
+        );
+        if (!confirmed) return;
+      }
+    }
+
     if (purchaseUpgrade(selectedTower, pathIndex)) {
       money -= upgrade.cost;
       selectedTower.moneySpent += upgrade.cost;
+      if (upgrade.effects.consumeTowersInRange) consumeTowersInRange(selectedTower);
     }
     return;
   }

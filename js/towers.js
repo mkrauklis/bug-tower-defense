@@ -487,7 +487,64 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 3 — not yet designed.
+      {
+        // Named explicitly by the user. A periodic AoE crowd-control path:
+        // once a second, every bug currently within range gets its own
+        // independent roll to be stunned — reusing the "periodic effect
+        // ticking down its own cooldown" shape Storm Path's
+        // Conductor/Shockwave and magma puddles already established, not a
+        // new timing mechanism (see updateTowerInfectStun() in game.js).
+        // Each tier's chance/duration REPLACES the previous tier's outright
+        // (same reasoning/mechanism as Enable Path's aura and Decay's
+        // zombifyChance — these are absolute per-tier numbers, not deltas).
+        // A stunned bug gets its own distinct "infected" visual (a pulsing
+        // green glow + mold flecks — see renderEnemies() in enemies.js),
+        // separate from Root Path's immobilize ring so the two effects
+        // never visually collide if a bug is ever hit by both at once.
+        //
+        // Neurological's one-time tower-consumption: confirmed with the
+        // user directly — it only fires at the instant of purchase (every
+        // *other* tower currently in the Mushroom's range right then is
+        // destroyed, no refund; towers placed in range afterward are safe).
+        // Implemented as a plain `consumeTowersInRange` flag this path's
+        // data carries — the actual removal (and the confirmation prompt
+        // before committing to anything destructive/irreversible) happens
+        // in game.js's activateRegion, which is the one place that already
+        // has both the global towers list and the player's input.
+        name: 'Infect Path',
+        upgrades: [
+          {
+            name: 'Rashy',
+            description:
+              'Every second, each bug within range independently has a 10% chance to stop moving (stunned) for ' +
+              '1 second.',
+            cost: 300,
+            effects: { infectStun: { chance: 0.1, duration: 1 } },
+          },
+          {
+            name: 'Respiratory',
+            description:
+              'Every second, each bug within range has a 15% chance to stop for 2 seconds (replaces Rashy’s ' +
+              'numbers, not stacked with them).',
+            cost: 850,
+            effects: { infectStun: { chance: 0.15, duration: 2 } },
+          },
+          {
+            name: 'Circulatory',
+            description: 'Every second, each bug within range has a 20% chance to stop for 3 seconds.',
+            cost: 2000,
+            effects: { infectStun: { chance: 0.2, duration: 3 } },
+          },
+          {
+            name: 'Neurological',
+            description:
+              'Every second, each bug within range has a 30% chance to stop for 5 seconds. One-time effect: the ' +
+              'instant this is bought, every other tower currently in range is destroyed — no refund.',
+            cost: 5000,
+            effects: { infectStun: { chance: 0.3, duration: 5 }, consumeTowersInRange: true },
+          },
+        ],
+      },
     ],
   },
 };
@@ -590,6 +647,19 @@ function createTower(typeKey) {
     capWidthMultiplier: 1, // Range/Fungus Juice: the cap visibly widens
     gillLines: false, // Range and up: extra gill detail under the cap
     showAuraRing: false, // Fungus Juice only: a faint ring at the aura's actual radius
+    // Mushroom's Infect Path: { chance, duration } once bought, REPLACED
+    // (not compounded) by each later tier the same way Enable Path's aura
+    // and Decay's zombifyChance already are — each tier states its own
+    // complete absolute numbers, not a delta on the last. Rolled once a
+    // second per enemy currently in range — see updateTowerInfectStun() in
+    // game.js. infectCooldown is the periodic timer driving that roll
+    // (same "don't fire instantly on purchase" convention puddle/spark/
+    // shockwave already use). The species drawn also changes per tier —
+    // see drawInfectMushroom() in this file — so chosenPath/
+    // upgradesPurchased alone (not a separate flag) pick the art once this
+    // is non-null.
+    infectStun: null,
+    infectCooldown: 0,
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
@@ -720,6 +790,16 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.capWidthMultiplier) tower.capWidthMultiplier *= effects.capWidthMultiplier;
   if (effects.gillLines) tower.gillLines = true;
   if (effects.showAuraRing) tower.showAuraRing = true;
+  if (effects.infectStun !== undefined) {
+    tower.infectStun = effects.infectStun;
+    tower.infectCooldown = 1; // don't roll instantly on purchase
+  }
+  // consumeTowersInRange (Neurological) is handled entirely in game.js's
+  // activateRegion — it needs the global towers list (to actually remove
+  // them) and the player's confirmation first, neither of which belongs
+  // in this generic, side-effect-free-on-other-towers function. Nothing
+  // to do with it here beyond leaving it in `effects` for that caller to
+  // read.
 
   tower.upgradesPurchased += 1;
   return true;
@@ -867,23 +947,31 @@ function renderTower(ctx, tower, x, y, time) {
       tower.longThorns
     );
   } else if (tower.type === 'mushroom') {
-    drawMushroom(
-      ctx,
-      x,
-      y,
-      size,
-      tower.stats.color,
-      tower.glow,
-      time,
-      flashAmount,
-      tower.capHeightMultiplier,
-      tower.hasSkull,
-      tower.gasColor,
-      tower.capWidthMultiplier,
-      tower.gillLines,
-      tower.showAuraRing ? tower.stats.range : 0,
-      tower.sporeParticles
-    );
+    // Infect Path (index 2) changes the Mushroom's actual species per
+    // tier rather than recoloring the same toadstool shape — see
+    // drawInfectMushroom()'s own comment for why it's a separate function
+    // instead of more parameters on drawMushroom().
+    if (tower.chosenPath === 2 && tower.upgradesPurchased >= 1) {
+      drawInfectMushroom(ctx, x, y, size, time, flashAmount, tower.upgradesPurchased);
+    } else {
+      drawMushroom(
+        ctx,
+        x,
+        y,
+        size,
+        tower.stats.color,
+        tower.glow,
+        time,
+        flashAmount,
+        tower.capHeightMultiplier,
+        tower.hasSkull,
+        tower.gasColor,
+        tower.capWidthMultiplier,
+        tower.gillLines,
+        tower.showAuraRing ? tower.stats.range : 0,
+        tower.sporeParticles
+      );
+    }
   } else {
     // Fallback for any future tower type without custom art yet.
     ctx.fillStyle = tower.stats.color;
@@ -1474,5 +1562,182 @@ function drawMushroomGas(ctx, x, y, size, color, time) {
     ctx.arc(gx, gy, size * 0.16 * (1 + t * 0.6), 0, Math.PI * 2);
     ctx.fill();
   });
+  ctx.globalAlpha = 1;
+}
+
+// Infect Path (TOWER_TYPES.mushroom.upgradePaths[2]) swaps the Mushroom's
+// actual species at each tier instead of recoloring the same toadstool
+// shape — the same "real visual variety, not just color/size tweaks" bar
+// the Enable Path's sprite work was held to, pushed further here since the
+// spec explicitly calls for escalating diseased/parasitic/alien species.
+// Kept as its own function (rather than more parameters bolted onto
+// drawMushroom()) since the body shapes genuinely differ tier to tier, not
+// just their colors/details — Neurological in particular isn't a domed
+// cap at all.
+function drawInfectMushroom(ctx, x, y, size, time, flashAmount, tier) {
+  const isStinkhorn = tier >= 4;
+  const stemHeight = size * (isStinkhorn ? 1.25 : 0.9);
+  const stemWidth = isStinkhorn ? 0.09 : 0.2;
+  const groundY = y + stemHeight;
+  const sway = Math.sin(time * 1.1 + x * 0.011) * 0.04;
+
+  ctx.save();
+  ctx.translate(x, groundY);
+  ctx.rotate(sway);
+  ctx.translate(-x, -groundY);
+
+  // Stem sickens from pale cream toward blackened rot as the tiers climb,
+  // same escalation the cap shapes themselves follow.
+  ctx.fillStyle = tier === 1 ? '#f1e8d0' : tier === 2 ? '#ece7da' : tier === 3 ? '#8a7d6b' : '#44392f';
+  ctx.strokeStyle = tier === 1 ? '#c9b896' : '#2e2620';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - size * stemWidth, groundY);
+  ctx.quadraticCurveTo(x - size * (stemWidth + 0.04), y + stemHeight * 0.4, x - size * (stemWidth - 0.06), y);
+  ctx.lineTo(x + size * (stemWidth - 0.06), y);
+  ctx.quadraticCurveTo(x + size * (stemWidth + 0.04), y + stemHeight * 0.4, x + size * stemWidth, groundY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.translate(x, y);
+  ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
+  ctx.translate(-x, -y);
+
+  if (tier === 1) drawRashyCap(ctx, x, y, size, time);
+  else if (tier === 2) drawRespiratoryCap(ctx, x, y, size, time);
+  else if (tier === 3) drawCirculatoryCap(ctx, x, y, size, time);
+  else drawNeurologicalCap(ctx, x, y, size, time);
+
+  ctx.restore();
+}
+
+// Rashy ($300): the mildest tier — still a recognizable toadstool cap, but
+// a sickly yellow-green instead of a healthy color, with irregular red
+// rash blotches (faintly pulsing) replacing the classic white spots.
+function drawRashyCap(ctx, x, y, size, time) {
+  const capWidth = size * 0.75;
+  const base = '#9fae5a';
+  ctx.fillStyle = base;
+  ctx.beginPath();
+  ctx.ellipse(x, y, capWidth, size * 0.55, 0, Math.PI, 0, false);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(base, -22);
+  ctx.beginPath();
+  ctx.ellipse(x, y, capWidth, size * 0.14, 0, 0, Math.PI, false);
+  ctx.fill();
+
+  ctx.fillStyle = '#c0392b';
+  [
+    [-0.35, -0.3],
+    [0.15, -0.42],
+    [0.4, -0.15],
+    [-0.05, -0.1],
+    [0.3, -0.3],
+    [-0.25, -0.15],
+  ].forEach(([dx, dy], i) => {
+    const pulse = 0.5 + 0.5 * Math.sin(time * 2 + i);
+    ctx.globalAlpha = 0.55 + pulse * 0.2;
+    ctx.beginPath();
+    ctx.ellipse(x + dx * size, y + dy * size, size * 0.1, size * 0.07, dx, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// Respiratory ($850): Lion's Mane — a shaggy pale pom-pom instead of a
+// smooth domed cap. Radiating, slightly wobbling spike lines sell the
+// "shaggy" read at tower scale; a literal fur texture wouldn't survive
+// this small.
+function drawRespiratoryCap(ctx, x, y, size, time) {
+  ctx.fillStyle = '#ece7da';
+  ctx.beginPath();
+  ctx.arc(x, y - size * 0.1, size * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#d8d0bc';
+  ctx.lineWidth = 1.5;
+  const spikeCount = 14;
+  for (let i = 0; i < spikeCount; i += 1) {
+    const angle = (i / spikeCount) * Math.PI * 2 + time * 0.1;
+    const innerR = size * 0.42;
+    const outerR = size * (0.58 + 0.08 * Math.sin(time * 3 + i));
+    const innerX = x + Math.cos(angle) * innerR;
+    const innerY = y - size * 0.1 + Math.sin(angle) * innerR * 0.7;
+    const outerX = x + Math.cos(angle) * outerR;
+    const outerY = y - size * 0.1 + Math.sin(angle) * outerR * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(innerX, innerY);
+    ctx.lineTo(outerX, outerY);
+    ctx.stroke();
+  }
+}
+
+// Circulatory ($2000): a deep red cap with branching, vein-like lines
+// pulsing brighter in sync with the same clock driving the infected-enemy
+// glow in enemies.js — ties the tower's own art to the effect it inflicts.
+function drawCirculatoryCap(ctx, x, y, size, time) {
+  const capWidth = size * 0.78;
+  const base = '#6b1515';
+  ctx.fillStyle = base;
+  ctx.beginPath();
+  ctx.ellipse(x, y, capWidth, size * 0.56, 0, Math.PI, 0, false);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(base, -25);
+  ctx.beginPath();
+  ctx.ellipse(x, y, capWidth, size * 0.14, 0, 0, Math.PI, false);
+  ctx.fill();
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 4);
+  ctx.strokeStyle = `rgba(255, 60, 60, ${0.4 + pulse * 0.3})`;
+  ctx.lineWidth = 1.2;
+  [-0.5, -0.22, 0, 0.22, 0.5].forEach((t) => {
+    const midX = x + t * capWidth * 0.6;
+    const midY = y - size * 0.18;
+    const endX = x + t * capWidth * 1.3;
+    const endY = y - size * 0.02;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(midX, midY, endX, endY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(midX, midY);
+    ctx.lineTo(midX + t * capWidth * 0.2, midY - size * 0.1);
+    ctx.stroke();
+  });
+}
+
+// Neurological ($5000): a stinkhorn — a tall narrow dark cone, not a dome
+// at all, the most alien-looking of the four. Matches the tier that also
+// one-time-consumes every other tower in range on purchase (see
+// consumeTowersInRange() in game.js); dripping dark marks down the cap
+// plus one slowly falling droplet sell "actively oozing," not just
+// discolored.
+function drawNeurologicalCap(ctx, x, y, size, time) {
+  ctx.fillStyle = '#2b1f33';
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * 0.75);
+  ctx.lineTo(x - size * 0.32, y + size * 0.05);
+  ctx.lineTo(x + size * 0.32, y + size * 0.05);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#1a1220';
+  [
+    [-0.1, 0.1],
+    [0.15, 0.25],
+    [-0.2, 0.3],
+    [0.05, 0.4],
+  ].forEach(([dx, dyFrac]) => {
+    ctx.beginPath();
+    ctx.arc(x + dx * size, y - size * 0.75 + dyFrac * size, size * 0.04, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  const dripT = (time * 0.3) % 1;
+  ctx.globalAlpha = 1 - dripT;
+  ctx.beginPath();
+  ctx.arc(x + size * 0.08, y - size * 0.6 + dripT * size * 0.7, size * 0.045, 0, Math.PI * 2);
+  ctx.fill();
   ctx.globalAlpha = 1;
 }

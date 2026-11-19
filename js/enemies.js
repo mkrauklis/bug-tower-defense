@@ -300,6 +300,13 @@ function createEnemyInstance(entry, spawnDelay) {
     spawnDelay,
     spawned: false,
     immobilizedRemaining: 0, // seconds left held in place by Root Path's Tanglement grab, if any
+    // Mushroom's Infect Path: seconds left stopped by its periodic stun
+    // roll — a separate field from immobilizedRemaining (not reused) so
+    // the two effects' own distinct visuals (a dashed hold-ring vs. an
+    // infected tint, see renderEnemies()) can't get conflated if an enemy
+    // somehow has both active at once; movement is blocked while *either*
+    // is above 0 (see updateEnemies()).
+    infectedRemaining: 0,
     // Millipede-family only: a trail of recent head positions, spaced by
     // arc length (not time), that trailing body segments read their own
     // position from — see recordTrailPoint()/renderMillipedeBody() below.
@@ -488,10 +495,15 @@ function updateEnemies(deltaSeconds) {
       if (enemy.burn.remaining <= 0) enemy.burn = null;
     }
 
-    // Grabbed by a Tanglement root — held in place (movement only; burn
-    // above still ticks normally) until the hold expires.
-    if (enemy.immobilizedRemaining > 0) {
+    // Grabbed by a Tanglement root, and/or stunned by Infect Path's spore
+    // infection — either one alone (or both at once) holds the enemy in
+    // place; movement only, burn above still ticks normally. Both timers
+    // count down regardless of which one is actually still active, so
+    // whichever ends first just quietly reaches 0 without affecting the
+    // other.
+    if (enemy.immobilizedRemaining > 0 || enemy.infectedRemaining > 0) {
       enemy.immobilizedRemaining = Math.max(0, enemy.immobilizedRemaining - deltaSeconds);
+      enemy.infectedRemaining = Math.max(0, enemy.infectedRemaining - deltaSeconds);
       return;
     }
 
@@ -1223,7 +1235,7 @@ function drawZombieMushroomCap(ctx, x, y, size) {
   ctx.fillRect(x - size * 0.15, y, size * 0.3, size * 0.45);
 }
 
-function renderEnemies(ctx) {
+function renderEnemies(ctx, time) {
   activeEnemies.forEach((enemy) => {
     if (!enemy.spawned) return;
 
@@ -1279,6 +1291,34 @@ function renderEnemies(ctx) {
       ctx.arc(enemy.x, enemy.y, enemy.radius + 4, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
+    }
+
+    // Infect Path's stun gets its own distinct look — a sickly green,
+    // slowly pulsing glow hugging the body (via shadowBlur, same glow
+    // technique fireflies already use elsewhere in this codebase, rather
+    // than a canvas-compositing tint that would also bleed onto whatever's
+    // drawn underneath) plus a few small fuzzy mold patches on top —
+    // deliberately different from burn's small orange dot and Tanglement's
+    // dashed ring, so "infected" reads as its own thing at a glance rather
+    // than generic "stopped."
+    if (enemy.infectedRemaining > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(time * 4);
+      ctx.save();
+      ctx.shadowColor = '#7cb342';
+      ctx.shadowBlur = 6 + pulse * 6;
+      ctx.strokeStyle = `rgba(124, 179, 66, ${0.5 + pulse * 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.radius + 1, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = '#7cb342';
+      [[-0.5, -0.3], [0.4, -0.1], [0.1, 0.4], [-0.3, 0.35]].forEach(([dx, dy]) => {
+        ctx.beginPath();
+        ctx.arc(enemy.x + dx * enemy.radius, enemy.y + dy * enemy.radius, enemy.radius * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+      });
     }
 
     const barWidth = enemy.radius * 2;

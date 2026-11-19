@@ -204,6 +204,8 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       PLAYER_STARTING_HEALTH,
       triggerGameOver,
       getGameOverStats: () => gameOverStats,
+      getTowersInRange, consumeTowersInRange,
+      getConsumedTowerEffects: () => consumedTowerEffects,
     };
     `,
     context
