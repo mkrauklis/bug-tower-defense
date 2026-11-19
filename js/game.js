@@ -790,12 +790,18 @@ function updateTowerVines(tower, x, y, deltaSeconds) {
   }
 }
 
-// Generic passive-income accrual — sums every tower's incomeRate (0 for
-// every type except Coneflower today, see towers.js's createTower()) and
-// credits it to `money`, scaled by the elapsed time, exactly like any
-// other per-second rate in this game. Deliberately has no Coneflower-
-// specific code: a future income-generating tower just needs its own
-// nonzero incomeRate and this already covers it.
+// Generic passive-income payout — every tower with a positive incomeRate
+// pays out that many dollars, as a lump sum, once every
+// incomeTickInterval seconds (1 by default; Coneflower's Overgrowth Path
+// is the only thing that ever shortens it — see towers.js's
+// purchaseUpgrade()). A discrete per-tick payout rather than a smooth
+// per-second accrual specifically because Overgrowth Path's "X% faster"
+// tiers need an actual interval to shorten; for every other tower
+// (always a 1-second interval), the end result is the same total $ per
+// real second either way. Deliberately has no Coneflower-specific code:
+// a future income-generating tower just needs its own nonzero incomeRate
+// and this already covers it, Overgrowth-style variable intervals
+// included.
 //
 // Gated on activeEnemies.length > 0 — the exact same condition the manual
 // "Next Round" button's own waveInProgress check already uses (see
@@ -808,22 +814,24 @@ function updateTowerVines(tower, x, y, deltaSeconds) {
 // existing "unlimited money, no consequences" philosophy. Horde Mode
 // counts too: this runs before its early-return below, since Horde's
 // enemies are "a wave" just as much as a normal round's are.
+//
+// The "+$X" floating-text popup (spawnFloatingText(), above) fires on
+// the exact same tick as the payout itself — there's no separate cosmetic
+// timer for it, since the payout already has a real discrete event to
+// hang a popup off. Showing it at the tower's own current incomeRate
+// means it stays correct through every upgrade tier automatically.
 function updateTowerIncome(deltaSeconds) {
   if (activeEnemies.length === 0) return;
-  const totalIncomeRate = towers.reduce((sum, tower) => sum + tower.incomeRate, 0);
-  if (totalIncomeRate > 0) money += totalIncomeRate * deltaSeconds;
-
-  // The "+$X" floating-text popup (spawnFloatingText(), above) fires on
-  // its own 1-second cadence (tower.incomeTickCooldown) — a separate,
-  // purely cosmetic timer from the continuous accrual above, which has
-  // no "tick" of its own to hang a popup off. Showing it at the tower's
-  // own current incomeRate means it stays correct through every Quality
-  // Path tier automatically, no extra wiring needed per tier.
   towers.forEach((tower) => {
     if (tower.incomeRate <= 0) return;
     tower.incomeTickCooldown -= deltaSeconds;
-    if (tower.incomeTickCooldown <= 0) {
-      tower.incomeTickCooldown += 1;
+    // A `while`, not an `if` — a long enough deltaSeconds (a lag spike, or
+    // a test driving many seconds in one call) could otherwise cross a
+    // short Overgrowth-Path interval more than once and silently drop a
+    // payout instead of catching up.
+    while (tower.incomeTickCooldown <= 0) {
+      tower.incomeTickCooldown += tower.incomeTickInterval;
+      money += tower.incomeRate;
       spawnFloatingText(tower.x, tower.y - getTowerVisualSize(tower), `+$${tower.incomeRate}`);
     }
   });
@@ -1025,15 +1033,11 @@ function renderShopSection(ctx, x, width, startY) {
   ctx.fillStyle = '#c0ca33';
   ctx.font = '13px sans-serif';
   ctx.textAlign = 'right';
-  // Floored, not the raw value — Coneflower's passive income accrues in
-  // fractional dollars every frame (updateTowerIncome(), $/sec * a
-  // fractional deltaSeconds), so `money` itself is allowed to carry a
-  // fractional remainder between ticks rather than losing it to rounding
-  // every single frame (which, at a $2/sec rate and 60fps, would round
-  // every frame's ~$0.03 contribution down to $0 and money would never
-  // actually increase). Every comparison/spend against `money` elsewhere
-  // (canAfford, `money -= cost`) works identically on a float, so only
-  // this display site needs to care.
+  // Floored defensively rather than assumed-integer — updateTowerIncome()
+  // pays out in discrete whole-dollar lump sums (not a smooth per-frame
+  // accrual), so `money` should already be a whole number in practice,
+  // but flooring here costs nothing and guards against any future income
+  // source that isn't quite so tidy.
   ctx.fillText(currentMode && currentMode.sandbox ? '∞' : `$${Math.floor(money)}`, x + width, y + 1);
   ctx.textAlign = 'left';
   y += 26;
@@ -1118,7 +1122,15 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
     // Shown for every tower (0/'none' for every type but Coneflower today),
     // same "always listed, defaults to none" convention as every other
     // stat line here — not hidden behind a type check.
-    const incomeText = selectedTower.incomeRate > 0 ? `$${selectedTower.incomeRate}/sec while a wave is active` : 'none';
+    // "$X/sec" reads fine at the default 1-second tick interval (the
+    // common case); Overgrowth Path towers shorten that interval, so they
+    // get the literal "$X every Ys" phrasing instead once it's not 1.
+    const incomeText =
+      selectedTower.incomeRate > 0
+        ? selectedTower.incomeTickInterval === 1
+          ? `$${selectedTower.incomeRate}/sec while a wave is active`
+          : `$${selectedTower.incomeRate} every ${selectedTower.incomeTickInterval.toFixed(2)}s while a wave is active`
+        : 'none';
     const lines = [
       `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
       `Size: ${selectedTower.stats.size.toFixed(1)}`,

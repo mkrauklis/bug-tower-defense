@@ -3,12 +3,13 @@ const assert = require('node:assert/strict');
 const { loadFullGameContext } = require('./support/loadGame');
 
 // Coneflower is a different kind of tower: passive income, no combat.
-// updateTowerIncome() is the new generic mechanism — it sums every
-// tower's incomeRate (0 for every type except Coneflower today) and
-// credits it to `money`, gated on activeEnemies.length > 0, the exact
-// same condition the "Next Round" button's own waveInProgress check
-// already uses. These tests cover the accrual logic itself and each
-// Quality Path tier's absolute (not additive) rate.
+// updateTowerIncome() is the generic mechanism — every tower with a
+// positive incomeRate pays out that many dollars, as a lump sum, once
+// every incomeTickInterval seconds (1 by default), gated on
+// activeEnemies.length > 0 — the exact same condition the "Next Round"
+// button's own waveInProgress check already uses. These tests cover the
+// payout/tick logic itself, each Quality Path tier's absolute (not
+// additive) rate, and the Overgrowth Path's plant-count/interval math.
 
 function makeTestEnemy(overrides) {
   return {
@@ -53,16 +54,31 @@ test('updateTowerIncome adds nothing while no wave is active (activeEnemies is e
   assert.equal(game.getMoney(), 100);
 });
 
-test('updateTowerIncome credits incomeRate * deltaSeconds while a wave is active', () => {
+test('updateTowerIncome pays nothing before a full tick interval elapses, then pays the full incomeRate exactly on it', () => {
   const game = loadFullGameContext();
   const coneflower = game.createTower('coneflower');
   game.getTowers().push(coneflower);
   game.setMoney(100);
   game.getActiveEnemies().push(makeTestEnemy()); // "a wave is active"
 
-  game.updateTowerIncome(0.5);
+  game.updateTowerIncome(0.5); // under the 1-second interval — no payout yet
+  assert.equal(game.getMoney(), 100);
 
-  assert.equal(game.getMoney(), 100 + 2 * 0.5); // 101
+  game.updateTowerIncome(0.5); // crosses the 1-second mark exactly
+  assert.equal(game.getMoney(), 102);
+});
+
+test('a long enough deltaSeconds catches up on more than one missed tick (a lag spike or a big simulated jump)', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  game.getTowers().push(coneflower);
+  game.setMoney(0);
+  game.getActiveEnemies().push(makeTestEnemy());
+
+  game.updateTowerIncome(3.5); // should cover 3 full ticks (interval stays 1)
+
+  assert.equal(game.getMoney(), 6); // 3 ticks * $2
+  assert.equal(game.getFloatingTexts().length, 3); // one popup per tick, not one for the whole jump
 });
 
 test('two Coneflowers\' income rates add together', () => {
@@ -124,11 +140,93 @@ test('each Quality Path tier sets incomeRate to its own absolute rate, replacing
   assert.equal(coneflower.stats.color, '#c62828'); // ruby red
 });
 
-test('Coneflower\'s other two paths are not yet designed (same convention as every other tower)', () => {
+test('Coneflower\'s third path is not yet designed (same convention as every other tower)', () => {
   const game = loadFullGameContext();
   const coneflower = game.createTower('coneflower');
-  assert.equal(game.purchaseUpgrade(coneflower, 1), false);
   assert.equal(game.purchaseUpgrade(coneflower, 2), false);
+});
+
+test('Overgrowth Path doubles the plant count tier over tier, except the last (additive) tier: 1 -> 2 -> 4 -> 8 -> 11', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  assert.equal(coneflower.numPlants, 1);
+
+  game.purchaseUpgrade(coneflower, 1); // Overgrowth
+  assert.equal(coneflower.numPlants, 2);
+
+  game.purchaseUpgrade(coneflower, 1); // Splurge
+  assert.equal(coneflower.numPlants, 4);
+
+  game.purchaseUpgrade(coneflower, 1); // Surplus
+  assert.equal(coneflower.numPlants, 8);
+
+  game.purchaseUpgrade(coneflower, 1); // Plantation — additive, not another double
+  assert.equal(coneflower.numPlants, 11);
+});
+
+test('Overgrowth Path\'s per-plant cash is set once (tier 1) and never changes again', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  for (let i = 0; i < 4; i += 1) game.purchaseUpgrade(coneflower, 1);
+  assert.equal(coneflower.perPlantCash, 3);
+});
+
+test('Overgrowth Path\'s incomeRate is always perPlantCash * numPlants, tier by tier', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+
+  game.purchaseUpgrade(coneflower, 1); // Overgrowth: 2 plants * $3
+  assert.equal(coneflower.incomeRate, 6);
+
+  game.purchaseUpgrade(coneflower, 1); // Splurge: 4 plants * $3
+  assert.equal(coneflower.incomeRate, 12);
+
+  game.purchaseUpgrade(coneflower, 1); // Surplus: 8 plants * $3
+  assert.equal(coneflower.incomeRate, 24);
+
+  game.purchaseUpgrade(coneflower, 1); // Plantation: 11 plants * $3
+  assert.equal(coneflower.incomeRate, 33);
+  assert.equal(coneflower.hasTallPlant, true);
+});
+
+test('Overgrowth Path\'s "X% faster" compounds on the tick interval, tier over tier (unlike Quality Path\'s REPLACE rate)', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  assert.equal(coneflower.incomeTickInterval, 1);
+
+  game.purchaseUpgrade(coneflower, 1); // Overgrowth: x0.75
+  assert.equal(coneflower.incomeTickInterval, 0.75);
+
+  game.purchaseUpgrade(coneflower, 1); // Splurge: x0.70 more
+  assert.ok(Math.abs(coneflower.incomeTickInterval - 0.75 * 0.7) < 1e-9);
+
+  game.purchaseUpgrade(coneflower, 1); // Surplus: x0.75 more
+  assert.ok(Math.abs(coneflower.incomeTickInterval - 0.75 * 0.7 * 0.75) < 1e-9);
+
+  game.purchaseUpgrade(coneflower, 1); // Plantation: x0.50 more
+  assert.ok(Math.abs(coneflower.incomeTickInterval - 0.75 * 0.7 * 0.75 * 0.5) < 1e-9);
+});
+
+test('a maxed Overgrowth Coneflower actually pays out faster in real time than a maxed Quality Coneflower', () => {
+  const game = loadFullGameContext();
+  const overgrown = game.createTower('coneflower');
+  for (let i = 0; i < 4; i += 1) game.purchaseUpgrade(overgrown, 1);
+  game.getTowers().push(overgrown);
+  game.getActiveEnemies().push(makeTestEnemy());
+  game.setMoney(0);
+
+  // incomeTickInterval ~0.1969s after 4 tiers — 2 seconds covers roughly
+  // 10 ticks at $33 each, nowhere near what a flat 1s/$ amount could do.
+  game.updateTowerIncome(2);
+
+  assert.ok(game.getMoney() > 33 * 5); // comfortably more than 5 ticks' worth
+});
+
+test('Overgrowth and Quality Path are mutually exclusive, same as every other tower\'s paths', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  game.purchaseUpgrade(coneflower, 1); // Overgrowth
+  assert.equal(game.purchaseUpgrade(coneflower, 0), false); // Quality Path now locked out
 });
 
 test('an income tick spawns a "+$X" floating popup above the Coneflower, at its current rate', () => {

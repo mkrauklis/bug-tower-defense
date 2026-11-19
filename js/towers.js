@@ -557,10 +557,21 @@ const TOWER_TYPES = {
   // branch simply never runs. baseIncomeRate (not part of baseStats,
   // same reasoning as zombifyChance/aura below being plain top-level
   // tower fields rather than nested in stats) is the new generic bit:
-  // see createTower()'s incomeRate field and updateTowerIncome() in
-  // game.js, which sums every tower's incomeRate — Coneflower is just
-  // the first tower to ever set it to something nonzero, not a
+  // see createTower()'s incomeRate/incomeTickInterval fields and
+  // updateTowerIncome() in game.js, which pays out every tower's
+  // incomeRate once per incomeTickInterval seconds — Coneflower is just
+  // the first tower to ever set incomeRate to something nonzero, not a
   // hardcoded special case.
+  //
+  // Income is a discrete per-tick payout (incomeRate dollars, once every
+  // incomeTickInterval seconds), not a smooth per-second accrual — this
+  // is what makes the Overgrowth Path's "X% faster" tiers (below) mean
+  // something concrete (a shorter interval between payouts) rather than
+  // a vague rate bump, and it's also what the tick-synced "+$X" floating
+  // popup (updateTowerIncome()) is actually timed to. For the Quality
+  // Path, which never touches incomeTickInterval (stays at its default
+  // 1), a flat per-tick amount at a 1-second cadence is numerically
+  // identical to the "$X/sec" language its own descriptions use.
   coneflower: {
     name: 'Coneflower',
     baseStats: {
@@ -570,7 +581,7 @@ const TOWER_TYPES = {
       range: 0,
       attackInterval: 999999,
     },
-    baseIncomeRate: 2, // $/sec while a wave is active — see updateTowerIncome()
+    baseIncomeRate: 2, // $ per tick (every incomeTickInterval seconds) while a wave is active
     upgradePaths: [
       {
         name: 'Quality Path',
@@ -602,7 +613,54 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 2 — not yet designed, same convention every other tower's undesigned paths use
+      // User's exact tier wording (quoted in each description) was fairly
+      // terse/informal — judgment calls made to turn it into concrete
+      // numbers, documented here rather than re-litigated per tier below:
+      // plant count doubles tier over tier (1 -> 2 -> 4 -> 8), except the
+      // last tier which is explicitly additive ("3 more grow", not
+      // "double again") -> 11 total. Only the first tier states a cash
+      // amount ("3 cash"), so perPlantCash is set once, there, and never
+      // touched again — later tiers only ever mention speed. Total
+      // incomeRate is always perPlantCash * numPlants (recomputed
+      // whenever either changes, see purchaseUpgrade()), so this path's
+      // growing payout comes from growing the plant count, not from
+      // repeatedly bumping the per-plant rate. Each tier's "X% faster"
+      // compounds on the current incomeTickInterval (tower.stats-style
+      // multiplicative stacking, same convention as Sunflower/Rose's own
+      // self-buff paths — deliberately NOT the Mushroom-aura/zombifyChance
+      // REPLACE convention, since the user's wording reads as each tier
+      // adding its own further speedup on top of the last, not restating
+      // an absolute new interval).
+      {
+        name: 'Overgrowth Path',
+        upgrades: [
+          {
+            name: 'Overgrowth',
+            description: 'The flower doubles into 2 flowers, each worth $3, and the cash tick comes 25% faster.',
+            cost: 300,
+            effects: { plantMultiplier: 2, perPlantCash: 3, incomeTickIntervalMultiplier: 0.75 },
+          },
+          {
+            name: 'Splurge',
+            description: 'The number of plants doubles again (4 total) and the cash tick comes 30% faster still.',
+            cost: 850,
+            effects: { plantMultiplier: 2, incomeTickIntervalMultiplier: 0.7 },
+          },
+          {
+            name: 'Surplus',
+            description: 'The number of plants doubles again (8 total) and the cash tick comes 25% faster still.',
+            cost: 2000,
+            effects: { plantMultiplier: 2, incomeTickIntervalMultiplier: 0.75 },
+          },
+          {
+            name: 'Plantation',
+            description:
+              'The plant grows taller and 3 more spring up (11 total); the cash tick comes 50% faster still.',
+            cost: 5000,
+            effects: { addPlants: 3, incomeTickIntervalMultiplier: 0.5, tallPlant: true },
+          },
+        ],
+      },
       null, // Path 3 — not yet designed
     ],
   },
@@ -728,17 +786,30 @@ function createTower(typeKey) {
     // nested in `stats` for the same reason zombifyChance/aura aren't:
     // each Quality Path tier replaces this outright rather than scaling
     // it, same REPLACE convention as those.
-    incomeRate: type.baseIncomeRate || 0,
-    // Drives the "+$X" floating-text popup's cadence (see
-    // updateTowerIncome()/spawnFloatingText() in game.js) — a separate,
-    // purely cosmetic 1-second timer from the actual continuous money
-    // accrual, which doesn't need one. Harmless/unused for every tower
-    // with incomeRate 0. Starts at 1 so it doesn't pop instantly the
-    // instant a wave begins, same "don't fire instantly" convention
-    // puddle/infectStun already use.
+    incomeRate: type.baseIncomeRate || 0, // $ paid out per tick — see updateTowerIncome() in game.js
+    // Seconds between income payouts (and the "+$X" popup, which fires on
+    // the same tick — see updateTowerIncome()/spawnFloatingText() in
+    // game.js). 1 for every tower by default; Coneflower's Overgrowth
+    // Path is the only thing that ever shortens it. incomeTickCooldown
+    // counts down to the next payout, starting at 1 (not 0) so it doesn't
+    // pay out instantly the instant a wave begins — same "don't fire
+    // instantly on purchase/activation" convention puddle/infectStun
+    // already use.
+    incomeTickInterval: 1,
     incomeTickCooldown: 1,
-    hasExtraStems: false, // High Standard tier and up — purely visual (drawConeflower())
-    hasRedMist: false, // Perfect Condition tier only — purely visual (drawConeflower())
+    // Coneflower's Overgrowth Path: incomeRate above is always
+    // perPlantCash * numPlants once this path is chosen (recomputed in
+    // purchaseUpgrade() whenever either changes) — these two are tracked
+    // separately rather than just mutating incomeRate directly because
+    // the path's own tiers state "the flower doubles"/"3 more grow" as
+    // plant-count changes, not as income-rate changes; incomeRate is a
+    // derived value, not the thing each tier directly edits. Irrelevant
+    // (stays 1/0) for every tower that never buys into this path.
+    numPlants: 1,
+    perPlantCash: 0,
+    hasTallPlant: false, // Plantation tier only — purely visual (drawConeflower())
+    hasExtraStems: false, // Quality Path's High Standard tier and up — purely visual (drawConeflower())
+    hasRedMist: false, // Quality Path's Perfect Condition tier only — purely visual (drawConeflower())
   };
 }
 
@@ -886,6 +957,20 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.income !== undefined) tower.incomeRate = effects.income;
   if (effects.extraStems) tower.hasExtraStems = true;
   if (effects.redMist) tower.hasRedMist = true;
+
+  // Coneflower's Overgrowth Path: numPlants/perPlantCash each compound or
+  // get set independently (see each field's own comment on createTower()
+  // above), then incomeRate is recomputed from whichever of the two this
+  // purchase actually touched — covers every tier without needing each
+  // one to also restate effects.income itself.
+  if (effects.plantMultiplier) tower.numPlants *= effects.plantMultiplier;
+  if (effects.addPlants) tower.numPlants += effects.addPlants;
+  if (effects.perPlantCash !== undefined) tower.perPlantCash = effects.perPlantCash;
+  if (effects.plantMultiplier || effects.addPlants || effects.perPlantCash !== undefined) {
+    tower.incomeRate = tower.perPlantCash * tower.numPlants;
+  }
+  if (effects.incomeTickIntervalMultiplier) tower.incomeTickInterval *= effects.incomeTickIntervalMultiplier;
+  if (effects.tallPlant) tower.hasTallPlant = true;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -1064,7 +1149,20 @@ function renderTower(ctx, tower, x, y, time) {
       );
     }
   } else if (tower.type === 'coneflower') {
-    drawConeflower(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount, tower.hasExtraStems, tower.hasRedMist);
+    drawConeflower(
+      ctx,
+      x,
+      y,
+      size,
+      tower.stats.color,
+      tower.glow,
+      time,
+      flashAmount,
+      tower.hasExtraStems,
+      tower.hasRedMist,
+      tower.numPlants,
+      tower.hasTallPlant
+    );
   } else {
     // Fallback for any future tower type without custom art yet.
     ctx.fillStyle = tower.stats.color;
@@ -1897,8 +1995,32 @@ function drawConeflowerRedMist(ctx, x, y, size, time) {
   ctx.globalAlpha = 1;
 }
 
-function drawConeflower(ctx, x, y, size, color, glow, time, flashAmount, hasExtraStems, hasRedMist) {
-  const stemHeight = size * 1.3;
+// Overgrowth Path (tier 1 and up): the single flower head is replaced by
+// a ring of smaller heads, one per plant — capped at a reasonable visual
+// density (past it, individual heads stop being legible at tower-icon
+// scale anyway). The economy-facing numPlants value itself is never
+// capped, only how many heads actually get drawn — Plantation's real 11
+// plants reads as "a dense little flower bed," not literally 11
+// countable blooms.
+const CONEFLOWER_CLUSTER_VISUAL_CAP = 8;
+
+function drawConeflowerCluster(ctx, x, y, size, color, numPlants) {
+  const count = Math.min(numPlants, CONEFLOWER_CLUSTER_VISUAL_CAP);
+  const headSize = size * (0.62 - Math.min(count, 6) * 0.04);
+  const ringRadius = size * 0.38;
+  for (let i = 0; i < count; i += 1) {
+    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+    const hx = x + Math.cos(angle) * ringRadius;
+    const hy = y + Math.sin(angle) * ringRadius * 0.7;
+    drawConeflowerHead(ctx, hx, hy, headSize, color, false);
+  }
+}
+
+function drawConeflower(ctx, x, y, size, color, glow, time, flashAmount, hasExtraStems, hasRedMist, numPlants = 1, tallPlant = false) {
+  // Plantation's "grows taller" — the only Overgrowth Path visual that
+  // isn't just "more heads," so it gets its own flag rather than being
+  // folded into the cluster-drawing logic above.
+  const stemHeight = size * 1.3 * (tallPlant ? 1.3 : 1);
   const groundY = y + stemHeight;
   const sway = Math.sin(time * 1.4 + x * 0.01) * 0.05;
 
@@ -1951,7 +2073,11 @@ function drawConeflower(ctx, x, y, size, color, glow, time, flashAmount, hasExtr
     ctx.shadowBlur = 20;
   }
 
-  drawConeflowerHead(ctx, x, y, size, color, true);
+  if (numPlants > 1) {
+    drawConeflowerCluster(ctx, x, y, size, color, numPlants);
+  } else {
+    drawConeflowerHead(ctx, x, y, size, color, true);
+  }
   if (hasRedMist) drawConeflowerRedMist(ctx, x, y, size, time);
 
   ctx.restore();
