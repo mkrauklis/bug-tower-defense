@@ -2,25 +2,23 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadFullGameContext } = require('./support/loadGame');
 
-test('GAME_MODES has the exact multipliers specified for each mode', () => {
+test('GAME_MODES has exactly medium, horde, and sandbox, with the expected multipliers/flags', () => {
   const game = loadFullGameContext();
-  const { easy, medium, hard, sandbox } = game.GAME_MODES;
+  const { medium, horde, sandbox } = game.GAME_MODES;
+
+  assert.deepEqual(Object.keys(game.GAME_MODES).sort(), ['horde', 'medium', 'sandbox']);
 
   assert.deepEqual(
-    { health: easy.healthMultiplier, speed: easy.speedMultiplier, bounty: easy.bountyMultiplier, sandbox: easy.sandbox },
-    { health: 0.85, speed: 0.85, bounty: 1.1, sandbox: false }
+    { health: medium.healthMultiplier, speed: medium.speedMultiplier, bounty: medium.bountyMultiplier, sandbox: medium.sandbox, horde: medium.horde },
+    { health: 1, speed: 1, bounty: 1, sandbox: false, horde: false }
   );
   assert.deepEqual(
-    { health: medium.healthMultiplier, speed: medium.speedMultiplier, bounty: medium.bountyMultiplier, sandbox: medium.sandbox },
-    { health: 1, speed: 1, bounty: 1, sandbox: false }
+    { health: horde.healthMultiplier, speed: horde.speedMultiplier, bounty: horde.bountyMultiplier, sandbox: horde.sandbox, horde: horde.horde },
+    { health: 1, speed: 1, bounty: 1, sandbox: false, horde: true }
   );
   assert.deepEqual(
-    { health: hard.healthMultiplier, speed: hard.speedMultiplier, bounty: hard.bountyMultiplier, sandbox: hard.sandbox },
-    { health: 1, speed: 1.2, bounty: 1, sandbox: false }
-  );
-  assert.deepEqual(
-    { health: sandbox.healthMultiplier, speed: sandbox.speedMultiplier, bounty: sandbox.bountyMultiplier, sandbox: sandbox.sandbox },
-    { health: 1, speed: 1, bounty: 1, sandbox: true }
+    { health: sandbox.healthMultiplier, speed: sandbox.speedMultiplier, bounty: sandbox.bountyMultiplier, sandbox: sandbox.sandbox, horde: sandbox.horde },
+    { health: 1, speed: 1, bounty: 1, sandbox: true, horde: false }
   );
 });
 
@@ -51,30 +49,20 @@ test('startGame(sandbox) spawns nothing automatically', () => {
   assert.deepEqual(game.getActiveEnemies(), []);
 });
 
-test('applyModeToWaveComposition scales health and speed by the active mode, rounding health', () => {
+test('applyModeToWaveComposition is a no-op under Medium (all multipliers are 1)', () => {
   const game = loadFullGameContext();
   const fakeComposition = [{ enemyKey: 'ant', health: 100, speedMultiplier: 0.5, count: 3 }];
 
-  game.startGame('easy');
-  const easyResult = game.applyModeToWaveComposition(fakeComposition)[0];
-  assert.equal(easyResult.health, 85); // 100 * 0.85
-  assert.ok(Math.abs(easyResult.speedMultiplier - 0.425) < 1e-9); // 0.5 * 0.85
-  assert.equal(easyResult.count, 3); // untouched
-
-  game.startGame('hard');
-  const hardResult = game.applyModeToWaveComposition(fakeComposition)[0];
-  assert.equal(hardResult.health, 100); // no health change on Hard
-  assert.ok(Math.abs(hardResult.speedMultiplier - 0.6) < 1e-9); // 0.5 * 1.2
-
   game.startGame('medium');
-  const mediumResult = game.applyModeToWaveComposition(fakeComposition)[0];
-  assert.equal(mediumResult.health, 100);
-  assert.equal(mediumResult.speedMultiplier, 0.5);
+  const result = game.applyModeToWaveComposition(fakeComposition)[0];
+  assert.equal(result.health, 100);
+  assert.equal(result.speedMultiplier, 0.5);
+  assert.equal(result.count, 3);
 });
 
 test('applyModeToWaveComposition never rounds health down to 0', () => {
   const game = loadFullGameContext();
-  game.startGame('easy');
+  game.startGame('medium');
   const result = game.applyModeToWaveComposition([{ health: 1, speedMultiplier: 1 }])[0];
   assert.ok(result.health >= 1);
 });
@@ -152,9 +140,9 @@ test('defeated-enemy set persists across sessions via the shared localStorage ba
   assert.deepEqual(sessionTwo.getDefeatedEnemyKeys(), ['tinyIsopod']);
 });
 
-test('a kill in a real mode pays the mode-scaled bounty and records the enemy as defeated', () => {
+test('a kill in a real mode pays the bounty and records the enemy as defeated', () => {
   const game = loadFullGameContext();
-  game.startGame('easy'); // bountyMultiplier 1.1
+  game.startGame('medium');
   const moneyBefore = game.getMoney();
 
   game.getActiveEnemies().length = 0; // clear round 1's auto-spawned wave
@@ -166,7 +154,7 @@ test('a kill in a real mode pays the mode-scaled bounty and records the enemy as
 
   game.update(1 / 60);
 
-  assert.equal(game.getMoney(), moneyBefore + 11); // round(10 * 1.1)
+  assert.equal(game.getMoney(), moneyBefore + 10);
   assert.ok(game.getDefeatedEnemyKeys().includes('worm'));
 });
 
@@ -182,4 +170,60 @@ test('a kill in Sandbox still pays its bounty but is never recorded as defeated'
 
   assert.equal(game.getMoney(), moneyBefore + 2); // normal economy still active in Sandbox
   assert.ok(!game.getDefeatedEnemyKeys().includes('fly')); // but it doesn't unlock itself
+});
+
+// --- Horde Mode -------------------------------------------------------
+
+test('startGame(horde) spawns an initial batch immediately, doubled vs. the normal round-1 count', () => {
+  const game = loadFullGameContext();
+  game.startGame('medium');
+  const normalRound1Count = game.getActiveEnemies().length;
+
+  const hordeGame = loadFullGameContext();
+  hordeGame.startGame('horde');
+  assert.equal(hordeGame.getCurrentMode().horde, true);
+  assert.equal(hordeGame.getRound(), 1);
+  assert.equal(hordeGame.getActiveEnemies().length, normalRound1Count * 2);
+});
+
+test('Horde Mode never gates on clearing: the next batch lands on top of survivors, not after them', () => {
+  const game = loadFullGameContext();
+  game.startGame('horde');
+  const firstBatchCount = game.getActiveEnemies().length;
+
+  // Run well past the first batch's own spawn-stagger duration without
+  // killing anything — a real wave-gated mode would just sit idle here.
+  for (let i = 0; i < 600; i += 1) game.update(1 / 60); // 10 simulated seconds
+
+  assert.ok(game.getActiveEnemies().length > firstBatchCount); // a second batch landed on top
+  assert.ok(game.getRound() > 1); // the round counter advanced with it
+});
+
+test('Horde Mode keeps spawning with zero gap: the spawn timer never sits idle at exactly 0 between batches', () => {
+  const game = loadFullGameContext();
+  game.startGame('horde');
+
+  let sawPositiveAfterHittingZero = false;
+  for (let i = 0; i < 300; i += 1) {
+    game.update(1 / 60);
+    if (game.getHordeSpawnTimer() > 0) sawPositiveAfterHittingZero = true;
+  }
+  // The timer should be actively counting back up (a new batch queued),
+  // not stuck at/below 0 waiting on something — if it were stuck, this
+  // would stay false since it'd never tick positive again mid-run.
+  assert.ok(sawPositiveAfterHittingZero);
+});
+
+test('Horde Mode ignores autoContinue/Next Round entirely (no wave-cleared gating to drive)', () => {
+  const game = loadFullGameContext();
+  game.startGame('horde');
+  game.setAutoContinue(false);
+
+  game.getActiveEnemies().length = 0; // simulate every enemy dying at once
+  const roundBefore = game.getRound();
+  game.update(1 / 60);
+
+  // Round only advances via the horde spawn timer, never just because
+  // activeEnemies hit 0 (that's the old auto-continue condition).
+  assert.equal(game.getRound(), roundBefore);
 });

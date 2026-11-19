@@ -190,6 +190,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getAutoContinue: () => autoContinue,
       setAutoContinue: (value) => { autoContinue = value; },
       canAfford,
+      getHordeSpawnTimer: () => hordeSpawnTimer,
     };
     `,
     context

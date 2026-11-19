@@ -16,7 +16,7 @@ test('canAfford always returns true in Sandbox, regardless of cost or current mo
   assert.equal(game.canAfford(999999), true);
 });
 
-test('canAfford still enforces the real cost in Easy/Medium/Hard', () => {
+test('canAfford still enforces the real cost in Medium/Horde Mode', () => {
   const game = loadFullGameContext();
   game.startGame('medium');
   game.setMoney(10);
@@ -46,7 +46,7 @@ test('a tower can be placed in Sandbox with $0 on hand', () => {
   assert.equal(game.getTowers()[0].type, 'sunflower');
 });
 
-test('placing a tower in Easy/Medium/Hard is still refused without enough money', () => {
+test('placing a tower in Medium/Horde Mode is still refused without enough money', () => {
   const game = loadFullGameContext();
   game.startGame('medium');
   game.setMoney(0);

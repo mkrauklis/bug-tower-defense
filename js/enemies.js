@@ -275,6 +275,27 @@ function spawnWave(composition) {
   });
 }
 
+// Horde Mode's spawner: same per-enemy 0.5s stagger as spawnWave() above,
+// but appends to whatever's already alive instead of replacing it — Horde
+// has no "wave" boundary to clear first, so each new batch has to land on
+// top of however many enemies (from earlier batches) are still alive.
+// Returns the batch's own total stagger duration (seconds from this call
+// until its last enemy spawns) so the caller can time the *next* batch to
+// start exactly then — see startHordeBatch() in game.js — keeping the
+// overall spawn cadence seamless instead of bursty.
+function spawnWaveAdditive(composition) {
+  let spawnDelay = 0;
+
+  composition.forEach((entry) => {
+    for (let i = 0; i < entry.count; i += 1) {
+      activeEnemies.push(createEnemyInstance(entry, spawnDelay));
+      spawnDelay += 0.5;
+    }
+  });
+
+  return Math.max(0, spawnDelay - 0.5);
+}
+
 // Sandbox mode: spawns exactly one enemy immediately (no stagger delay —
 // this is a deliberate single click, not part of a wave), appended to
 // whatever's already alive rather than replacing it like spawnWave() does.
