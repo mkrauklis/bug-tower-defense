@@ -445,20 +445,36 @@ function applyBurn(enemy, burn) {
 
 function updateEnemies(deltaSeconds) {
   activeEnemies.forEach((enemy) => {
-    // Already dead, just waiting to be swept up below — don't let it take
-    // another burn tick or keep moving for the one extra frame before removal.
-    if (enemy.health <= 0) return;
-
     // A zombie (Mushroom's Zombify) is a completely separate little state
     // machine — it shambles backward toward the path's start instead of
     // forward, doesn't spawn-delay/burn/get held, and is removed via its
     // own markedForRemoval flag rather than health reaching 0 (a zombie's
     // health is kept positive specifically so it's immune to the normal
     // "killed" sweep below — see turnIntoZombie()).
+    //
+    // Checked *before* the health<=0 short-circuit below, deliberately —
+    // this used to be the other way around, which caused a real stuck-
+    // forever bug: a projectile already in flight toward an enemy that
+    // turned into a zombie from an *earlier*-resolving projectile the same
+    // tick could still land on it (resolveProjectile's own fizzle check
+    // didn't know about zombies either — now fixed there too), driving its
+    // health back to <=0 while isZombie stayed true. With the health check
+    // first, that combination hit the early return below before the
+    // isZombie branch ever ran again — updateZombieMovement() stopped
+    // being called, so the zombie never moved, never exploded, and never
+    // got marked for removal: a permanently frozen, untargetable (zombies
+    // are already excluded from findNearestEnemyInRange/getEnemiesInRadius
+    // regardless of health), unkillable husk sitting on the map forever.
+    // Checking isZombie first means a zombie always keeps running its own
+    // state machine no matter what its health ends up at.
     if (enemy.isZombie) {
       updateZombieMovement(enemy, deltaSeconds);
       return;
     }
+
+    // Already dead, just waiting to be swept up below — don't let it take
+    // another burn tick or keep moving for the one extra frame before removal.
+    if (enemy.health <= 0) return;
 
     if (!enemy.spawned) {
       enemy.spawnDelay -= deltaSeconds;

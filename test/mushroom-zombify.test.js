@@ -159,3 +159,69 @@ test('a zombie that reaches the path\'s start is removed without exploding on an
 
   assert.equal(game.getActiveEnemies().includes(zombie), false);
 });
+
+// --- Regression: the "stuck forever" zombie bug ------------------------
+// Root cause: resolveProjectile()'s fizzle check only looked at
+// target.health, not target.isZombie — so a second projectile already in
+// flight toward an enemy that had just turned into a zombie from an
+// *earlier*-resolving projectile the same tick would still land on it,
+// driving its health back to <=0 while isZombie stayed true. updateEnemies()
+// checked health<=0 before isZombie, so that combination hit the "already
+// dead" early return every tick from then on — updateZombieMovement() never
+// ran again: the zombie never moved, never exploded, was excluded from
+// targeting/killed-sweep by isZombie, and was never marked for removal.
+// A permanent, untargetable, unkillable, motionless husk. Fixed in both
+// places (see their own comments); these tests cover both halves.
+
+test('a projectile already in flight toward an enemy that zombifies from an earlier hit fizzles instead of re-damaging the zombie', () => {
+  const game = loadFullGameContext();
+  const nearTower = makeZombifyMushroom(game, 1);
+  nearTower.x = 0;
+  nearTower.y = 0;
+  const farTower = makeZombifyMushroom(game, 1);
+  farTower.x = -500; // much farther from the target, so its spore travels much longer
+  farTower.y = 0;
+
+  const target = makeTestEnemy({ x: 100, y: 0, health: 1 }); // one hit from dying
+  game.getActiveEnemies().push(target);
+
+  // Both spores are launched "at the same moment," targeting the same
+  // enemy — exactly the two-towers-on-one-weak-enemy scenario from the bug
+  // report. The near one will land first.
+  game.spawnProjectile(nearTower, target);
+  game.spawnProjectile(farTower, target);
+
+  // Let only the near spore arrive first.
+  for (let i = 0; i < 20; i += 1) game.updateProjectiles(1 / 60);
+  assert.equal(target.isZombie, true);
+  assert.equal(target.health, 1); // turnIntoZombie's own fixed value
+
+  // Now let the far spore (already in flight this whole time) arrive too.
+  for (let i = 0; i < 200; i += 1) game.updateProjectiles(1 / 60);
+
+  assert.equal(target.isZombie, true); // still a zombie
+  assert.equal(target.health, 1); // the second hit fizzled — health untouched, not driven back to <=0
+
+  // And it's not frozen: a normal updateEnemies() tick still moves it.
+  const startY = target.y;
+  target.waypointIndex = 5; // well into the path, somewhere a backward step actually moves it
+  game.updateEnemies(0.1);
+  assert.notEqual(target.y, startY);
+});
+
+test('a zombie whose health somehow ends up <=0 still runs its own movement instead of freezing (defense in depth)', () => {
+  const game = loadFullGameContext();
+  // Simulates the exact broken state the old bug could produce, bypassing
+  // how it got there — proves updateEnemies() itself is robust to it now,
+  // independent of the resolveProjectile fix above.
+  const zombie = makeTestEnemy({
+    x: 220, y: 150, waypointIndex: 0, isZombie: true, speed: 60, health: -5,
+  });
+  game.getActiveEnemies().push(zombie);
+  const startY = zombie.y;
+
+  game.updateEnemies(0.1);
+
+  assert.ok(zombie.y < startY); // still walks backward, not frozen
+  assert.equal(game.getActiveEnemies().includes(zombie), true); // not silently vanished either
+});

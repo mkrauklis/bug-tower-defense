@@ -348,7 +348,16 @@ function spawnProjectile(tower, target) {
 
 function resolveProjectile(projectile) {
   const { target } = projectile;
-  if (!target || target.health <= 0) return; // fizzle: target already dead
+  // A zombie is a separate state machine (turnIntoZombie()/
+  // updateZombieMovement() in enemies.js) that doesn't take normal combat
+  // damage any more — without this check, a second projectile already in
+  // flight toward an enemy that turned into a zombie from an *earlier*-
+  // resolving projectile this same tick (e.g. two towers both targeting
+  // the same low-health enemy) would still land on it here, driving its
+  // health back to <=0 while isZombie stayed true. That combination used
+  // to freeze the zombie in place forever — see the matching fix/comment
+  // in enemies.js's updateEnemies() for the other half of this.
+  if (!target || target.health <= 0 || target.isZombie) return; // fizzle: target already dead or already a zombie
 
   const driftFromAim = Math.hypot(target.x - projectile.aimX, target.y - projectile.aimY);
   if (driftFromAim > target.radius + PROJECTILE_HIT_TOLERANCE) return; // fizzle: wandered off
