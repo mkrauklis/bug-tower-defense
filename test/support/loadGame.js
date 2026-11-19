@@ -42,7 +42,7 @@ function loadGameContext() {
       BOSS_INTERVAL, BASE_SPEED,
       isBossRound, getBossForRound, getUnlockedEnemyTypes, getRoundScaling,
       getTotalWaveSize,
-      generateWave, spawnWave, updateEnemies,
+      generateWave, spawnWave, updateEnemies, getLastLeakedEnemies,
       findNearestEnemyInRange, damageEnemy, applyBurn, getEnemiesInRadius,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath,
       getActiveEnemies: () => activeEnemies,
@@ -162,7 +162,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
     globalThis.__fullExports = {
       createTower, purchaseUpgrade,
       damageEnemy, applyBurn, findNearestEnemyInRange, getEnemiesInRadius,
-      updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies,
+      updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies, getLastLeakedEnemies,
       getProjectiles: () => projectiles,
       getActiveEnemies: () => activeEnemies,
       update,
@@ -198,6 +198,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       MAP_TYPES, getActiveMap, setActiveMap,
       getSelectedMap: () => selectedMap,
       setSelectedMap: (map) => { selectedMap = map; },
+      getPlayerHealth: () => playerHealth,
+      setPlayerHealth: (value) => { playerHealth = value; },
+      PLAYER_STARTING_HEALTH,
+      triggerGameOver,
+      getGameOverStats: () => gameOverStats,
     };
     `,
     context

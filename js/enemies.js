@@ -228,6 +228,16 @@ function generateWave(round) {
 // Live enemy instances for the current wave.
 let activeEnemies = [];
 
+// Set by updateEnemies() on every call (see below) — the enemies that
+// reached the goal alive *during that specific call*, not an accumulating
+// list. game.js's update() reads this via getLastLeakedEnemies() right
+// after calling updateEnemies() each tick.
+let lastLeakedEnemies = [];
+
+function getLastLeakedEnemies() {
+  return lastLeakedEnemies;
+}
+
 // Facing direction baked into each type's hand-drawn art (the angle, in the
 // un-rotated drawing, that the enemy's "front" points toward) — used to
 // offset the computed movement heading so the art actually turns to face
@@ -501,10 +511,19 @@ function updateEnemies(deltaSeconds) {
   // kill either.
   const killed = activeEnemies.filter((enemy) => enemy.health <= 0 && !enemy.isZombie);
 
-  // Drop enemies that died or reached the final waypoint (the base/goal,
-  // for now — there's no base-health/lose-condition system yet) — or, for
-  // a zombie, that it exploded (collided with a living enemy, or reached
-  // the path's start) this frame.
+  // Enemies that reached the goal alive this frame (the base/player-health
+  // system in game.js reads this right after calling updateEnemies() to
+  // deduct health) — kept as a module-level var + getter (see
+  // getLastLeakedEnemies() below) rather than changing updateEnemies()'s
+  // own return value, so every existing caller/test that already destructures
+  // "the killed array" out of that return value keeps working unchanged.
+  lastLeakedEnemies = activeEnemies.filter(
+    (enemy) => !enemy.isZombie && enemy.health > 0 && enemy.waypointIndex >= MAP_PATH_WAYPOINTS.length - 1
+  );
+
+  // Drop enemies that died or reached the final waypoint (the base/goal) —
+  // or, for a zombie, that it exploded (collided with a living enemy, or
+  // reached the path's start) this frame.
   activeEnemies = activeEnemies.filter((enemy) => {
     if (enemy.isZombie) return !enemy.markedForRemoval;
     return enemy.health > 0 && enemy.waypointIndex < MAP_PATH_WAYPOINTS.length - 1;

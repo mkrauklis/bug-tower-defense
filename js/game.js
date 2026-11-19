@@ -138,6 +138,18 @@ let currentWave = [];
 // differing per mode was ever asked for, so this doesn't vary.
 let money = 50;
 
+// Player/base health — starts at 500, loses an enemy's own max HP (not
+// whatever partial HP it had left after tower damage — a tougher enemy
+// that gets through should punish more; the user's phrasing was a little
+// ambiguous, this is the reading taken) every time that enemy reaches the
+// goal instead of dying first. Hitting 0 ends the run (see triggerGameOver
+// below). Sandbox deliberately never touches this at all — consistent
+// with its existing "no-consequence testing space" philosophy (same
+// reasoning as its unlimited money) rather than tracking loss but
+// clamping it at some floor above 0.
+const PLAYER_STARTING_HEALTH = 500;
+let playerHealth = PLAYER_STARTING_HEALTH;
+
 // Sandbox gets unlimited money: every affordability check below goes
 // through this instead of a raw `money >= cost` comparison. `money` itself
 // is left completely alone (still earns bounties, still gets spent) — it's
@@ -249,6 +261,7 @@ function startGame(modeKey) {
   projectiles = [];
   round = 1;
   money = 50;
+  playerHealth = PLAYER_STARTING_HEALTH;
   wildlife = createWildlifeSwarm(getActiveMap());
 
   if (currentMode.sandbox) {
@@ -261,6 +274,16 @@ function startGame(modeKey) {
     currentWave = applyModeToWaveComposition(generateWave(round));
     spawnWave(currentWave);
   }
+}
+
+// Snapshot of a couple of stats at the moment the run ended, so the Game
+// Over screen can show them after gameState has moved on from 'playing'
+// (round/currentMode themselves keep changing/reset on the next game).
+let gameOverStats = { round: 0, modeName: '' };
+
+function triggerGameOver() {
+  gameOverStats = { round, modeName: currentMode ? currentMode.name : '' };
+  gameState = 'gameOver';
 }
 
 // The game's own simulation clock, advanced in update() rather than read
@@ -629,6 +652,22 @@ function update(deltaSeconds) {
     if (!currentMode.sandbox) killedEnemies.forEach((enemy) => recordDefeatedEnemy(enemy.enemyKey));
   }
 
+  // An enemy that reached the goal alive costs the player health equal to
+  // that enemy's own max HP (see PLAYER_STARTING_HEALTH's comment for why
+  // max rather than whatever health it had left) — skipped entirely in
+  // Sandbox, same "no consequences" treatment as its unlimited money.
+  if (!currentMode.sandbox) {
+    const leaked = getLastLeakedEnemies();
+    if (leaked.length > 0) {
+      const totalDamage = leaked.reduce((sum, enemy) => sum + enemy.maxHealth, 0);
+      playerHealth = Math.max(0, playerHealth - totalDamage);
+      if (playerHealth <= 0) {
+        triggerGameOver();
+        return; // nothing below matters once the run has ended
+      }
+    }
+  }
+
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
   updateProjectiles(deltaSeconds);
 
@@ -699,7 +738,8 @@ function render() {
     canvas.style.cursor = 'default';
     if (gameState === 'menu') renderMenu(ctx);
     else if (gameState === 'mapSelect') renderMapSelect(ctx);
-    else renderModeSelect(ctx);
+    else if (gameState === 'modeSelect') renderModeSelect(ctx);
+    else renderGameOver(ctx);
     return;
   }
 
@@ -1044,6 +1084,33 @@ function renderUpgradePaths(ctx, x, width, startY) {
 function renderWaveSection(ctx, x, width, startY) {
   let y = startY;
 
+  // Player/base health — this function is only ever called outside
+  // Sandbox (see renderUI()'s dispatch and renderSandboxSpawnSection's own
+  // separate panel section), so there's no extra mode check needed here:
+  // Sandbox simply never reaches this code, matching its "no consequences"
+  // treatment of health loss itself.
+  ctx.fillStyle = '#f0f0f0';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Health', x, y);
+  ctx.textAlign = 'right';
+  ctx.fillText(`${Math.ceil(playerHealth)} / ${PLAYER_STARTING_HEALTH}`, x + width, y);
+  ctx.textAlign = 'left';
+  y += 18;
+
+  const healthRatio = Math.max(0, playerHealth / PLAYER_STARTING_HEALTH);
+  const healthBarHeight = 10;
+  uiRoundRect(ctx, x, y, width, healthBarHeight, 4);
+  ctx.fillStyle = '#1c2028';
+  ctx.fill();
+  if (healthRatio > 0) {
+    uiRoundRect(ctx, x, y, Math.max(healthBarHeight, width * healthRatio), healthBarHeight, 4);
+    ctx.fillStyle = healthRatio > 0.5 ? '#4caf50' : healthRatio > 0.25 ? '#ffb300' : '#e53935';
+    ctx.fill();
+  }
+  y += healthBarHeight + 12;
+
   ctx.fillStyle = '#f0f0f0';
   ctx.font = 'bold 15px sans-serif';
   ctx.textAlign = 'left';
@@ -1233,8 +1300,11 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
 // game mode — Medium/Horde Mode/Sandbox — for that map) → startGame().
 // Both the map and the mode are picked as their own explicit step rather
 // than folded into one screen — each stays a simple tile grid/list instead
-// of needing a two-axis picker.
-const MENU_STATES = new Set(['menu', 'mapSelect', 'modeSelect']);
+// of needing a two-axis picker. 'gameOver' (see renderGameOver below) is
+// also a full-screen UI state with no world/panel split, so it shares this
+// set too despite the name — every input handler below just cares "is the
+// whole canvas UI right now," not specifically "is this a menu."
+const MENU_STATES = new Set(['menu', 'mapSelect', 'modeSelect', 'gameOver']);
 const MENU_MODE_ORDER = ['medium', 'horde', 'sandbox'];
 
 // `skipBackground` lets renderMenu() paint its own forest-trail backdrop
@@ -1555,16 +1625,25 @@ function renderModeSelect(ctx) {
   drawMenuTitle(ctx, 'Choose a Mode', selectedMap ? `Playing: ${selectedMap.name}` : 'Choose a mode to begin');
 
   const buttonWidth = Math.min(420, canvas.width - 40);
-  const buttonHeight = 72;
+  const minButtonHeight = 72;
   const gap = 16;
-  const startY = 140;
   const x = canvas.width / 2 - buttonWidth / 2;
+  let y = 140;
 
-  MENU_MODE_ORDER.forEach((key, i) => {
+  MENU_MODE_ORDER.forEach((key) => {
     const mode = GAME_MODES[key];
-    const y = startY + i * (buttonHeight + gap);
     const regionId = `mode:${key}`;
     const hovered = hoverRegion && hoverRegion.id === regionId;
+
+    // Each card's own height grows to fit its description instead of a
+    // fixed 72px for every card — a fixed height clipped Sandbox's longer
+    // description past the card's bottom edge (a real bug report: visibly
+    // cut off text, unlike Medium/Horde Mode's shorter ones that happened
+    // to fit). Measuring before drawing means this scales automatically
+    // for any future mode with an even longer description too.
+    ctx.font = '12px sans-serif';
+    const lines = uiWrapText(ctx, mode.description, buttonWidth - 36);
+    const buttonHeight = Math.max(minButtonHeight, 36 + lines.length * 15 + 12);
 
     uiRoundRect(ctx, x, y, buttonWidth, buttonHeight, 8);
     ctx.fillStyle = hovered ? '#262b35' : '#1a1e26';
@@ -1580,14 +1659,14 @@ function renderModeSelect(ctx) {
     ctx.fillText(mode.name, x + 18, y + 12);
 
     ctx.font = '12px sans-serif';
-    const lines = uiWrapText(ctx, mode.description, buttonWidth - 36);
     uiDrawTextLines(ctx, lines, x + 18, y + 36, 15, '#aaa', '12px sans-serif');
 
     uiRegisterRegion(regionId, x, y, buttonWidth, buttonHeight, { modeKey: key });
+    y += buttonHeight + gap;
   });
 
   const backWidth = 120;
-  const backY = startY + MENU_MODE_ORDER.length * (buttonHeight + gap) + 6;
+  const backY = y + 6;
   uiDrawButton(ctx, {
     x: canvas.width / 2 - backWidth / 2,
     y: backY,
@@ -1597,6 +1676,32 @@ function renderModeSelect(ctx) {
     hovered: Boolean(hoverRegion) && hoverRegion.id === 'mode:back',
   });
   uiRegisterRegion('mode:back', canvas.width / 2 - backWidth / 2, backY, backWidth, 32, {});
+
+  drawMenuTooltip(ctx);
+}
+
+// Game Over — gameState === 'gameOver', reached when playerHealth hits 0
+// (see triggerGameOver() in update()). Stops the simulation simply by
+// being a gameState other than 'playing' (loop()'s accumulator only ticks
+// update() during 'playing', so nothing else needs to explicitly "pause").
+function renderGameOver(ctx) {
+  uiBeginFrame();
+  drawMenuTitle(ctx, 'Game Over', `${gameOverStats.modeName} — reached round ${gameOverStats.round}`);
+
+  const buttonWidth = Math.min(300, canvas.width - 40);
+  const y = 220;
+  const x = canvas.width / 2 - buttonWidth / 2;
+
+  uiDrawButton(ctx, {
+    x,
+    y,
+    w: buttonWidth,
+    h: 36,
+    label: '← Back to Menu',
+    state: 'accent',
+    hovered: Boolean(hoverRegion) && hoverRegion.id === 'gameover:menu',
+  });
+  uiRegisterRegion('gameover:menu', x, y, buttonWidth, 36, {});
 
   drawMenuTooltip(ctx);
 }
@@ -1636,7 +1741,11 @@ function renderUI(ctx) {
     y,
     w: contentWidth,
     h: 20,
-    label: `← Menu (${currentMode ? currentMode.name : ''})`,
+    // Shows which map is being played alongside the mode — the mode name
+    // alone was already here; the map name was only ever visible back on
+    // the map-select screen before this, with nothing in the actual
+    // in-game HUD naming it.
+    label: `← Menu (${getActiveMap().name} · ${currentMode ? currentMode.name : ''})`,
     state: 'default',
     hovered: Boolean(hoverRegion) && hoverRegion.id === 'menu-return',
   });
@@ -1724,6 +1833,7 @@ function getTooltipLines(region) {
   }
 
   if (region.id === 'start:play') return ['Pick a map, then a mode.'];
+  if (region.id === 'gameover:menu') return ['Back to the main menu.'];
 
   return [];
 }
@@ -1790,6 +1900,11 @@ function activateRegion(region) {
 
   if (region.id === 'start:play') {
     gameState = 'mapSelect';
+    return;
+  }
+
+  if (region.id === 'gameover:menu') {
+    gameState = 'menu';
     return;
   }
 
