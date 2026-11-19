@@ -208,6 +208,7 @@ function recordDefeatedEnemy(enemyKey) {
   if (defeatedEnemyKeys.has(enemyKey)) return;
   defeatedEnemyKeys.add(enemyKey);
   saveDefeatedEnemyKeys();
+  menuTrophyEnemies = null; // invalidate — the main menu's trophy trail rebuilds next time it's shown
 }
 
 // Every map the map-select screen can offer. The map editor (and the
@@ -1261,9 +1262,14 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
 const MENU_STATES = new Set(['menu', 'mapSelect', 'modeSelect']);
 const MENU_MODE_ORDER = ['medium', 'horde', 'sandbox'];
 
-function drawMenuTitle(ctx, title, subtitle) {
-  ctx.fillStyle = '#10131a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+// `skipBackground` lets renderMenu() paint its own forest-trail backdrop
+// (see renderMenuBackdrop below) instead of the flat fill every other
+// screen that calls this (mapSelect/modeSelect) still gets.
+function drawMenuTitle(ctx, title, subtitle, skipBackground) {
+  if (!skipBackground) {
+    ctx.fillStyle = '#10131a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
   ctx.fillStyle = '#f0f0f0';
   ctx.font = 'bold 30px sans-serif';
@@ -1285,6 +1291,176 @@ function drawMenuTooltip(ctx) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Main-menu "trophy trail": every distinct enemy type the player has ever
+// defeated (the same defeatedEnemyKeys set Sandbox's unlock gate already
+// uses), walking a loop along Deep Forest's real path, behind the menu
+// buttons — pure ambient decoration, not clickable, no gameplay effect.
+// Always Deep Forest specifically (not "whatever map was last played") so
+// the backdrop reads as a stable "forest" regardless of where the player's
+// last session happened to end.
+// ---------------------------------------------------------------------------
+
+// null means "needs rebuilding" — built lazily the next time the menu is
+// shown (see renderMenuBackdrop) rather than on every recordDefeatedEnemy
+// call, and invalidated (set back to null) there whenever the defeated set
+// actually grows.
+let menuTrophyEnemies = null;
+
+// A defeated key could be from either map's roster — looked up against
+// both (boss keys are already terrain-prefixed, so only one ever matches)
+// rather than assuming it came from whichever map is currently active.
+// Returns null for a stale/unrecognized key (e.g. one saved under an
+// older version of a roster) so the trail just skips it, rather than
+// crashing on a lookup that comes up empty.
+function resolveDefeatedEnemyVisual(key) {
+  for (const terrain of Object.keys(MAP_ROSTERS)) {
+    const roster = MAP_ROSTERS[terrain];
+    const bossPrefix = `${terrain}-boss-tier-`;
+    if (key.startsWith(bossPrefix)) {
+      const boss = roster.bossTypes[Number(key.slice(bossPrefix.length))];
+      if (boss) return { color: boss.color, radius: boss.radius, isBoss: true };
+    } else if (roster.enemyTypes[key]) {
+      const type = roster.enemyTypes[key];
+      return { color: type.color, radius: type.radius, isBoss: false };
+    }
+  }
+  return null;
+}
+
+// Places a point `t` (0..1) of the way along a waypoint path by arc
+// length, returning both the point and the waypoint index just behind it
+// — used to spread trophies out along the path instead of bunching them
+// all at the start.
+function getPointAtPathFraction(waypoints, t) {
+  const segmentLengths = [];
+  let total = 0;
+  for (let i = 0; i < waypoints.length - 1; i += 1) {
+    const length = Math.hypot(waypoints[i + 1].x - waypoints[i].x, waypoints[i + 1].y - waypoints[i].y);
+    segmentLengths.push(length);
+    total += length;
+  }
+
+  let target = t * total;
+  for (let i = 0; i < segmentLengths.length; i += 1) {
+    if (target <= segmentLengths[i] || i === segmentLengths.length - 1) {
+      const a = waypoints[i];
+      const b = waypoints[i + 1];
+      const frac = segmentLengths[i] === 0 ? 0 : Math.min(1, target / segmentLengths[i]);
+      return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac, waypointIndex: i };
+    }
+    target -= segmentLengths[i];
+  }
+  return { x: waypoints[0].x, y: waypoints[0].y, waypointIndex: 0 };
+}
+
+function buildMenuTrophyEnemies() {
+  const keys = [...defeatedEnemyKeys];
+  const waypoints = MAP_TYPES.deepForest.waypoints;
+
+  menuTrophyEnemies = keys
+    .map((key, i) => {
+      const visual = resolveDefeatedEnemyVisual(key);
+      if (!visual) return null;
+      const start = getPointAtPathFraction(waypoints, i / keys.length);
+      return {
+        enemyKey: key,
+        color: visual.color,
+        radius: visual.radius,
+        isBoss: visual.isBoss,
+        x: start.x,
+        y: start.y,
+        waypointIndex: start.waypointIndex,
+        heading: 0,
+        speed: BASE_SPEED * 0.45, // a relaxed amble, not combat pace
+      };
+    })
+    .filter(Boolean);
+}
+
+// Walks each trophy forward along Deep Forest's path, looping back to the
+// start instead of despawning at the end — "walking... on a loop," purely
+// cosmetic. Driven by real elapsed time from loop() (see its own call
+// site), not the fixed-step accumulator update() uses, since nothing here
+// needs deterministic simulation.
+function updateMenuTrophyEnemies(deltaSeconds) {
+  const waypoints = MAP_TYPES.deepForest.waypoints;
+  menuTrophyEnemies.forEach((enemy) => {
+    let remaining = enemy.speed * deltaSeconds;
+    while (remaining > 0) {
+      const target = waypoints[enemy.waypointIndex + 1];
+      if (!target) {
+        enemy.waypointIndex = 0;
+        enemy.x = waypoints[0].x;
+        enemy.y = waypoints[0].y;
+        break;
+      }
+      const dx = target.x - enemy.x;
+      const dy = target.y - enemy.y;
+      const dist = Math.hypot(dx, dy);
+      enemy.heading = Math.atan2(dy, dx);
+      if (dist <= remaining) {
+        enemy.x = target.x;
+        enemy.y = target.y;
+        enemy.waypointIndex += 1;
+        remaining -= dist;
+      } else {
+        enemy.x += (dx / dist) * remaining;
+        enemy.y += (dy / dist) * remaining;
+        remaining = 0;
+      }
+    }
+  });
+}
+
+// Deep Forest's real terrain/path/decor rendering, scaled to cover the
+// whole menu canvas (not just the WORLD_WIDTH x WORLD_HEIGHT corner a 1:1
+// draw would leave), with the trophy trail walking it and a darkening
+// overlay on top so the menu buttons/text on top of this stay clearly
+// readable regardless of how busy the forest scene underneath gets.
+function renderMenuBackdrop(ctx) {
+  const map = MAP_TYPES.deepForest;
+  const theme = TERRAIN_THEMES.forest;
+  const scale = Math.max(canvas.width / MAP_WORLD_WIDTH, canvas.height / MAP_WORLD_HEIGHT);
+  const offsetX = (canvas.width - MAP_WORLD_WIDTH * scale) / 2;
+  const offsetY = (canvas.height - MAP_WORLD_HEIGHT * scale) / 2;
+
+  if (!menuTrophyEnemies) buildMenuTrophyEnemies();
+
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = theme.background;
+  ctx.fillRect(0, 0, MAP_WORLD_WIDTH, MAP_WORLD_HEIGHT);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = map.pathColors.outline;
+  ctx.lineWidth = map.pathWidth + 10;
+  strokeMapPath(ctx, map.waypoints);
+  ctx.strokeStyle = map.pathColors.fill;
+  ctx.lineWidth = map.pathWidth;
+  strokeMapPath(ctx, map.waypoints);
+  theme.renderDecor(ctx, map.decor);
+
+  menuTrophyEnemies.forEach((enemy) => {
+    const facingOffset = enemy.isBoss
+      ? (BOSS_FACING_OFFSET[enemy.enemyKey] ?? 0)
+      : (ENEMY_FACING_OFFSET[enemy.enemyKey] ?? 0);
+    ctx.save();
+    ctx.translate(enemy.x, enemy.y);
+    ctx.rotate(enemy.heading + facingOffset);
+    ctx.translate(-enemy.x, -enemy.y);
+    drawEnemyShape(ctx, enemy);
+    ctx.restore();
+  });
+
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(8, 10, 14, 0.6)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
 // Top-level menu. Used to also offer a Map Editor option here — removed
 // per direct request, along with its whole UI/input flow and the JSON
 // export/import + localStorage custom-map persistence that went with it
@@ -1296,7 +1472,8 @@ function drawMenuTooltip(ctx) {
 // change — just the removal.
 function renderMenu(ctx) {
   uiBeginFrame();
-  drawMenuTitle(ctx, 'Bug Tower Defense', 'Choose how to begin');
+  renderMenuBackdrop(ctx);
+  drawMenuTitle(ctx, 'Bug Tower Defense', 'Choose how to begin', true);
 
   const buttonWidth = Math.min(420, canvas.width - 40);
   const buttonHeight = 72;
@@ -1884,13 +2061,17 @@ function loop(timestamp) {
   lastTime = timestamp;
 
   // Nothing to simulate on the menu — time simply doesn't accumulate while
-  // it's up, same as the game being paused.
+  // it's up, same as the game being paused. The menu's own trophy-trail
+  // animation is purely cosmetic and runs on real elapsed time instead,
+  // independent of this accumulator.
   if (gameState === 'playing') {
     accumulator += frameTime * gameSpeed;
     while (accumulator >= FIXED_DT) {
       update(FIXED_DT);
       accumulator -= FIXED_DT;
     }
+  } else if (gameState === 'menu' && menuTrophyEnemies) {
+    updateMenuTrophyEnemies(frameTime);
   }
 
   render();
