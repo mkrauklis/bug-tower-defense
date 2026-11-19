@@ -84,7 +84,7 @@ test('an enemy on path B (Savanah) walks along path B\'s own waypoints, not path
 
   game.updateEnemies(0.1); // enemy.speed = BASE_SPEED * 1 = 60px/s -> 6px this tick
 
-  // Path B's first leg runs from (980, 540) toward (700, 540) — leftward.
+  // Path B's first leg runs from (980, 540) toward (820, 540) — leftward.
   assert.ok(enemy.x < pathB[0].x);
   assert.equal(enemy.y, pathB[0].y);
 });
@@ -111,7 +111,7 @@ test('Rose\'s Root Path (spawnRoseRoots) seeds roots along path B even when path
   const game = loadFullGameContext();
   game.setActiveMap(game.MAP_TYPES.savanah);
 
-  // (850, 460) sits near path B's own corner (700,540)-(700,380)-(480,380)
+  // (850, 460) sits near path B's own vertical leg (820,540)-(820,320)
   // — well within the 220px root-spawn radius — but over 390px from the
   // nearest point on path A, outside that radius entirely. Before
   // spawnRoseRoots() walked every path in MAP_PATHS (it used to read only

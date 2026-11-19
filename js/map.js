@@ -497,11 +497,23 @@ function drawTemple(ctx, x, y, size) {
 }
 
 // Path A: spawns top-left, heads east then south, entering the temple
-// from above. Path B: spawns bottom-right, heads west then north,
-// entering from below. Both end at the identical final waypoint
+// from directly above (its last leg is VERTICAL, running down column
+// x=480). Path B: spawns bottom-right, heads west then north then west
+// again, entering the temple from the east (its last leg is HORIZONTAL,
+// running along row y=320). Both end at the identical final waypoint
 // (480, 320) — that shared endpoint *is* the temple's location, which is
-// what makes the two routes visually converge on one goal rather than
-// just happening to stop near each other.
+// what makes the two routes visually converge on one goal — but the two
+// paths are otherwise fully separate and never touch, cross, or run
+// alongside each other anywhere before that point.
+//
+// Direct request: an earlier version had Path B's last leg also vertical
+// along the same x=480 column (approaching from below instead of from
+// the east), which made the two paths' final legs collinear — together
+// they rendered as one continuous straight line through the temple
+// rather than two routes visibly converging on it. Giving Path B's final
+// approach a different (horizontal, not vertical) direction fixes that:
+// the two paths now meet at a visible corner/junction at the temple
+// instead of looking like a single merged line.
 const SAVANAH_PATH_A = [
   { x: -20, y: 100 },
   { x: 200, y: 100 },
@@ -511,18 +523,21 @@ const SAVANAH_PATH_A = [
 ];
 const SAVANAH_PATH_B = [
   { x: 980, y: 540 },
-  { x: 700, y: 540 },
-  { x: 700, y: 380 },
-  { x: 480, y: 380 },
+  { x: 820, y: 540 },
+  { x: 820, y: 320 },
   { x: 480, y: 320 },
 ];
 
 // Hand-placed clear of both paths above (checked against every segment of
 // each — see each array's own margin), same convention as every other
 // terrain's decor.
+// cactus 6 and sandstone 7 were repositioned (from 860,330 and 830,280)
+// when Path B's route moved — both used to sit in open ground near the
+// old south-approach corner and ended up too close to the new east-
+// approach corner at (820, 320)-(820, 540).
 const SAVANAH_CACTI = [
   { x: 70, y: 25, size: 28 }, { x: 420, y: 50, size: 26 }, { x: 650, y: 50, size: 32 },
-  { x: 830, y: 90, size: 28 }, { x: 900, y: 230, size: 30 }, { x: 860, y: 330, size: 26 },
+  { x: 830, y: 90, size: 28 }, { x: 900, y: 230, size: 30 }, { x: 900, y: 330, size: 26 },
   { x: 900, y: 470, size: 30 }, { x: 650, y: 600, size: 28 }, { x: 420, y: 600, size: 26 },
   { x: 150, y: 560, size: 30 }, { x: 50, y: 420, size: 28 }, { x: 110, y: 220, size: 24 },
 ];
@@ -530,7 +545,7 @@ const SAVANAH_CACTI = [
 const SAVANAH_SANDSTONE = [
   { x: 300, y: 345, r: 32 }, { x: 620, y: 460, r: 36 }, { x: 850, y: 140, r: 34 },
   { x: 60, y: 350, r: 32 }, { x: 380, y: 560, r: 36 }, { x: 900, y: 610, r: 28 },
-  { x: 830, y: 280, r: 32 },
+  { x: 870, y: 200, r: 32 },
 ];
 
 // The temple's position doubles as both paths' shared final waypoint
