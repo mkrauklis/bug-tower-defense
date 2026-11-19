@@ -52,9 +52,13 @@ const FOREST_ROSTER = {
     dungBeetle: { name: 'Dung Beetle', speedMultiplier: 0.6, health: 45, color: '#3e2723', radius: 10, bounty: 23 },
     tigerBeetle: { name: 'Tiger Beetle', speedMultiplier: 0.8, health: 50, color: '#2e7d32', radius: 9, bounty: 25 },
   },
+  // Boss health doubled across every map (direct request) — a straight
+  // 2x multiplier on each boss's own health only, not a redesign; bounty/
+  // speed/radius are untouched, so bounty no longer lands at the usual
+  // ~round(HP/2) convention for these four (that's expected, not a bug).
   bossTypes: {
-    1: { name: 'Queen Ant', speedMultiplier: 0.5, health: 50, color: '#6d4c41', radius: 20, bounty: 25 },
-    2: { name: 'Longhorn Beetle', speedMultiplier: 0.6, health: 100, color: '#5d4037', radius: 22, bounty: 50 },
+    1: { name: 'Queen Ant', speedMultiplier: 0.5, health: 100, color: '#6d4c41', radius: 20, bounty: 25 }, // was 50
+    2: { name: 'Longhorn Beetle', speedMultiplier: 0.6, health: 200, color: '#5d4037', radius: 22, bounty: 50 }, // was 100
   },
   order: ['ant', 'fireAnt', 'armoredAnt'],
   orderTier2: ['babyBeetle', 'dungBeetle', 'tigerBeetle'],
@@ -73,9 +77,11 @@ const MARSH_ROSTER = {
     slug: { name: 'Slug', speedMultiplier: 0.5, health: 75, color: '#bf7e4a', radius: 10, bounty: 38 }, // round(37.5)=38
     assassinSnail: { name: 'Assassin Snail', speedMultiplier: 0.6, health: 85, color: '#6d4c23', radius: 9, bounty: 43 }, // round(42.5)=43
   },
+  // Boss health doubled (direct request) — see Deep Forest's bossTypes
+  // comment above for the same scope note.
   bossTypes: {
-    1: { name: 'Frog Boss', speedMultiplier: 0.5, health: 65, color: '#33691e', radius: 20, bounty: 33 }, // round(32.5)=33
-    2: { name: 'Military Helmet Snail', speedMultiplier: 0.3, health: 150, color: '#8d6e4a', radius: 24, bounty: 75 },
+    1: { name: 'Frog Boss', speedMultiplier: 0.5, health: 130, color: '#33691e', radius: 20, bounty: 33 }, // was 65; bounty unchanged
+    2: { name: 'Military Helmet Snail', speedMultiplier: 0.3, health: 300, color: '#8d6e4a', radius: 24, bounty: 75 }, // was 150
   },
   order: ['tadpole', 'froglet', 'frogLarva'],
   orderTier2: ['appleSnail', 'slug', 'assassinSnail'],
@@ -131,18 +137,20 @@ const SAVANAH_ROSTER = {
     },
     kissingBug: { name: 'Kissing Bug', speedMultiplier: 0.8, health: 75, color: '#2e1f1a', radius: 8, bounty: 38 }, // round(37.5)=38
   },
+  // Boss health doubled (direct request) — see Deep Forest's bossTypes
+  // comment (enemies.js, FOREST_ROSTER) for the same scope note.
   bossTypes: {
     1: {
       name: 'Desert Termite',
       speedMultiplier: 0.6,
-      health: 75,
+      health: 150, // was 75
       color: '#dcc89a',
       radius: 21,
-      bounty: 38, // round(37.5)=38
+      bounty: 38, // unchanged; round(37.5)=38 against the OLD 75 HP, not re-derived from the new 150
       tunnelInterval: 3,
       tunnelDuration: 2,
     },
-    2: { name: 'Blue Death Beetle', speedMultiplier: 0.7, health: 145, color: '#2c4f7c', radius: 22, bounty: 73 }, // round(72.5)=73
+    2: { name: 'Blue Death Beetle', speedMultiplier: 0.7, health: 290, color: '#2c4f7c', radius: 22, bounty: 73 }, // was 145; bounty unchanged
   },
   order: ['sandLion', 'sandworm', 'desertAnt'],
   orderTier2: ['giantLubberGrasshopper', 'desertPrayingMantis', 'kissingBug'],

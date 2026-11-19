@@ -144,9 +144,31 @@ test('bounties follow the ~HP/2 convention, Ant bumped up from round(2/2)=1 so t
   assert.equal(game.FOREST_ROSTER.enemyTypes.ant.bounty, 2); // bumped, not literal HP/2
   assert.equal(game.FOREST_ROSTER.enemyTypes.fireAnt.bounty, 2); // round(3/2)=2
   assert.equal(game.FOREST_ROSTER.enemyTypes.armoredAnt.bounty, 5); // round(10/2)=5
-  assert.equal(game.FOREST_ROSTER.bossTypes[1].bounty, 25); // Queen Ant, round(50/2)=25
+  // Queen Ant's bounty was round(50/2)=25 before boss health was later
+  // doubled (direct request, bounty intentionally left unchanged) — health
+  // is 100 now, but the bounty itself is still just 25.
+  assert.equal(game.FOREST_ROSTER.bossTypes[1].bounty, 25);
   assert.equal(game.MARSH_ROSTER.enemyTypes.frogLarva.bounty, 12); // round(23/2)=12 (round(11.5)=12)
-  assert.equal(game.MARSH_ROSTER.bossTypes[2].bounty, 75); // Military Helmet Snail, round(150/2)=75
+  // Military Helmet Snail's bounty was round(150/2)=75 before boss health
+  // was later doubled (same unchanged-bounty note as Queen Ant above);
+  // health is 300 now.
+  assert.equal(game.MARSH_ROSTER.bossTypes[2].bounty, 75);
+});
+
+test('every map\'s boss health was doubled (direct request) — a straight 2x, bounty/speed/radius untouched', () => {
+  const game = loadGameContext();
+  assert.equal(game.FOREST_ROSTER.bossTypes[1].health, 100); // Queen Ant, was 50
+  assert.equal(game.FOREST_ROSTER.bossTypes[2].health, 200); // Longhorn Beetle, was 100
+  assert.equal(game.MARSH_ROSTER.bossTypes[1].health, 130); // Frog Boss, was 65
+  assert.equal(game.MARSH_ROSTER.bossTypes[2].health, 300); // Military Helmet Snail, was 150
+  game.setActiveMap(game.MAP_TYPES.savanah);
+  const savanahRoster = game.getActiveRoster();
+  assert.equal(savanahRoster.bossTypes[1].health, 150); // Desert Termite, was 75
+  assert.equal(savanahRoster.bossTypes[2].health, 290); // Blue Death Beetle, was 145
+
+  // Speed/radius are untouched — just a couple of spot checks, not every field.
+  assert.equal(game.FOREST_ROSTER.bossTypes[1].speedMultiplier, 0.5);
+  assert.equal(savanahRoster.bossTypes[1].radius, 21);
 });
 
 test('spawnWave lays out the right number of enemy instances from a manual composition, staggered', () => {
