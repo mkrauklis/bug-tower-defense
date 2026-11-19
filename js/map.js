@@ -409,6 +409,143 @@ function renderMarshDecor(ctx, decor) {
 const MARSH_PATH_COLORS = { outline: shadeColor('#241d10', -6), fill: shadeColor('#5c4328', -6) };
 
 // ---------------------------------------------------------------------------
+// Terrain: Savanah (the user's own spelling — kept as given even though the
+// described theme is desert, not grassland-savanna; see MAP_TYPES.savanah's
+// own comment). First map with more than one path — two separate spawns
+// that both lead into a shared temple goal, rather than Deep Forest/
+// Marshland's single route. Decor is desert-themed: sand ground, cacti,
+// sandstone rock formations, same canvas-only style as the other two
+// terrains.
+// ---------------------------------------------------------------------------
+
+// A tall columnar cactus with one side arm — the classic saguaro
+// silhouette, simple enough to read clearly at this scale. Drawn as a
+// rounded body (lineCap/lineJoin 'round' on a thick stroke, same cheap
+// "fat rounded line" trick used for the path itself) rather than filled
+// rectangles, so the arm's curve doesn't look blocky.
+function drawCactus(ctx, x, y, size) {
+  ctx.strokeStyle = '#3f6b3f';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = size * 0.3;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y - size);
+  ctx.stroke();
+
+  ctx.lineWidth = size * 0.22;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * 0.55);
+  ctx.quadraticCurveTo(x - size * 0.35, y - size * 0.55, x - size * 0.35, y - size * 0.8);
+  ctx.lineTo(x - size * 0.35, y - size * 0.95);
+  ctx.stroke();
+
+  ctx.strokeStyle = shadeColor('#3f6b3f', -20);
+  ctx.lineWidth = 1;
+  [-0.15, 0.15].forEach((dx) => {
+    ctx.beginPath();
+    ctx.moveTo(x + dx * size, y - size * 0.1);
+    ctx.lineTo(x + dx * size, y - size * 0.9);
+    ctx.stroke();
+  });
+}
+
+// A loose cluster of rounded boulders, layered light-over-dark for a
+// touch of depth — reads as "sandstone outcrop" without needing any real
+// rock texture at this scale.
+function drawSandstoneFormation(ctx, x, y, r) {
+  ctx.fillStyle = '#7a5a38';
+  [[-0.4, 0.1, 1], [0.3, 0.2, 0.8], [0, -0.3, 0.65]].forEach(([dx, dy, scale]) => {
+    ctx.beginPath();
+    ctx.ellipse(x + dx * r, y + dy * r, r * 0.55 * scale, r * 0.4 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = shadeColor('#7a5a38', 18);
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.1, y - r * 0.35, r * 0.3, r * 0.18, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Marks the single shared goal both of Savanah's paths converge on — a
+// small stepped-stone temple (receding tiers plus a dark doorway at the
+// base) rather than just an unmarked dead end, so the "two paths, one
+// goal" structure actually reads visually, not just mechanically.
+function drawTemple(ctx, x, y, size) {
+  [1, 0.72, 0.46].forEach((scale, i) => {
+    const w = size * scale;
+    const h = size * 0.32 * scale;
+    const tierY = y + size * 0.3 - i * size * 0.22;
+    ctx.fillStyle = shadeColor('#c9b68a', -i * 10);
+    ctx.fillRect(x - w / 2, tierY - h, w, h);
+    ctx.strokeStyle = shadeColor('#c9b68a', -i * 10 - 15);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x - w / 2, tierY - h, w, h);
+  });
+
+  ctx.fillStyle = '#2b2013';
+  const doorW = size * 0.16;
+  const doorH = size * 0.22;
+  ctx.fillRect(x - doorW / 2, y + size * 0.3 - doorH, doorW, doorH);
+}
+
+// Path A: spawns top-left, heads east then south, entering the temple
+// from above. Path B: spawns bottom-right, heads west then north,
+// entering from below. Both end at the identical final waypoint
+// (480, 320) — that shared endpoint *is* the temple's location, which is
+// what makes the two routes visually converge on one goal rather than
+// just happening to stop near each other.
+const SAVANAH_PATH_A = [
+  { x: -20, y: 100 },
+  { x: 200, y: 100 },
+  { x: 200, y: 260 },
+  { x: 480, y: 260 },
+  { x: 480, y: 320 },
+];
+const SAVANAH_PATH_B = [
+  { x: 980, y: 540 },
+  { x: 700, y: 540 },
+  { x: 700, y: 380 },
+  { x: 480, y: 380 },
+  { x: 480, y: 320 },
+];
+
+// Hand-placed clear of both paths above (checked against every segment of
+// each — see each array's own margin), same convention as every other
+// terrain's decor.
+const SAVANAH_CACTI = [
+  { x: 70, y: 25, size: 28 }, { x: 420, y: 50, size: 26 }, { x: 650, y: 50, size: 32 },
+  { x: 830, y: 90, size: 28 }, { x: 900, y: 230, size: 30 }, { x: 860, y: 330, size: 26 },
+  { x: 900, y: 470, size: 30 }, { x: 650, y: 600, size: 28 }, { x: 420, y: 600, size: 26 },
+  { x: 150, y: 560, size: 30 }, { x: 50, y: 420, size: 28 }, { x: 110, y: 220, size: 24 },
+];
+
+const SAVANAH_SANDSTONE = [
+  { x: 300, y: 345, r: 32 }, { x: 620, y: 460, r: 36 }, { x: 850, y: 140, r: 34 },
+  { x: 60, y: 350, r: 32 }, { x: 380, y: 560, r: 36 }, { x: 900, y: 610, r: 28 },
+  { x: 830, y: 280, r: 32 },
+];
+
+// The temple's position doubles as both paths' shared final waypoint
+// (see SAVANAH_PATH_A/B above) — stored here too, as a single-entry decor
+// field, purely so renderDesertDecor can draw it alongside everything
+// else without reaching into the map's own waypoint data.
+const SAVANAH_TEMPLE = { x: 480, y: 320, size: 70 };
+
+const SAVANAH_DECOR = {
+  cacti: SAVANAH_CACTI,
+  sandstone: SAVANAH_SANDSTONE,
+  temple: SAVANAH_TEMPLE,
+};
+
+function renderDesertDecor(ctx, decor) {
+  decor.sandstone.forEach((rock) => drawSandstoneFormation(ctx, rock.x, rock.y, rock.r));
+  decor.cacti.forEach((cactus) => drawCactus(ctx, cactus.x, cactus.y, cactus.size));
+  drawTemple(ctx, decor.temple.x, decor.temple.y, decor.temple.size);
+}
+
+const SAVANAH_PATH_COLORS = { outline: '#3d2c18', fill: '#a67c3f' };
+
+// ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/renderMapIcon()
 // below both dispatch through this rather than special-casing map ids.
@@ -423,6 +560,10 @@ const TERRAIN_THEMES = {
   // black olive (channels 20-36/255), so shadeColor's linear percent-of-
   // 255 scale crushes it to literal black well before -20%.
   marsh: { background: shadeColor('#1b2414', -6), renderDecor: renderMarshDecor },
+  // A dark, dusky sand-brown rather than a bright daytime tan — matches
+  // the moody-dark palette every other map (and the UI chrome around it)
+  // already uses, same reasoning as Marshland's own darkening pass.
+  desert: { background: '#241a0f', renderDecor: renderDesertDecor },
 };
 
 // ---------------------------------------------------------------------------
@@ -435,7 +576,12 @@ const MAP_TYPES = {
     id: 'deepForest',
     name: 'Deep Forest',
     builtin: true,
-    waypoints: DEEP_FOREST_WAYPOINTS,
+    // Every map's path(s) are an ARRAY of waypoint-arrays — Deep Forest and
+    // Marshland just happen to have exactly one, same as before this was
+    // generalized for Savanah's two converging paths. Nothing about a
+    // single-path map's behavior changes: MAP_PATH_WAYPOINTS below still
+    // aliases paths[0] for any caller that only ever dealt with "the" path.
+    paths: [DEEP_FOREST_WAYPOINTS],
     pathWidth: 56,
     pathColors: FOREST_PATH_COLORS,
     terrain: 'forest',
@@ -445,30 +591,58 @@ const MAP_TYPES = {
     id: 'marshland',
     name: 'Marshland',
     builtin: true,
-    waypoints: MARSHLAND_WAYPOINTS,
+    paths: [MARSHLAND_WAYPOINTS],
     pathWidth: 56,
     pathColors: MARSH_PATH_COLORS,
     terrain: 'marsh',
     decor: MARSHLAND_DECOR,
   },
+  // "Savanah" is the user's own spelling, kept as given even though the
+  // actual theme built here is desert, not grassland-savanna — a direct
+  // naming choice, not a typo to silently correct (same spirit as "The
+  // Concept Lab" naming notes elsewhere in this project: once a name is
+  // given directly, keep it rather than "fixing" it to what seems more
+  // conventional). The first map with two paths — see SAVANAH_PATH_A/B's
+  // own comment above for why they're both listed here.
+  savanah: {
+    id: 'savanah',
+    name: 'Savanah',
+    builtin: true,
+    paths: [SAVANAH_PATH_A, SAVANAH_PATH_B],
+    pathWidth: 56,
+    pathColors: SAVANAH_PATH_COLORS,
+    terrain: 'desert',
+    decor: SAVANAH_DECOR,
+  },
 };
 
-const MAP_TYPE_ORDER = ['deepForest', 'marshland'];
+const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah'];
 
 // ---------------------------------------------------------------------------
-// Active-map state. MAP_PATH_WAYPOINTS/MAP_PATH_WIDTH are what every other
-// file (enemies.js movement, towers.js root-trap placement, game.js's
-// zombie backward walk, isPointOnPath below) actually reads — see the file
-// header for why reassigning these two bindings is the whole refactor.
+// Active-map state. MAP_PATHS/MAP_PATH_WIDTH are what every other file
+// (enemies.js movement, towers.js root-trap placement, game.js's zombie
+// backward walk, isPointOnPath below) actually reads — see the file header
+// for why reassigning these bindings is the whole refactor. MAP_PATHS is an
+// array of paths (each itself an array of {x,y} waypoints) rather than one
+// flat array, so a map can have more than one — see Savanah. Every enemy
+// instance remembers which path it was spawned onto (enemy.pathIndex,
+// enemies.js) and reads MAP_PATHS[enemy.pathIndex] for its own movement;
+// nothing that isn't an enemy needs to care which path is "active," since
+// placement/root-traps/rendering all just iterate every path in MAP_PATHS.
+// MAP_PATH_WAYPOINTS is kept as a back-compat alias for MAP_PATHS[0] — the
+// game's two original single-path maps only ever had the one, so nothing
+// that already read MAP_PATH_WAYPOINTS directly needed to change.
 // ---------------------------------------------------------------------------
 
 let activeMap = MAP_TYPES.deepForest;
-let MAP_PATH_WAYPOINTS = activeMap.waypoints;
+let MAP_PATHS = activeMap.paths;
+let MAP_PATH_WAYPOINTS = MAP_PATHS[0];
 let MAP_PATH_WIDTH = activeMap.pathWidth;
 
 function setActiveMap(map) {
   activeMap = map;
-  MAP_PATH_WAYPOINTS = map.waypoints;
+  MAP_PATHS = map.paths;
+  MAP_PATH_WAYPOINTS = MAP_PATHS[0];
   MAP_PATH_WIDTH = map.pathWidth;
 }
 
@@ -476,16 +650,21 @@ function getActiveMap() {
   return activeMap;
 }
 
-// Whether a point is on (or within `margin` of) the active map's path —
-// used to keep towers off the path when placing them.
+// Whether a point is on (or within `margin` of) ANY of the active map's
+// paths — used to keep towers off the path when placing them. Checking
+// every path (not just the first) is what makes Savanah's two paths both
+// correctly block tower placement; for a single-path map this is exactly
+// the same check as before.
 function isPointOnPath(x, y, margin = 0) {
   const halfWidth = MAP_PATH_WIDTH / 2 + margin;
-  for (let i = 0; i < MAP_PATH_WAYPOINTS.length - 1; i += 1) {
-    const a = MAP_PATH_WAYPOINTS[i];
-    const b = MAP_PATH_WAYPOINTS[i + 1];
-    if (distanceToSegment(x, y, a.x, a.y, b.x, b.y) <= halfWidth) return true;
-  }
-  return false;
+  return MAP_PATHS.some((path) => {
+    for (let i = 0; i < path.length - 1; i += 1) {
+      const a = path[i];
+      const b = path[i + 1];
+      if (distanceToSegment(x, y, a.x, a.y, b.x, b.y) <= halfWidth) return true;
+    }
+    return false;
+  });
 }
 
 function renderMap(ctx, canvas) {
@@ -497,14 +676,23 @@ function renderMap(ctx, canvas) {
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
 
+  // All paths' outlines first, then all paths' fills — rather than each
+  // path's outline+fill one after another — so that where two paths
+  // overlap or converge (Savanah's temple goal), the fill layer always
+  // wins over any path's outline there instead of however the paths
+  // happen to be ordered in the array. For a single-path map this is
+  // pixel-identical to the old two-call sequence.
   const colors = activeMap.pathColors;
-  ctx.strokeStyle = colors.outline;
-  ctx.lineWidth = MAP_PATH_WIDTH + 10;
-  strokeMapPath(ctx, MAP_PATH_WAYPOINTS);
-
-  ctx.strokeStyle = colors.fill;
-  ctx.lineWidth = MAP_PATH_WIDTH;
-  strokeMapPath(ctx, MAP_PATH_WAYPOINTS);
+  MAP_PATHS.forEach((path) => {
+    ctx.strokeStyle = colors.outline;
+    ctx.lineWidth = MAP_PATH_WIDTH + 10;
+    strokeMapPath(ctx, path);
+  });
+  MAP_PATHS.forEach((path) => {
+    ctx.strokeStyle = colors.fill;
+    ctx.lineWidth = MAP_PATH_WIDTH;
+    strokeMapPath(ctx, path);
+  });
 
   theme.renderDecor(ctx, activeMap.decor);
 }
@@ -532,12 +720,18 @@ function renderMapIcon(ctx, map, x, y, size) {
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  ctx.strokeStyle = map.pathColors.outline;
-  ctx.lineWidth = map.pathWidth + 14; // a touch thicker than real scale so it doesn't vanish when shrunk
-  strokeMapPath(ctx, map.waypoints);
-  ctx.strokeStyle = map.pathColors.fill;
-  ctx.lineWidth = map.pathWidth + 4;
-  strokeMapPath(ctx, map.waypoints);
+  // Same all-outlines-then-all-fills ordering as renderMap(), and for the
+  // same reason — see its comment.
+  map.paths.forEach((path) => {
+    ctx.strokeStyle = map.pathColors.outline;
+    ctx.lineWidth = map.pathWidth + 14; // a touch thicker than real scale so it doesn't vanish when shrunk
+    strokeMapPath(ctx, path);
+  });
+  map.paths.forEach((path) => {
+    ctx.strokeStyle = map.pathColors.fill;
+    ctx.lineWidth = map.pathWidth + 4;
+    strokeMapPath(ctx, path);
+  });
 
   ctx.restore();
 }

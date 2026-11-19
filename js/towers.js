@@ -834,31 +834,36 @@ function spawnRoseRoots(cx, cy, count, existingPoints = []) {
   const coverage = [];
   let totalLength = 0;
 
-  for (let i = 0; i < MAP_PATH_WAYPOINTS.length - 1; i += 1) {
-    const a = MAP_PATH_WAYPOINTS[i];
-    const b = MAP_PATH_WAYPOINTS[i + 1];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const segmentLength = Math.hypot(dx, dy);
-    if (segmentLength === 0) continue;
+  // Walks every one of the map's paths (not just one) so a Rose placed
+  // near Savanah's temple, where both paths converge, can seed roots along
+  // either — same generalization isPointOnPath() in map.js already made.
+  MAP_PATHS.forEach((path) => {
+    for (let i = 0; i < path.length - 1; i += 1) {
+      const a = path[i];
+      const b = path[i + 1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const segmentLength = Math.hypot(dx, dy);
+      if (segmentLength === 0) continue;
 
-    const steps = Math.max(2, Math.ceil(segmentLength / 5));
-    let runStart = null;
-    for (let s = 0; s <= steps; s += 1) {
-      const t = s / steps;
-      const within = Math.hypot(a.x + dx * t - cx, a.y + dy * t - cy) <= ROOT_SPAWN_RADIUS;
-      if (within && runStart === null) runStart = t;
-      if ((!within || s === steps) && runStart !== null) {
-        const runEnd = within ? t : (s - 1) / steps;
-        const length = (runEnd - runStart) * segmentLength;
-        if (length > 0) {
-          coverage.push({ a, dx, dy, tStart: runStart, tEnd: runEnd, length });
-          totalLength += length;
+      const steps = Math.max(2, Math.ceil(segmentLength / 5));
+      let runStart = null;
+      for (let s = 0; s <= steps; s += 1) {
+        const t = s / steps;
+        const within = Math.hypot(a.x + dx * t - cx, a.y + dy * t - cy) <= ROOT_SPAWN_RADIUS;
+        if (within && runStart === null) runStart = t;
+        if ((!within || s === steps) && runStart !== null) {
+          const runEnd = within ? t : (s - 1) / steps;
+          const length = (runEnd - runStart) * segmentLength;
+          if (length > 0) {
+            coverage.push({ a, dx, dy, tStart: runStart, tEnd: runEnd, length });
+            totalLength += length;
+          }
+          runStart = null;
         }
-        runStart = null;
       }
     }
-  }
+  });
 
   if (totalLength === 0) return [];
 

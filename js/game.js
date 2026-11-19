@@ -1532,7 +1532,7 @@ function getPointAtPathFraction(waypoints, t) {
 
 function buildMenuTrophyEnemies() {
   const keys = [...defeatedEnemyKeys];
-  const waypoints = MAP_TYPES.deepForest.waypoints;
+  const waypoints = MAP_TYPES.deepForest.paths[0]; // the menu backdrop is always Deep Forest's one path
 
   menuTrophyEnemies = keys
     .map((key, i) => {
@@ -1560,7 +1560,7 @@ function buildMenuTrophyEnemies() {
 // site), not the fixed-step accumulator update() uses, since nothing here
 // needs deterministic simulation.
 function updateMenuTrophyEnemies(deltaSeconds) {
-  const waypoints = MAP_TYPES.deepForest.waypoints;
+  const waypoints = MAP_TYPES.deepForest.paths[0];
   menuTrophyEnemies.forEach((enemy) => {
     let remaining = enemy.speed * deltaSeconds;
     while (remaining > 0) {
@@ -1613,10 +1613,10 @@ function renderMenuBackdrop(ctx) {
   ctx.lineCap = 'round';
   ctx.strokeStyle = map.pathColors.outline;
   ctx.lineWidth = map.pathWidth + 10;
-  strokeMapPath(ctx, map.waypoints);
+  strokeMapPath(ctx, map.paths[0]); // Deep Forest only ever has the one path
   ctx.strokeStyle = map.pathColors.fill;
   ctx.lineWidth = map.pathWidth;
-  strokeMapPath(ctx, map.waypoints);
+  strokeMapPath(ctx, map.paths[0]);
   theme.renderDecor(ctx, map.decor);
 
   menuTrophyEnemies.forEach((enemy) => {

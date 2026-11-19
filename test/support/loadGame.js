@@ -45,6 +45,11 @@ function loadGameContext() {
       generateWave, spawnWave, updateEnemies, getLastLeakedEnemies,
       findNearestEnemyInRange, damageEnemy, applyBurn, getEnemiesInRadius,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath,
+      // A getter, not a plain binding — MAP_PATHS (like activeEnemies
+      // below) is reassigned by setActiveMap(), so a plain destructured
+      // export here would snapshot it at module-load time and go stale
+      // the moment a test switches maps.
+      getMapPaths: () => MAP_PATHS,
       getActiveEnemies: () => activeEnemies,
       MILLIPEDE_FAMILY_KEYS, recordTrailPoint, getTrailPointAtDistance,
       MAP_TYPES, getActiveMap, setActiveMap,
@@ -197,6 +202,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getHordeSpawnTimer: () => hordeSpawnTimer,
       MAP_ROSTERS, FOREST_ROSTER, MARSH_ROSTER, getActiveRoster, generateWave,
       MAP_TYPES, getActiveMap, setActiveMap,
+      getMapPaths: () => MAP_PATHS,
       getSelectedMap: () => selectedMap,
       setSelectedMap: (map) => { selectedMap = map; },
       getPlayerHealth: () => playerHealth,
