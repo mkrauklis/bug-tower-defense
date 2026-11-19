@@ -1,9 +1,11 @@
-// Ambient wildlife: purely decorative fireflies, ladybugs that occasionally
-// grant the player a power-up, and (Marshland only) frogs that hop between
-// lily pads. No combat role for any of them — they don't interact with
-// towers or enemies at all. Frogs in particular are NOT the combat "Baby
-// Frog" enemy type (js/enemies.js) — same animal, unrelated system, purely
-// decorative like the fireflies.
+// Ambient wildlife: purely decorative fireflies, and (Marshland only) frogs
+// that hop between nearby lily pads. No combat role for either — they don't
+// interact with towers or enemies at all. Frogs in particular are NOT the
+// combat "Baby Frog"-style enemy type (js/enemies.js) — same animal,
+// unrelated system, purely decorative like the fireflies.
+//
+// Ladybugs (and the click-for-+50%-damage-boost power-up that came with
+// them) were removed per direct request — see git history.
 //
 // Movement uses the game's seeded random() (js/random.js) rather than
 // Math.random(), so wandering is reproducible along with everything else
@@ -11,20 +13,25 @@
 
 const WILDLIFE_BOUNDS = { width: 960, height: 640 };
 const FIREFLY_COUNT = 6;
-const LADYBUG_COUNT = 3;
 const FROG_COUNT = 5;
 
-// How long a ladybug waits after granting its power-up before it can be
-// clicked again — keeps the mechanic from being spammed with 3 of them
-// wandering around, while still coming back around over a session.
-const LADYBUG_COOLDOWN = 20;
-const LADYBUG_CLICK_RADIUS = 14;
-
-// Seconds a hop takes start-to-finish, and how high (px) a frog lifts at
-// the midpoint of a hop — purely a rendering offset (see drawFrog), the
-// entity's own x/y already track the ground position throughout.
-const FROG_HOP_DURATION = 0.5;
-const FROG_HOP_ARC_HEIGHT = 10;
+// How far a frog will hop in one go — restricted to a *nearby* lily pad
+// rather than any pad on the map (an earlier version picked any pad at
+// random, so a hop between two far-apart puddles could cover hundreds of
+// pixels; animated over the same fixed short duration and small arc height
+// used for a one-pad hop, a jump that long read as a flat, fast-moving
+// streak — "shooting lasers," not hopping. Restricting the candidate pads
+// to this radius, and deriving each hop's own duration/arc height from its
+// actual distance below, both fixes that and reads as a visibly shorter,
+// gentler hop range overall.
+const FROG_MAX_HOP_DISTANCE = 55;
+// Horizontal travel speed a hop's duration is derived from, so a short hop
+// take proportionally less time than a longer one instead of both taking
+// the same fixed duration — that mismatch (long distance, fixed short
+// duration) was the other half of the "laser" bug above.
+const FROG_HOP_SPEED = 160; // px/second
+const FROG_MIN_HOP_DURATION = 0.25;
+const FROG_MAX_HOP_ARC_HEIGHT = 12;
 
 function createWildlifeEntity(kind, options = {}) {
   if (kind === 'frog') {
@@ -42,20 +49,21 @@ function createWildlifeEntity(kind, options = {}) {
       toX: start.x,
       toY: start.y,
       hopProgress: 1, // 1 = idle at destination, < 1 = mid-hop
+      hopDuration: FROG_MIN_HOP_DURATION,
+      hopArcHeight: 6,
       pauseRemaining: 1 + random() * 2.5,
       facingAngle: 0,
     };
   }
 
   return {
-    kind, // 'firefly' | 'ladybug'
+    kind, // 'firefly'
     x: WILDLIFE_BOUNDS.width * random(),
     y: WILDLIFE_BOUNDS.height * random(),
     angle: random() * Math.PI * 2,
-    speed: kind === 'firefly' ? 18 : 14,
+    speed: 18,
     wanderTimer: random() * 2, // seconds until the next heading change
     glowPhase: random() * Math.PI * 2,
-    cooldownRemaining: 0, // ladybugs only
   };
 }
 
@@ -65,7 +73,6 @@ function createWildlifeEntity(kind, options = {}) {
 function createWildlifeSwarm(map) {
   const swarm = [];
   for (let i = 0; i < FIREFLY_COUNT; i += 1) swarm.push(createWildlifeEntity('firefly'));
-  for (let i = 0; i < LADYBUG_COUNT; i += 1) swarm.push(createWildlifeEntity('ladybug'));
 
   const lilyPads = map && map.decor && map.decor.lilyPads;
   if (lilyPads && lilyPads.length) {
@@ -76,9 +83,22 @@ function createWildlifeSwarm(map) {
   return swarm;
 }
 
+// Picks a random lily pad within FROG_MAX_HOP_DISTANCE of the frog's
+// current position (excluding its own pad) — null if nothing qualifies,
+// which updateFrog() below treats as "hop in place" rather than forcing a
+// long-distance jump just to land somewhere.
+function pickNearbyLilyPad(entity) {
+  const candidates = entity.lilyPads.filter((pad) => {
+    if (pad.x === entity.x && pad.y === entity.y) return false;
+    return Math.hypot(pad.x - entity.x, pad.y - entity.y) <= FROG_MAX_HOP_DISTANCE;
+  });
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(random() * candidates.length)];
+}
+
 function updateFrog(entity, deltaSeconds) {
   if (entity.hopProgress < 1) {
-    entity.hopProgress = Math.min(1, entity.hopProgress + deltaSeconds / FROG_HOP_DURATION);
+    entity.hopProgress = Math.min(1, entity.hopProgress + deltaSeconds / entity.hopDuration);
     const t = entity.hopProgress;
     entity.x = entity.fromX + (entity.toX - entity.fromX) * t;
     entity.y = entity.fromY + (entity.toY - entity.fromY) * t;
@@ -86,23 +106,23 @@ function updateFrog(entity, deltaSeconds) {
   }
 
   entity.pauseRemaining -= deltaSeconds;
-  if (entity.pauseRemaining > 0 || entity.lilyPads.length < 2) {
-    if (entity.pauseRemaining <= 0) entity.pauseRemaining = 1 + random() * 2.5; // nowhere else to hop to
-    return;
-  }
+  if (entity.pauseRemaining > 0) return;
 
-  let target = entity.lilyPads[Math.floor(random() * entity.lilyPads.length)];
-  let attempts = 0;
-  while (target.x === entity.x && target.y === entity.y && attempts < 5) {
-    target = entity.lilyPads[Math.floor(random() * entity.lilyPads.length)];
-    attempts += 1;
-  }
+  // No pad close enough — a tiny in-place bounce instead of forcing a
+  // longer "hop" just to have a destination (the explicit fallback for
+  // when a clean pad-to-pad hop isn't available).
+  const target = pickNearbyLilyPad(entity) || { x: entity.x, y: entity.y };
+  const distance = Math.hypot(target.x - entity.x, target.y - entity.y);
 
   entity.fromX = entity.x;
   entity.fromY = entity.y;
   entity.toX = target.x;
   entity.toY = target.y;
-  entity.facingAngle = Math.atan2(entity.toY - entity.fromY, entity.toX - entity.fromX);
+  entity.hopDuration = Math.max(FROG_MIN_HOP_DURATION, distance / FROG_HOP_SPEED);
+  // Taller arc for a longer hop, but even an in-place bounce (distance 0)
+  // still lifts a little so it reads as a hop, not a freeze-frame.
+  entity.hopArcHeight = Math.min(FROG_MAX_HOP_ARC_HEIGHT, 6 + distance * 0.15);
+  if (distance > 0.5) entity.facingAngle = Math.atan2(target.y - entity.y, target.x - entity.x);
   entity.hopProgress = 0;
   entity.pauseRemaining = 1 + random() * 2.5;
 }
@@ -112,10 +132,6 @@ function updateWildlife(swarm, deltaSeconds) {
     if (entity.kind === 'frog') {
       updateFrog(entity, deltaSeconds);
       return;
-    }
-
-    if (entity.kind === 'ladybug') {
-      entity.cooldownRemaining = Math.max(0, entity.cooldownRemaining - deltaSeconds);
     }
 
     entity.wanderTimer -= deltaSeconds;
@@ -139,12 +155,6 @@ function updateWildlife(swarm, deltaSeconds) {
   });
 }
 
-function findLadybugAt(swarm, x, y) {
-  return swarm.find(
-    (entity) => entity.kind === 'ladybug' && Math.hypot(entity.x - x, entity.y - y) <= LADYBUG_CLICK_RADIUS
-  );
-}
-
 function drawFirefly(ctx, entity, time) {
   const glow = 0.5 + 0.5 * Math.sin(time * 3 + entity.glowPhase); // 0..1 pulsing glow
   ctx.save();
@@ -157,40 +167,12 @@ function drawFirefly(ctx, entity, time) {
   ctx.restore();
 }
 
-function drawLadybug(ctx, entity) {
-  const onCooldown = entity.cooldownRemaining > 0;
-  ctx.save();
-  if (onCooldown) ctx.globalAlpha = 0.4; // visibly "spent" until it recharges
-
-  ctx.fillStyle = '#d32f2f';
-  ctx.beginPath();
-  ctx.ellipse(entity.x, entity.y, 7, 5.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#212121';
-  ctx.beginPath();
-  ctx.arc(entity.x - 6, entity.y, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.moveTo(entity.x - 7, entity.y);
-  ctx.lineTo(entity.x + 7, entity.y);
-  ctx.stroke();
-
-  [[-2, -2], [2, -2], [-2, 2], [2, 2], [4, 0]].forEach(([dx, dy]) => {
-    ctx.beginPath();
-    ctx.arc(entity.x + dx, entity.y + dy, 1, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  ctx.restore();
-}
-
 function drawFrog(ctx, entity) {
   // Lifted off the ground position at the midpoint of a hop (a simple sine
-  // arc over hopProgress) — purely a visual offset, entity.x/y underneath
-  // stay the real ground position used for targeting the next lily pad.
-  const lift = Math.sin(entity.hopProgress * Math.PI) * FROG_HOP_ARC_HEIGHT;
+  // arc over hopProgress, scaled by this specific hop's own arc height) —
+  // purely a visual offset, entity.x/y underneath stay the real ground
+  // position used for targeting the next lily pad.
+  const lift = Math.sin(entity.hopProgress * Math.PI) * entity.hopArcHeight;
   const x = entity.x;
   const y = entity.y - lift;
 
@@ -198,9 +180,9 @@ function drawFrog(ctx, entity) {
 
   // A faint shadow at the true ground position, shrinking as the frog
   // lifts higher — the one cue that it's airborne, not just small.
-  ctx.fillStyle = `rgba(0, 0, 0, ${0.25 - lift * 0.01})`;
+  ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, 0.25 - lift * 0.012)})`;
   ctx.beginPath();
-  ctx.ellipse(entity.x, entity.y + 2, 5 - lift * 0.2, 2.5 - lift * 0.1, 0, 0, Math.PI * 2);
+  ctx.ellipse(entity.x, entity.y + 2, Math.max(1, 5 - lift * 0.2), Math.max(0.5, 2.5 - lift * 0.1), 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.translate(x, y);
@@ -246,7 +228,6 @@ function renderWildlife(ctx, swarm, time, kind) {
   swarm.forEach((entity) => {
     if (entity.kind !== kind) return;
     if (kind === 'firefly') drawFirefly(ctx, entity, time);
-    else if (kind === 'frog') drawFrog(ctx, entity);
-    else drawLadybug(ctx, entity);
+    else drawFrog(ctx, entity);
   });
 }

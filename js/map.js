@@ -150,26 +150,65 @@ const FOREST_PATH_COLORS = { outline: '#3e2a1a', fill: '#6b4a2f' };
 // without needing a whole second path-rendering technique.
 // ---------------------------------------------------------------------------
 
-function drawMudPuddle(ctx, x, y, r) {
-  // Deliberately cooler/bluer than the warm-olive ground fill (#1b2414) so
-  // standing water reads clearly against it instead of blending in — an
-  // earlier version used near-ground olive tones here and the puddles
-  // nearly disappeared at a glance.
-  ctx.fillStyle = '#132422';
+// A smooth, irregular closed blob instead of a perfect ellipse — a real
+// pond's shoreline doesn't trace a circle. Built from `pointCount` points
+// scattered around the center at a wobbling radius (a sum of two sine
+// harmonics, phased by `seed` so different ponds don't all wobble
+// identically), then connected with quadratic curves through each pair's
+// midpoint — the standard "smooth blob through N points" technique, cheap
+// and deterministic (no per-frame randomness) so the shape is stable
+// across renders.
+function drawOrganicBlobPath(ctx, cx, cy, r, seed, flatten = 1) {
+  const pointCount = 12;
+  const points = [];
+  for (let i = 0; i < pointCount; i += 1) {
+    const angle = (i / pointCount) * Math.PI * 2;
+    const wobble = 1 + 0.26 * Math.sin(angle * 3 + seed) + 0.14 * Math.sin(angle * 5 + seed * 2.3);
+    points.push({
+      x: cx + Math.cos(angle) * r * wobble,
+      y: cy + Math.sin(angle) * r * wobble * flatten,
+    });
+  }
+
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const start = mid(points[pointCount - 1], points[0]);
   ctx.beginPath();
-  ctx.ellipse(x, y, r, r * 0.65, 0, 0, Math.PI * 2);
+  ctx.moveTo(start.x, start.y);
+  for (let i = 0; i < pointCount; i += 1) {
+    const next = points[(i + 1) % pointCount];
+    const midpoint = mid(points[i], next);
+    ctx.quadraticCurveTo(points[i].x, points[i].y, midpoint.x, midpoint.y);
+  }
+  ctx.closePath();
+}
+
+// Cooler/bluer than the warm-olive ground fill so standing water reads
+// clearly against it instead of blending in (an earlier version used
+// near-ground olive tones here and the puddles nearly disappeared at a
+// glance), and darker still than that first pass — a direct request to
+// make Marshland's water read moodier/darker overall, not just bigger.
+const MUD_PUDDLE_OUTER_COLOR = '#0d1c1a';
+const MUD_PUDDLE_INNER_COLOR = '#17362f';
+
+function drawMudPuddle(ctx, x, y, r) {
+  // Seeds the blob's own wobble phase off its position, so two different
+  // ponds (different x/y) get visibly different silhouettes "for free"
+  // without needing a stored per-pond shape or true randomness.
+  const seed = (x * 0.17 + y * 0.11) % (Math.PI * 2);
+
+  ctx.fillStyle = MUD_PUDDLE_OUTER_COLOR;
+  drawOrganicBlobPath(ctx, x, y, r, seed, 0.72);
   ctx.fill();
 
-  ctx.fillStyle = '#20453f';
-  ctx.beginPath();
-  ctx.ellipse(x, y - r * 0.08, r * 0.82, r * 0.5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = MUD_PUDDLE_INNER_COLOR;
+  drawOrganicBlobPath(ctx, x, y - r * 0.05, r * 0.82, seed + 0.9, 0.68);
   ctx.fill();
 
   // A thin highlight arc so the puddle reads as water, not a flat stain.
-  ctx.strokeStyle = 'rgba(200, 220, 180, 0.25)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(200, 220, 180, 0.2)';
+  ctx.lineWidth = Math.max(1.5, r * 0.035);
   ctx.beginPath();
-  ctx.ellipse(x - r * 0.2, y - r * 0.2, r * 0.4, r * 0.18, -0.4, 0, Math.PI);
+  ctx.ellipse(x - r * 0.2, y - r * 0.22, r * 0.38, r * 0.16, -0.4, 0, Math.PI);
   ctx.stroke();
 }
 
@@ -203,6 +242,34 @@ function drawDuckweedPatch(ctx, x, y, r) {
     ctx.arc(x + Math.cos(angle) * dist, y + Math.sin(angle) * dist * 0.6, 1.6, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// Tall grass-like stalks with a brown fuzzy seed head — the classic
+// cattail/bulrush silhouette, planted along the water's edges alongside
+// duckweed/mangroves (a gap the user flagged directly: Marshland had no
+// cattails at all before this).
+function drawCattail(ctx, x, y, size) {
+  ctx.strokeStyle = '#4a6b2f';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(1.3, size * 0.1);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.quadraticCurveTo(x + size * 0.12, y - size * 0.95, x + size * 0.04, y - size * 1.65);
+  ctx.stroke();
+  // A second, shorter blade alongside the main stalk for a fuller tuft.
+  ctx.beginPath();
+  ctx.moveTo(x + size * 0.2, y + size * 0.05);
+  ctx.quadraticCurveTo(x + size * 0.32, y - size * 0.55, x + size * 0.22, y - size * 1.05);
+  ctx.stroke();
+
+  ctx.fillStyle = '#6d4c23';
+  ctx.beginPath();
+  ctx.ellipse(x + size * 0.04, y - size * 1.78, size * 0.14, size * 0.42, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#5a3e1c';
+  ctx.beginPath();
+  ctx.ellipse(x + size * 0.02, y - size * 1.9, size * 0.1, size * 0.22, 0.05, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawMangrove(ctx, x, y, r) {
@@ -251,26 +318,34 @@ const MARSHLAND_WAYPOINTS = [
 // waypoints above. Lily pads are listed per-puddle (they float inside it)
 // but also read as one flat list by anything that just wants "every lily
 // pad on this map" (js/wildlife.js's frogs — see MARSHLAND_DECOR.lilyPads).
+//
+// Puddle radii here are roughly 2.8x their original size (direct request:
+// "much larger," not just the 2x of an earlier pass) — drawMudPuddle()
+// itself now draws an irregular blob rather than a circle/ellipse, so
+// these read as real ponds rather than big dots. Lily-pad offsets from
+// each puddle's own center are scaled by that same ~2.8x so they stay
+// spread across the now-much-bigger pond instead of clustering near its
+// center or spilling past its edge.
 const MARSHLAND_PUDDLES = [
-  { x: 70, y: 380, r: 30 },
-  { x: 280, y: 560, r: 26 },
-  { x: 280, y: 120, r: 28 },
-  { x: 480, y: 340, r: 32 },
-  { x: 500, y: 580, r: 24 },
-  { x: 710, y: 230, r: 30 },
-  { x: 900, y: 500, r: 26 },
-  { x: 900, y: 60, r: 24 },
+  { x: 70, y: 380, r: 85 },
+  { x: 280, y: 560, r: 75 },
+  { x: 280, y: 120, r: 80 },
+  { x: 480, y: 340, r: 90 },
+  { x: 500, y: 580, r: 70 },
+  { x: 710, y: 230, r: 85 },
+  { x: 900, y: 500, r: 75 },
+  { x: 900, y: 60, r: 70 },
 ];
 
 const MARSHLAND_LILY_PADS = [
-  { x: 60, y: 368, r: 9 }, { x: 82, y: 392, r: 7 },
-  { x: 272, y: 550, r: 8 }, { x: 292, y: 568, r: 7 },
-  { x: 272, y: 112, r: 8 }, { x: 292, y: 128, r: 7 }, { x: 282, y: 134, r: 6 },
-  { x: 470, y: 332, r: 9 }, { x: 492, y: 348, r: 8 }, { x: 480, y: 352, r: 6 },
-  { x: 492, y: 572, r: 8 }, { x: 508, y: 588, r: 7 },
-  { x: 700, y: 222, r: 9 }, { x: 722, y: 238, r: 8 }, { x: 712, y: 242, r: 6 },
-  { x: 890, y: 492, r: 8 }, { x: 910, y: 508, r: 7 },
-  { x: 892, y: 52, r: 8 }, { x: 910, y: 68, r: 7 },
+  { x: 42, y: 346, r: 14 }, { x: 104, y: 414, r: 11 },
+  { x: 257, y: 531, r: 12 }, { x: 315, y: 583, r: 11 },
+  { x: 257, y: 97, r: 12 }, { x: 314, y: 143, r: 11 }, { x: 286, y: 160, r: 9 },
+  { x: 452, y: 318, r: 14 }, { x: 514, y: 363, r: 12 }, { x: 480, y: 374, r: 9 },
+  { x: 477, y: 557, r: 12 }, { x: 523, y: 603, r: 11 },
+  { x: 682, y: 207, r: 14 }, { x: 744, y: 253, r: 12 }, { x: 716, y: 264, r: 9 },
+  { x: 871, y: 477, r: 12 }, { x: 929, y: 523, r: 11 },
+  { x: 877, y: 37, r: 12 }, { x: 929, y: 83, r: 11 },
 ];
 
 const MARSHLAND_DUCKWEED = [
@@ -280,17 +355,35 @@ const MARSHLAND_DUCKWEED = [
   { x: 930, y: 420, r: 12 }, { x: 60, y: 580, r: 11 }, { x: 420, y: 60, r: 12 },
 ];
 
+// Repositioned to the map's four corners (direct request — these used to
+// be scattered through the middle) and enlarged. Clustered 2-3 per corner,
+// inset far enough that they stay clear of the path (checked against
+// MARSHLAND_WAYPOINTS above) rather than sitting flush against the canvas
+// edge.
 const MARSHLAND_MANGROVES = [
-  { x: 40, y: 280, r: 24 },
-  { x: 120, y: 600, r: 26 },
-  { x: 230, y: 420, r: 22 },
-  { x: 330, y: 60, r: 24 },
-  { x: 460, y: 580, r: 26 },
-  { x: 560, y: 260, r: 22 },
-  { x: 670, y: 580, r: 24 },
-  { x: 760, y: 60, r: 26 },
-  { x: 880, y: 420, r: 22 },
-  { x: 930, y: 160, r: 24 },
+  // top-left
+  { x: 50, y: 50, r: 38 }, { x: 108, y: 42, r: 34 }, { x: 42, y: 115, r: 36 },
+  // top-right
+  { x: 910, y: 45, r: 38 }, { x: 852, y: 36, r: 34 }, { x: 925, y: 108, r: 36 },
+  // bottom-left
+  { x: 50, y: 592, r: 38 }, { x: 112, y: 606, r: 34 },
+  // bottom-right
+  { x: 910, y: 596, r: 38 }, { x: 850, y: 608, r: 34 },
+];
+
+// New — along the water's edges, alongside the existing duckweed/mangroves
+// (a gap the user flagged directly: Marshland had none before this).
+// Hand-placed near several puddles' shorelines, kept clear of both the
+// path and the puddles themselves.
+const MARSHLAND_CATTAILS = [
+  { x: 10, y: 300, size: 22 }, { x: 165, y: 430, size: 19 },
+  { x: 225, y: 605, size: 21 }, { x: 345, y: 550, size: 18 },
+  { x: 225, y: 35, size: 20 }, { x: 355, y: 95, size: 18 },
+  { x: 415, y: 290, size: 21 }, { x: 570, y: 370, size: 19 },
+  { x: 445, y: 612, size: 20 }, { x: 575, y: 555, size: 18 },
+  { x: 655, y: 170, size: 21 }, { x: 790, y: 255, size: 19 },
+  { x: 835, y: 545, size: 20 }, { x: 955, y: 455, size: 18 },
+  { x: 835, y: 15, size: 20 }, { x: 955, y: 95, size: 18 },
 ];
 
 const MARSHLAND_DECOR = {
@@ -298,18 +391,22 @@ const MARSHLAND_DECOR = {
   lilyPads: MARSHLAND_LILY_PADS,
   duckweed: MARSHLAND_DUCKWEED,
   mangroves: MARSHLAND_MANGROVES,
+  cattails: MARSHLAND_CATTAILS,
 };
 
 function renderMarshDecor(ctx, decor) {
   decor.duckweed.forEach((patch) => drawDuckweedPatch(ctx, patch.x, patch.y, patch.r));
+  decor.cattails.forEach((cattail) => drawCattail(ctx, cattail.x, cattail.y, cattail.size));
   decor.puddles.forEach((puddle) => drawMudPuddle(ctx, puddle.x, puddle.y, puddle.r));
   decor.lilyPads.forEach((pad) => drawLilyPad(ctx, pad.x, pad.y, pad.r));
   decor.mangroves.forEach((tree) => drawMangrove(ctx, tree.x, tree.y, tree.r));
 }
 
-// Muddier/wetter than Deep Forest's dirt-brown pair — documented choice
-// (see file header) rather than reusing the forest path colors verbatim.
-const MARSH_PATH_COLORS = { outline: '#241d10', fill: '#5c4328' };
+// Muddier/wetter than Deep Forest's dirt-brown pair (documented choice —
+// see file header) and darkened further on top of that (direct request to
+// make Marshland read moodier/darker overall) via shadeColor (towers.js,
+// loaded before this file) rather than hand-picking new hex values.
+const MARSH_PATH_COLORS = { outline: shadeColor('#241d10', -6), fill: shadeColor('#5c4328', -6) };
 
 // ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
@@ -319,7 +416,13 @@ const MARSH_PATH_COLORS = { outline: '#241d10', fill: '#5c4328' };
 
 const TERRAIN_THEMES = {
   forest: { background: '#0d1b10', renderDecor: renderForestDecor },
-  marsh: { background: '#1b2414', renderDecor: renderMarshDecor },
+  // Darkened from the original '#1b2414' — direct request, scoped to
+  // Marshland specifically (Deep Forest's own background is untouched)
+  // since every other note in that request was Marshland-only too. A
+  // modest -6% rather than a heavier cut: '#1b2414' is already a near-
+  // black olive (channels 20-36/255), so shadeColor's linear percent-of-
+  // 255 scale crushes it to literal black well before -20%.
+  marsh: { background: shadeColor('#1b2414', -6), renderDecor: renderMarshDecor },
 };
 
 // ---------------------------------------------------------------------------

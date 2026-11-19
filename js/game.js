@@ -247,7 +247,6 @@ function startGame(modeKey) {
   selectedTower = null;
   selectedShopItem = null;
   projectiles = [];
-  damageBoostRemaining = 0;
   round = 1;
   money = 50;
   wildlife = createWildlifeSwarm(getActiveMap());
@@ -269,27 +268,13 @@ function startGame(modeKey) {
 // speed/determinism instead of real time.
 let animationTime = 0;
 
-// Purely decorative fireflies/frogs, plus ladybugs that grant a power-up
-// when clicked (js/wildlife.js). None of them fight or are fought.
-// Regenerated per game start (see startGame()) since which critters spawn
-// depends on the active map (frogs only where there are lily pads to hop
-// between) — the initial value here only matters before any mode is
-// chosen, while the menu is up.
+// Purely decorative fireflies/frogs (js/wildlife.js) — ladybugs (and the
+// click-for-+50%-damage power-up that came with them) were removed per
+// direct request; see git history. Regenerated per game start (see
+// startGame()) since which critters spawn depends on the active map
+// (frogs only where there are lily pads to hop between) — the initial
+// value here only matters before any mode is chosen, while the menu is up.
 let wildlife = createWildlifeSwarm(getActiveMap());
-
-// Clicking a ladybug grants every tower +50% damage for 10 seconds —
-// a simple, clearly-beneficial, temporary power-up. Baseline numbers,
-// not balanced/tuned. Scoped to each tower's primary attack (the ray's
-// instant hit, or a projectile's damage payload) rather than every damage
-// source in the game (puddle/orbit DoT, burn), to keep it simple to reason
-// about: "your towers hit harder," not a blanket multiplier on everything.
-const DAMAGE_BOOST_MULTIPLIER = 1.5;
-const DAMAGE_BOOST_DURATION = 10;
-let damageBoostRemaining = 0;
-
-function getEffectiveDamage(tower) {
-  return tower.stats.damage * (damageBoostRemaining > 0 ? DAMAGE_BOOST_MULTIPLIER : 1);
-}
 
 // Visible, damage-carrying projectiles for the attack types that don't
 // already have their own always-on visual (the ray beam draws itself
@@ -323,7 +308,7 @@ function spawnProjectile(tower, target) {
     aimX: target.x,
     aimY: target.y,
     target,
-    damage: getEffectiveDamage(tower),
+    damage: tower.stats.damage,
     burn: tower.burn,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
     shape: tower.attackType === 'fireball' ? 'fireball' : tower.type === 'mushroom' ? 'spore' : 'petal',
@@ -442,7 +427,7 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.target && tower.attackCooldown <= 0) {
     if (tower.attackType === 'ray') {
       // A continuous beam hits instantly — there's no travel time to model.
-      damageEnemy(tower.target, getEffectiveDamage(tower));
+      damageEnemy(tower.target, tower.stats.damage);
       if (tower.burn) applyBurn(tower.target, tower.burn);
     } else {
       // Damage (and burn) travel with the projectile and apply on arrival.
@@ -631,8 +616,6 @@ function update(deltaSeconds) {
   animationTime += deltaSeconds;
   updateWildlife(wildlife, deltaSeconds);
 
-  damageBoostRemaining = Math.max(0, damageBoostRemaining - deltaSeconds);
-
   const killedEnemies = updateEnemies(deltaSeconds);
   if (killedEnemies.length > 0) {
     const totalBounty = killedEnemies.reduce((sum, enemy) => sum + enemy.bounty, 0);
@@ -729,8 +712,7 @@ function render() {
   // the world's own rendering fixed at WORLD_WIDTH x WORLD_HEIGHT regardless
   // of how big the real canvas is (map.js itself is untouched).
   renderMap(ctx, { width: WORLD_WIDTH, height: WORLD_HEIGHT });
-  renderWildlife(ctx, wildlife, animationTime, 'ladybug'); // ground-level, under everything else
-  renderWildlife(ctx, wildlife, animationTime, 'frog'); // also ground-level, alongside ladybugs
+  renderWildlife(ctx, wildlife, animationTime, 'frog'); // ground-level, under everything else
 
   towers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
   towers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
@@ -1137,13 +1119,6 @@ function renderWaveSection(ctx, x, width, startY) {
     uiRegisterRegion('auto-continue-toggle', x, y, width, 26, {});
     y += 34;
   }
-
-  if (damageBoostRemaining > 0) {
-    ctx.fillStyle = '#ff8a65';
-    ctx.font = '12px sans-serif';
-    ctx.fillText(`Damage Boost: ${damageBoostRemaining.toFixed(1)}s`, x, y);
-  }
-  y += 18;
 
   ctx.fillStyle = '#777';
   ctx.font = '11px sans-serif';
@@ -1857,7 +1832,7 @@ function findTowerAt(x, y) {
   return closest;
 }
 
-// World-area tap handling (placement/ladybug/tower-select) — shared by the
+// World-area tap handling (placement/tower-select) — shared by the
 // mouse click handler and the touch "quick tap" path below. Only called for
 // points inside the game world; panel taps go through activateRegion()
 // instead (see the click/touch handlers).
@@ -1877,16 +1852,7 @@ function handleCanvasTap(x, y) {
     return;
   }
 
-  // Not placing — a ladybug takes priority over tower selection (a
-  // one-off, intentional interaction), then falls back to
-  // selecting/switching/deselecting a tower.
-  const ladybug = findLadybugAt(wildlife, x, y);
-  if (ladybug && ladybug.cooldownRemaining <= 0) {
-    ladybug.cooldownRemaining = LADYBUG_COOLDOWN;
-    damageBoostRemaining = DAMAGE_BOOST_DURATION;
-    return;
-  }
-
+  // Not placing — select/switch/deselect a tower.
   const clicked = findTowerAt(x, y);
   selectedTower = clicked === selectedTower ? null : clicked;
 }
