@@ -318,7 +318,7 @@ const PROJECTILE_SPEED = 400; // px/second, baseline pick — fast but visible
 const PROJECTILE_HIT_TOLERANCE = 20; // px of target drift still counted as a hit
 let projectiles = [];
 
-function spawnProjectile(tower, target) {
+function spawnProjectile(tower, target, damageMultiplier = 1) {
   const dx = target.x - tower.x;
   const dy = target.y - tower.y;
   const distance = Math.hypot(dx, dy) || 1;
@@ -331,7 +331,7 @@ function spawnProjectile(tower, target) {
     aimX: target.x,
     aimY: target.y,
     target,
-    damage: tower.stats.damage,
+    damage: tower.stats.damage * damageMultiplier,
     burn: tower.burn,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
     shape: tower.attackType === 'fireball' ? 'fireball' : tower.type === 'mushroom' ? 'spore' : 'petal',
@@ -451,21 +451,58 @@ function renderProjectiles(ctx) {
   });
 }
 
+// Mushroom's Enable Path: finds the strongest Enable-Path aura currently
+// reaching `targetTower` (any Enable-Path Mushroom — including another
+// Mushroom — whose own attack range reaches it, excluding the tower
+// buffing itself), or null. "Strongest" = highest tier owned
+// (upgradesPurchased doubles as the tier number on this path, 1-4, and
+// each later tier is a strict upgrade over the one before it — Power's
+// 1.5x damage-only beats Speed's interval-only, Fungus Juice beats
+// everything), so multiple auras overlapping the same tower never stack —
+// simplest unambiguous ranking rather than scoring each aura's stats
+// individually. Recomputed fresh every call (not cached on the buffed
+// tower) specifically so the buff turns off the instant the Mushroom is
+// sold or either tower moves out of range, with nothing to "turn off."
+function getStrongestAuraFor(targetTower) {
+  let bestMushroom = null;
+  towers.forEach((tower) => {
+    if (tower === targetTower || tower.type !== 'mushroom' || !tower.aura) return;
+    const dist = Math.hypot(tower.x - targetTower.x, tower.y - targetTower.y);
+    if (dist > tower.stats.range) return;
+    if (!bestMushroom || tower.upgradesPurchased > bestMushroom.upgradesPurchased) bestMushroom = tower;
+  });
+  return bestMushroom ? bestMushroom.aura : null;
+}
+
 function updateTowerAttack(tower, x, y, deltaSeconds) {
-  tower.target = findNearestEnemyInRange(x, y, tower.stats.range);
+  // Enable Path's aura buffs a tower's *primary* attack only (range/
+  // damage/interval) — the same scoping the old ladybug damage-boost used
+  // ("your towers hit harder," not every damage source in the game, so
+  // vines/thorn-shot/puddles/etc. are untouched). Looked up fresh every
+  // tick (see getStrongestAuraFor's own comment) rather than written into
+  // tower.stats, so nothing here is a permanent mutation.
+  const aura = getStrongestAuraFor(tower);
+  const auraIntervalMultiplier = (aura && aura.attackIntervalMultiplier) || 1;
+  const auraDamageMultiplier = (aura && aura.damageMultiplier) || 1;
+  const auraRangeMultiplier = (aura && aura.rangeMultiplier) || 1;
+
+  tower.target = findNearestEnemyInRange(x, y, tower.stats.range * auraRangeMultiplier);
   tower.attackFlash = Math.max(0, tower.attackFlash - deltaSeconds);
 
   tower.attackCooldown = Math.max(0, tower.attackCooldown - deltaSeconds);
   if (tower.target && tower.attackCooldown <= 0) {
     if (tower.attackType === 'ray') {
       // A continuous beam hits instantly — there's no travel time to model.
-      damageEnemy(tower.target, tower.stats.damage);
+      damageEnemy(tower.target, tower.stats.damage * auraDamageMultiplier);
       if (tower.burn) applyBurn(tower.target, tower.burn);
     } else {
-      // Damage (and burn) travel with the projectile and apply on arrival.
-      spawnProjectile(tower, tower.target);
+      // Damage (and burn) travel with the projectile and apply on arrival —
+      // the aura multiplier is baked into the projectile's own damage at
+      // the moment it's fired, same snapshot-at-launch convention burn and
+      // Zombify chance already use for a projectile in flight.
+      spawnProjectile(tower, tower.target, auraDamageMultiplier);
     }
-    tower.attackCooldown = tower.stats.attackInterval;
+    tower.attackCooldown = tower.stats.attackInterval * auraIntervalMultiplier;
     tower.attackFlash = ATTACK_FLASH_DURATION;
   }
 

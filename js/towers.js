@@ -416,7 +416,77 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 2 — not yet designed.
+      {
+        // Named explicitly by the user this time, unlike Decay Path's
+        // invented name. An AURA path — unlike every other upgrade in the
+        // game so far, it doesn't buff the Mushroom itself, it buffs
+        // *other* towers within the Mushroom's own range. Each tier's aura
+        // REPLACES the previous tier's with its own complete, absolute
+        // spec (owning "Power" means nearby towers get exactly 1.5x
+        // damage, full stop) rather than compounding tier over tier — a
+        // direct design call: the numbers don't cleanly compound (0.8x
+        // then 0.7x isn't a clean product of anything; 1.5x/1.5x then a
+        // clean 2x at the top read as deliberately-chosen final values,
+        // not products of prior tiers), so this doesn't try to force the
+        // "on top of current" stacking every other multiplier-based
+        // effect in this file uses — see purchaseUpgrade()'s `aura`
+        // handling. "Towers in range" uses the Mushroom's own attack-range
+        // stat as the aura radius (the same number serves both purposes),
+        // which is also why the Range/Fungus Juice tiers widen the
+        // Mushroom's own range to match. Multiple Enable-Path Mushrooms
+        // overlapping the same tower never stack — the strongest single
+        // aura wins (ranked by tier owned, simplest unambiguous rule
+        // since each later tier is a strict upgrade over the one before
+        // it), not a multiplicative combination of both — see
+        // getStrongestAuraFor() in game.js, which is also where the aura
+        // is actually applied each tick (every stat here is cosmetic/data
+        // only; nothing about the buff lives permanently on the buffed
+        // tower).
+        name: 'Enable Path',
+        upgrades: [
+          {
+            name: 'Speed',
+            description:
+              'Towers within this Mushroom’s range attack 20% faster (0.8x attack interval); Mushroom glows ' +
+              'softly with a few drifting spore particles.',
+            cost: 200,
+            effects: { aura: { attackIntervalMultiplier: 0.8 }, glow: '#80deea', sporeParticles: true },
+          },
+          {
+            name: 'Power',
+            description:
+              'Towers within range deal 1.5x damage (replaces Speed’s interval bonus, not stacked with it); ' +
+              'Mushroom looks sturdier and more vividly colored.',
+            cost: 600,
+            effects: { aura: { damageMultiplier: 1.5 }, color: '#e65100', capHeightMultiplier: 1.1 },
+          },
+          {
+            name: 'Range',
+            description:
+              'Towers within range get 1.5x their own attack range (replaces Power’s damage bonus); the ' +
+              'Mushroom’s own range — and therefore its aura’s reach — widens to match, its cap visibly ' +
+              'broadening with extra gill detail underneath.',
+            cost: 1500,
+            effects: { aura: { rangeMultiplier: 1.5 }, color: '#fbc02d', capWidthMultiplier: 1.3, gillLines: true },
+          },
+          {
+            name: 'Fungus Juice',
+            description:
+              'Towers within range get all three at once: 0.7x attack interval, 2x damage, 2x range. The ' +
+              'Mushroom’s own range doubles to match; it grows larger and brighter, with a visible spore-cloud ' +
+              'ring marking its reach.',
+            cost: 5000,
+            effects: {
+              aura: { attackIntervalMultiplier: 0.7, damageMultiplier: 2, rangeMultiplier: 2 },
+              color: '#8e24aa',
+              capHeightMultiplier: 1.15,
+              capWidthMultiplier: 1.15,
+              gasColor: '#ce93d8',
+              showAuraRing: true,
+            },
+          },
+        ],
+      },
       null, // Path 3 — not yet designed.
     ],
   },
@@ -506,6 +576,20 @@ function createTower(typeKey) {
     zombieExplosionDamage: 0,
     hasSkull: false,
     gasColor: null,
+    // Mushroom's Enable Path: { attackIntervalMultiplier?, damageMultiplier?,
+    // rangeMultiplier? } once bought, applied to *other* towers within this
+    // Mushroom's range each tick — see game.js's getStrongestAuraFor(). null
+    // for every tower that never bought into this path (including Decay/
+    // Infect Mushrooms), so "does this tower grant an aura" is just a
+    // truthy check.
+    aura: null,
+    // Enable Path visuals — all purely cosmetic (drawMushroom()). glow
+    // (Speed) and capHeightMultiplier (shared with Decay) are already
+    // generic fields reused here; these are new to this path.
+    sporeParticles: false, // Speed: a couple of small drifting spore flecks, lighter than gasColor's heavier cloud
+    capWidthMultiplier: 1, // Range/Fungus Juice: the cap visibly widens
+    gillLines: false, // Range and up: extra gill detail under the cap
+    showAuraRing: false, // Fungus Juice only: a faint ring at the aura's actual radius
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
@@ -607,6 +691,35 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.zombieExplosionDamage) tower.zombieExplosionDamage = effects.zombieExplosionDamage;
   if (effects.hasSkull) tower.hasSkull = true;
   if (effects.gasColor) tower.gasColor = effects.gasColor;
+  // Mushroom's Enable Path: each tier's aura REPLACES the previous tier's
+  // outright (its own complete, absolute spec — e.g. owning "Power" means
+  // nearby towers get exactly 1.5x damage, full stop) rather than
+  // compounding with it the way every multiplier-based effect above does.
+  // The numbers don't cleanly compound tier-to-tier (Speed's 0.8x and
+  // Fungus Juice's 0.7x aren't related by some other tier's multiplier;
+  // Power/Range's clean 1.5x and Fungus Juice's clean 2x read as deliberately-
+  // chosen final values, not products) — read as a deliberate design call,
+  // not an oversight, and applied the same way zombifyChance already does
+  // for the same reason. See game.js's getStrongestAuraFor()/
+  // updateTowerAttack() for where the aura is actually applied to other
+  // towers each tick (never written into any tower's own base stats).
+  if (effects.aura !== undefined) {
+    tower.aura = effects.aura;
+    // The "Range" tier's 1.5x (and Fungus Juice's 2x) widens the Mushroom's
+    // OWN attack range to match, since that same stat doubles as the
+    // aura's radius — "whichever towers are in its range" reads one number
+    // both ways. Replaces whatever stats.range was set to by an earlier
+    // aura tier rather than compounding, same reasoning as the aura object
+    // itself (and safe to do unconditionally: Enable Path's tiers are
+    // strictly sequential, so there's never an earlier non-aura range
+    // multiplier on this tower to clobber).
+    const baseRange = TOWER_TYPES[tower.type].baseStats.range;
+    tower.stats.range = baseRange * (effects.aura.rangeMultiplier || 1);
+  }
+  if (effects.sporeParticles) tower.sporeParticles = true;
+  if (effects.capWidthMultiplier) tower.capWidthMultiplier *= effects.capWidthMultiplier;
+  if (effects.gillLines) tower.gillLines = true;
+  if (effects.showAuraRing) tower.showAuraRing = true;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -765,7 +878,11 @@ function renderTower(ctx, tower, x, y, time) {
       flashAmount,
       tower.capHeightMultiplier,
       tower.hasSkull,
-      tower.gasColor
+      tower.gasColor,
+      tower.capWidthMultiplier,
+      tower.gillLines,
+      tower.showAuraRing ? tower.stats.range : 0,
+      tower.sporeParticles
     );
   } else {
     // Fallback for any future tower type without custom art yet.
@@ -1194,10 +1311,43 @@ function renderRoseVines(ctx, tower, x, y, time) {
   }
 }
 
-function drawMushroom(ctx, x, y, size, color, glow, time, flashAmount, capHeightMultiplier, hasSkull, gasColor) {
+function drawMushroom(
+  ctx,
+  x,
+  y,
+  size,
+  color,
+  glow,
+  time,
+  flashAmount,
+  capHeightMultiplier,
+  hasSkull,
+  gasColor,
+  capWidthMultiplier = 1,
+  gillLines = false,
+  auraRingRadius = 0,
+  sporeParticles = false
+) {
   const stemHeight = size * 0.9 * capHeightMultiplier;
   const groundY = y + stemHeight;
   const sway = Math.sin(time * 1.1 + x * 0.011) * 0.04;
+
+  // Fungus Juice only: a faint, slowly pulsing ring drawn at the aura's
+  // actual radius (the Mushroom's own stats.range, widened by the Range/
+  // Fungus Juice tiers — see purchaseUpgrade()) — drawn outside the
+  // sway/flash transform below since it's anchored to the tower's fixed
+  // position, not its wobbling cap.
+  if (auraRingRadius > 0) {
+    const pulse = 0.5 + 0.5 * Math.sin(time * 1.5);
+    ctx.save();
+    ctx.strokeStyle = `rgba(156, 39, 176, ${0.15 + pulse * 0.1})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 8]);
+    ctx.beginPath();
+    ctx.arc(x, y, auraRingRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.translate(x, groundY);
@@ -1227,15 +1377,31 @@ function drawMushroom(ctx, x, y, size, color, glow, time, flashAmount, capHeight
     ctx.shadowBlur = 20;
   }
 
+  const capWidth = size * 0.75 * capWidthMultiplier;
+
   // The cap: a half-dome with a darker underside rim for a touch of depth.
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.ellipse(x, y, size * 0.75, size * 0.55, 0, Math.PI, 0, false);
+  ctx.ellipse(x, y, capWidth, size * 0.55, 0, Math.PI, 0, false);
   ctx.fill();
   ctx.fillStyle = shadeColor(color, -22);
   ctx.beginPath();
-  ctx.ellipse(x, y, size * 0.75, size * 0.14, 0, 0, Math.PI, false);
+  ctx.ellipse(x, y, capWidth, size * 0.14, 0, 0, Math.PI, false);
   ctx.fill();
+
+  // Range tier and up: extra gill lines fanning out under the (now wider)
+  // cap — the detail the "Range" tier's description asks for alongside
+  // the literal widening above.
+  if (gillLines) {
+    ctx.strokeStyle = shadeColor(color, -35);
+    ctx.lineWidth = 1;
+    [-0.5, -0.25, 0, 0.25, 0.5].forEach((t) => {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + t * capWidth * 1.3, y + size * 0.12);
+      ctx.stroke();
+    });
+  }
 
   // Classic toadstool spots.
   ctx.fillStyle = '#fff8e1';
@@ -1252,8 +1418,29 @@ function drawMushroom(ctx, x, y, size, color, glow, time, flashAmount, capHeight
 
   if (hasSkull) drawMushroomSkull(ctx, x, y - size * 0.55, size * 0.22);
   if (gasColor) drawMushroomGas(ctx, x, y, size, gasColor, time);
+  if (sporeParticles) drawMushroomSporeParticles(ctx, x, y, size, time);
 
   ctx.restore();
+}
+
+// Speed tier: a couple of tiny spore flecks drifting slowly around the
+// cap — a lighter, more subtle cue than gasColor's heavier rising-puff
+// cloud (reserved for Decay's later tiers and Fungus Juice), fitting
+// "subtle glow/pulsing spore particles" without competing visually with
+// the glow halo drawn alongside it.
+function drawMushroomSporeParticles(ctx, x, y, size, time) {
+  ctx.fillStyle = 'rgba(200, 230, 255, 0.6)';
+  [0, 1].forEach((i) => {
+    const t = time * 0.6 + i * Math.PI;
+    const px = x + Math.cos(t) * size * 0.9;
+    const py = y - size * 0.3 + Math.sin(t * 1.3) * size * 0.3;
+    const pulse = 0.5 + 0.5 * Math.sin(time * 3 + i * 2);
+    ctx.globalAlpha = 0.3 + pulse * 0.4;
+    ctx.beginPath();
+    ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
 }
 
 // A small skull sitting on the cap (Undead Army and later) — a simple

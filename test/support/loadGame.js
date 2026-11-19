@@ -163,6 +163,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       createTower, purchaseUpgrade,
       damageEnemy, applyBurn, findNearestEnemyInRange, getEnemiesInRadius,
       updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies, getLastLeakedEnemies,
+      getStrongestAuraFor,
       getProjectiles: () => projectiles,
       getActiveEnemies: () => activeEnemies,
       update,
