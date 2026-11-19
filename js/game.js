@@ -1170,16 +1170,28 @@ function renderWaveSection(ctx, x, width, startY) {
     y += 38;
   }
 
-  uiDrawButton(ctx, {
-    x,
-    y,
-    w: width,
-    h: 30,
-    label: `${gameSpeed}x Speed`,
-    state: 'default',
-    hovered: Boolean(hoverRegion) && hoverRegion.id === 'speed-toggle',
+  // A 4-stop discrete speed control (1x/2x/3x/4x) — replaces the old
+  // 1x/2x-only toggle button. Click/tap-to-select one of 4 fixed segments
+  // rather than a true draggable handle; there's nothing in between the 4
+  // stops for a handle to usefully rest at, so this is the simplest
+  // reliable implementation for a 4-way discrete choice, not a cut corner.
+  const speedSegmentGap = 6;
+  const speedSegmentWidth = (width - speedSegmentGap * (SPEED_OPTIONS.length - 1)) / SPEED_OPTIONS.length;
+  let speedX = x;
+  SPEED_OPTIONS.forEach((speed) => {
+    const regionId = `speed:${speed}`;
+    uiDrawButton(ctx, {
+      x: speedX,
+      y,
+      w: speedSegmentWidth,
+      h: 30,
+      label: `${speed}x`,
+      state: gameSpeed === speed ? 'accent' : 'default',
+      hovered: Boolean(hoverRegion) && hoverRegion.id === regionId,
+    });
+    uiRegisterRegion(regionId, speedX, y, speedSegmentWidth, 30, { speed });
+    speedX += speedSegmentWidth + speedSegmentGap;
   });
-  uiRegisterRegion('speed-toggle', x, y, width, 30, {});
   y += 38;
 
   if (!isHorde) {
@@ -1808,7 +1820,7 @@ function getTooltipLines(region) {
     return region.data.waveInProgress ? ['Wait for the current wave to clear.'] : ['Start the next wave.'];
   }
 
-  if (region.id === 'speed-toggle') return ['Toggle 1x / 2x simulation speed.'];
+  if (region.id.startsWith('speed:')) return [`${region.data.speed}x simulation speed.`];
 
   if (region.id === 'auto-continue-toggle') {
     return [
@@ -1927,8 +1939,8 @@ function activateRegion(region) {
     return;
   }
 
-  if (region.id === 'speed-toggle') {
-    gameSpeed = gameSpeed === 1 ? 2 : 1;
+  if (region.id.startsWith('speed:')) {
+    gameSpeed = region.data.speed;
   }
 }
 
@@ -2088,6 +2100,8 @@ canvas.addEventListener(
 // Scales how much simulated time each real frame adds to the fixed-step
 // accumulator below — covers enemy movement, attack cooldowns, every
 // DoT/puddle/orbit tick, everything, since they all run through update().
+// The 4 selectable stops for the speed control in renderWaveSection.
+const SPEED_OPTIONS = [1, 2, 3, 4];
 let gameSpeed = 1;
 
 // When on, starts the next round itself the instant the current wave

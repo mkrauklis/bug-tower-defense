@@ -163,14 +163,17 @@ test('activateRegion starts the next round only when no wave is in progress', ()
   assert.equal(game.getRound(), roundBefore + 1);
 });
 
-test('activateRegion toggles game speed between 1x and 2x', () => {
+test('activateRegion sets game speed to whichever of the 4 discrete stops (1x-4x) was clicked', () => {
   const game = loadFullGameContext();
   assert.equal(game.getGameSpeed(), 1);
 
-  game.activateRegion({ id: 'speed-toggle', data: {} });
-  assert.equal(game.getGameSpeed(), 2);
+  game.activateRegion({ id: 'speed:3', data: { speed: 3 } });
+  assert.equal(game.getGameSpeed(), 3);
 
-  game.activateRegion({ id: 'speed-toggle', data: {} });
+  game.activateRegion({ id: 'speed:4', data: { speed: 4 } });
+  assert.equal(game.getGameSpeed(), 4);
+
+  game.activateRegion({ id: 'speed:1', data: { speed: 1 } });
   assert.equal(game.getGameSpeed(), 1);
 });
 
