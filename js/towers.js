@@ -729,6 +729,14 @@ function createTower(typeKey) {
     // each Quality Path tier replaces this outright rather than scaling
     // it, same REPLACE convention as those.
     incomeRate: type.baseIncomeRate || 0,
+    // Drives the "+$X" floating-text popup's cadence (see
+    // updateTowerIncome()/spawnFloatingText() in game.js) — a separate,
+    // purely cosmetic 1-second timer from the actual continuous money
+    // accrual, which doesn't need one. Harmless/unused for every tower
+    // with incomeRate 0. Starts at 1 so it doesn't pop instantly the
+    // instant a wave begins, same "don't fire instantly" convention
+    // puddle/infectStun already use.
+    incomeTickCooldown: 1,
     hasExtraStems: false, // High Standard tier and up — purely visual (drawConeflower())
     hasRedMist: false, // Perfect Condition tier only — purely visual (drawConeflower())
   };

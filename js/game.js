@@ -345,6 +345,43 @@ function renderConsumedTowerEffects(ctx) {
   });
 }
 
+// A small, generic floating-text popup system — built for Coneflower's
+// "+$X" income ticks, but deliberately not Coneflower-specific: anything
+// that wants a brief rising/fading label (a future damage number, a
+// bonus-effect callout, etc.) can call spawnFloatingText() too, instead
+// of building its own one-off version of this. Each entry rises a fixed
+// distance and fades out linearly over FLOATING_TEXT_DURATION; `color` is
+// a full ctx.fillStyle-ready string (so callers can pass rgba() directly
+// if they want their own fade curve, though the default alpha fade here
+// covers the common case).
+const FLOATING_TEXT_DURATION = 1;
+const FLOATING_TEXT_RISE = 30; // px risen over its full lifetime
+let floatingTexts = [];
+
+function spawnFloatingText(x, y, text, color = '#8bc34a') {
+  floatingTexts.push({ x, y, text, color, remaining: FLOATING_TEXT_DURATION });
+}
+
+function updateFloatingTexts(deltaSeconds) {
+  floatingTexts.forEach((entry) => {
+    entry.remaining -= deltaSeconds;
+  });
+  floatingTexts = floatingTexts.filter((entry) => entry.remaining > 0);
+}
+
+function renderFloatingTexts(ctx) {
+  floatingTexts.forEach((entry) => {
+    const progress = 1 - entry.remaining / FLOATING_TEXT_DURATION; // 0 -> 1 as it rises/fades
+    ctx.save();
+    ctx.globalAlpha = 1 - progress;
+    ctx.fillStyle = entry.color;
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(entry.text, entry.x, entry.y - progress * FLOATING_TEXT_RISE);
+    ctx.restore();
+  });
+}
+
 function spawnProjectile(tower, target, damageMultiplier = 1) {
   const dx = target.x - tower.x;
   const dy = target.y - tower.y;
@@ -775,6 +812,21 @@ function updateTowerIncome(deltaSeconds) {
   if (activeEnemies.length === 0) return;
   const totalIncomeRate = towers.reduce((sum, tower) => sum + tower.incomeRate, 0);
   if (totalIncomeRate > 0) money += totalIncomeRate * deltaSeconds;
+
+  // The "+$X" floating-text popup (spawnFloatingText(), above) fires on
+  // its own 1-second cadence (tower.incomeTickCooldown) — a separate,
+  // purely cosmetic timer from the continuous accrual above, which has
+  // no "tick" of its own to hang a popup off. Showing it at the tower's
+  // own current incomeRate means it stays correct through every Quality
+  // Path tier automatically, no extra wiring needed per tier.
+  towers.forEach((tower) => {
+    if (tower.incomeRate <= 0) return;
+    tower.incomeTickCooldown -= deltaSeconds;
+    if (tower.incomeTickCooldown <= 0) {
+      tower.incomeTickCooldown += 1;
+      spawnFloatingText(tower.x, tower.y - getTowerVisualSize(tower), `+$${tower.incomeRate}`);
+    }
+  });
 }
 
 function update(deltaSeconds) {
@@ -814,6 +866,7 @@ function update(deltaSeconds) {
   updateProjectiles(deltaSeconds);
   updateConsumedTowerEffects(deltaSeconds);
   updateTowerIncome(deltaSeconds);
+  updateFloatingTexts(deltaSeconds);
 
   // Horde Mode has no wave boundary to auto-continue across — it paces
   // itself independently of autoContinue/activeEnemies, via its own timer.
@@ -905,6 +958,7 @@ function render() {
   renderProjectiles(ctx);
   renderConsumedTowerEffects(ctx);
   renderWildlife(ctx, wildlife, animationTime, 'firefly'); // glowing, drawn on top so it reads over everything
+  renderFloatingTexts(ctx); // "+$X" income popups etc. — always the topmost world layer, so they stay legible
 
   if (selectedShopItem && mouseX !== null && isWorldPoint(mouseX, mouseY)) {
     const buildable = canAfford(selectedShopItem.cost) && !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN);

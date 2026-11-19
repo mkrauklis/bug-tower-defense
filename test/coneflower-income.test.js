@@ -131,6 +131,58 @@ test('Coneflower\'s other two paths are not yet designed (same convention as eve
   assert.equal(game.purchaseUpgrade(coneflower, 2), false);
 });
 
+test('an income tick spawns a "+$X" floating popup above the Coneflower, at its current rate', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  coneflower.x = 300;
+  coneflower.y = 300;
+  game.getTowers().push(coneflower);
+  game.getActiveEnemies().push(makeTestEnemy());
+
+  game.updateTowerIncome(1); // crosses the 1-second tick cadence exactly
+
+  const popups = game.getFloatingTexts();
+  assert.equal(popups.length, 1);
+  assert.equal(popups[0].text, '+$2');
+  assert.equal(popups[0].x, 300);
+  assert.ok(popups[0].y < 300); // above the tower, not on top of it
+});
+
+test('the popup text updates to match a higher Quality Path tier\'s rate', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  game.purchaseUpgrade(coneflower, 0); // Quality Control -> $5/sec
+  game.getTowers().push(coneflower);
+  game.getActiveEnemies().push(makeTestEnemy());
+
+  game.updateTowerIncome(1);
+
+  assert.equal(game.getFloatingTexts()[0].text, '+$5');
+});
+
+test('no popup fires before a full second has elapsed, and none fires with no wave active', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  game.getTowers().push(coneflower);
+
+  game.updateTowerIncome(1); // no wave active — gated out entirely
+  assert.equal(game.getFloatingTexts().length, 0);
+
+  game.getActiveEnemies().push(makeTestEnemy());
+  game.updateTowerIncome(0.9); // wave active, but under a full second
+  assert.equal(game.getFloatingTexts().length, 0);
+});
+
+test('a combat tower (0 income) never spawns an income popup even mid-wave', () => {
+  const game = loadFullGameContext();
+  game.getTowers().push(game.createTower('sunflower'));
+  game.getActiveEnemies().push(makeTestEnemy());
+
+  game.updateTowerIncome(5); // several ticks' worth of time
+
+  assert.equal(game.getFloatingTexts().length, 0);
+});
+
 test('Coneflower never attacks: zero range means it never acquires a target even with enemies nearby', () => {
   const game = loadFullGameContext();
   const coneflower = game.createTower('coneflower');
