@@ -38,7 +38,8 @@ function loadGameContext() {
     `
     globalThis.__exports = {
       TOWER_TYPES, createTower, getAvailableUpgrade, purchaseUpgrade,
-      ENEMY_TYPES, BOSS_TYPES, ENEMY_ORDER, BOSS_INTERVAL, BASE_SPEED,
+      MAP_ROSTERS, FOREST_ROSTER, MARSH_ROSTER, getActiveRoster,
+      BOSS_INTERVAL, BASE_SPEED,
       isBossRound, getBossForRound, getUnlockedEnemyTypes, getRoundScaling,
       getTotalWaveSize,
       generateWave, spawnWave, updateEnemies,
@@ -46,6 +47,7 @@ function loadGameContext() {
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath,
       getActiveEnemies: () => activeEnemies,
       MILLIPEDE_FAMILY_KEYS, recordTrailPoint, getTrailPointAtDistance,
+      MAP_TYPES, getActiveMap, setActiveMap,
     };
     `,
     context
@@ -192,7 +194,10 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       setAutoContinue: (value) => { autoContinue = value; },
       canAfford,
       getHordeSpawnTimer: () => hordeSpawnTimer,
-      ENEMY_TYPES, ENEMY_ORDER, BOSS_TYPES, generateWave,
+      MAP_ROSTERS, FOREST_ROSTER, MARSH_ROSTER, getActiveRoster, generateWave,
+      MAP_TYPES, getActiveMap, setActiveMap,
+      getSelectedMap: () => selectedMap,
+      setSelectedMap: (map) => { selectedMap = map; },
     };
     `,
     context

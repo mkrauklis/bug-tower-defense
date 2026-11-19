@@ -10,45 +10,97 @@
 
 const BASE_SPEED = 60; // px/second
 
-// The enemy roster: every regular enemy type the game can spawn, keyed by
-// its own enemyKey. Deliberately empty right now — the entire previous
-// roster (Ant, Worm, Tiny Isopod, Fly, Tadpole, Baby Frog, Poison Dart
-// Frog, Hammerhead Worm, Baby/Armored Millipede, Giant Centipede) was
-// removed on direct request to clear the way for a new design, along with
-// every bit of roster-specific logic/art that only existed to serve those
-// types (see drawEnemyShape's dispatch, ENEMY_FACING_OFFSET,
-// MILLIPEDE_FAMILY_KEYS/MILLIPEDE_BODY, ENEMY_ORDER* below — all emptied,
-// not deleted, since the generic engine around them stays intact and is
-// meant to be filled back in). Shape a new entry needs:
-// { name, speedMultiplier, health, color, radius, bounty }.
-const ENEMY_TYPES = {};
+// Per-map enemy rosters — each map (keyed by its *terrain*, not its map id;
+// see js/map.js) has its own regular-enemy and boss roster, instead of one
+// global roster every map shared. getActiveRoster() below picks whichever
+// roster matches the currently active map, and every lookup function in
+// this file (getUnlockedEnemyTypes/getBossForRound/generateWave/
+// getAllSpawnableEnemyKeys/getSpawnEntryForEnemyKey) reads through it —
+// the wave-generation/scaling machinery itself (count curve, health-per-
+// round scaling, every-5-round unlock cadence, round-25/round-50 boss
+// slots) is completely unchanged, just parameterized by roster instead of
+// reading hardcoded module-level consts.
+//
+// A custom (editor-authored) map has no roster of its own — it reuses
+// whichever built-in roster matches the terrain THEME it was decorated
+// with (Deep Forest or Marshland), the same choice that already picks its
+// decor generator (see createMapFromCustomRecord() in map.js). Since
+// getActiveRoster() keys off terrain either way, this falls out for free:
+// no custom-map-specific code needed here at all.
+//
+// Regular-enemy keys only need to be unique *within* their own roster —
+// only one roster is ever active at a time, so "ant" existing in both
+// rosters wouldn't be ambiguous gameplay-wise. Boss keys are the one
+// exception: they're built programmatically below as
+// `${terrain}-boss-tier-${tier}`, deliberately including the terrain,
+// because defeatedEnemyKeys (game.js's Sandbox-unlock tracker) is one
+// global Set shared across every map — without the terrain prefix,
+// "boss-tier-1" would silently mean two different bosses depending which
+// map you were on when you earned it.
+const FOREST_ROSTER = {
+  enemyTypes: {
+    // Bounties follow the file's established ~HP/2 convention (rounded),
+    // with Ant bumped from the literal round(2/2)=1 up to 2 so the
+    // cheapest enemy in the game is never worth nothing — same exception
+    // the original Ant entry made before the roster was replaced.
+    ant: { name: 'Ant', speedMultiplier: 0.7, health: 2, color: '#8d6e63', radius: 7, bounty: 2 },
+    fireAnt: { name: 'Fire Ant', speedMultiplier: 0.9, health: 3, color: '#d84315', radius: 8, bounty: 2 }, // round(3/2)=2
+    armoredAnt: { name: 'Armored Ant', speedMultiplier: 0.6, health: 10, color: '#4e342e', radius: 10, bounty: 5 },
+    babyBeetle: { name: 'Baby Beetle', speedMultiplier: 0.7, health: 25, color: '#558b2f', radius: 9, bounty: 13 },
+    dungBeetle: { name: 'Dung Beetle', speedMultiplier: 0.6, health: 45, color: '#3e2723', radius: 10, bounty: 23 },
+    tigerBeetle: { name: 'Tiger Beetle', speedMultiplier: 0.8, health: 50, color: '#2e7d32', radius: 9, bounty: 25 },
+  },
+  bossTypes: {
+    1: { name: 'Queen Ant', speedMultiplier: 0.5, health: 50, color: '#6d4c41', radius: 20, bounty: 25 },
+    2: { name: 'Longhorn Beetle', speedMultiplier: 0.6, health: 100, color: '#5d4037', radius: 22, bounty: 50 },
+  },
+  order: ['ant', 'fireAnt', 'armoredAnt'],
+  orderTier2: ['babyBeetle', 'dungBeetle', 'tigerBeetle'],
+  orderTier3: [], // no tier-3 roster designed for this map (yet) — degrades the same way an empty roster always has
+};
+
+const MARSH_ROSTER = {
+  enemyTypes: {
+    tadpole: { name: 'Tadpole', speedMultiplier: 0.5, health: 5, color: '#5a7a3a', radius: 7, bounty: 3 }, // round(5/2)=3
+    froglet: { name: 'Froglet', speedMultiplier: 0.7, health: 10, color: '#66bb6a', radius: 8, bounty: 5 },
+    // Notably slow/tanky relative to the other two tier-1 types — direct
+    // from spec, not a typo: a 0.2x speed, 23 HP enemy this early acts as
+    // a "soak damage, buys the other two time to get past" road-bump.
+    frogLarva: { name: 'Frog Larva', speedMultiplier: 0.2, health: 23, color: '#c5c87a', radius: 11, bounty: 12 }, // round(11.5)=12
+    appleSnail: { name: 'Apple Snail', speedMultiplier: 0.4, health: 50, color: '#d4a017', radius: 9, bounty: 25 },
+    slug: { name: 'Slug', speedMultiplier: 0.5, health: 75, color: '#bf7e4a', radius: 10, bounty: 38 }, // round(37.5)=38
+    assassinSnail: { name: 'Assassin Snail', speedMultiplier: 0.6, health: 85, color: '#6d4c23', radius: 9, bounty: 43 }, // round(42.5)=43
+  },
+  bossTypes: {
+    1: { name: 'Frog Boss', speedMultiplier: 0.5, health: 65, color: '#33691e', radius: 20, bounty: 33 }, // round(32.5)=33
+    2: { name: 'Military Helmet Snail', speedMultiplier: 0.3, health: 150, color: '#8d6e4a', radius: 24, bounty: 75 },
+  },
+  order: ['tadpole', 'froglet', 'frogLarva'],
+  orderTier2: ['appleSnail', 'slug', 'assassinSnail'],
+  orderTier3: [],
+};
+
+const MAP_ROSTERS = { forest: FOREST_ROSTER, marsh: MARSH_ROSTER };
+
+// Falls back to the Forest roster if the active map's terrain isn't a
+// known key (shouldn't happen — every terrain id in map.js's
+// TERRAIN_THEMES has a matching roster here — but better a sensible
+// default than a crash) and to the Forest roster outright before any game
+// has started (getActiveMap() defaults to Deep Forest at module load).
+function getActiveRoster() {
+  const map = getActiveMap();
+  return (map && MAP_ROSTERS[map.terrain]) || FOREST_ROSTER;
+}
 
 // Enemy types whose body visibly curls around corners as a chain of
 // segments following the head's own recent path, instead of the single
 // rigid heading every other enemy uses — add a key here (and a matching
-// entry in MILLIPEDE_BODY below) to opt a new type into it. See
-// recordTrailPoint()/renderMillipedeBody() below for the (still-intact)
-// generic mechanism this drives.
+// entry in MILLIPEDE_BODY below) to opt a new type into it. Empty for both
+// current rosters — ants/beetles/frogs/snails are all single-body
+// creatures, nothing here warrants it. See recordTrailPoint()/
+// renderMillipedeBody() below for the (still-intact) generic mechanism
+// this drives, kept ready for a future multi-segment type.
 const MILLIPEDE_FAMILY_KEYS = new Set();
-
-// Intro order for tier 1 (unlocked from round 1), tier 2 (unlocked
-// starting after round 25), and tier 3 (unlocked starting after round 50)
-// — see getUnlockedEnemyTypes. Kept as separate lists rather than one long
-// ENEMY_ORDER so each tier can unlock on its own progressive every-5-rounds
-// cadence instead of one continuous count across all of them. Empty for
-// now, same as ENEMY_TYPES above — getUnlockedEnemyTypes degrades to
-// returning no types for any round, and generateWave() degrades to an
-// empty regular wave, rather than erroring.
-const ENEMY_ORDER = [];
-const ENEMY_ORDER_TIER2 = [];
-const ENEMY_ORDER_TIER3 = [];
-
-// Bosses, keyed by boss tier (tier 1 = round 25, tier 2 = round 50, ...).
-// Empty for now, same as ENEMY_TYPES above — getBossForRound() degrades to
-// returning null (no boss designed at all yet) rather than erroring, and
-// generateWave() turns that into an empty wave on what would otherwise be
-// a boss round.
-const BOSS_TYPES = {};
 
 const BOSS_INTERVAL = 25;
 
@@ -56,24 +108,26 @@ function isBossRound(round) {
   return round % BOSS_INTERVAL === 0;
 }
 
-// Returns null when no boss tier has been designed at all yet (empty
-// BOSS_TYPES) — generateWave() below turns that into a graceful empty wave
-// rather than spawning a boss built from missing data.
+// Returns null when the active roster has no boss tier designed at all
+// (empty bossTypes) — generateWave() below turns that into a graceful
+// empty wave rather than spawning a boss built from missing data.
 function getBossForRound(round) {
-  const designedTiers = Object.keys(BOSS_TYPES).map(Number);
+  const roster = getActiveRoster();
+  const designedTiers = Object.keys(roster.bossTypes).map(Number);
   if (designedTiers.length === 0) return null;
 
   const tier = round / BOSS_INTERVAL;
   const highestDesigned = Math.max(...designedTiers);
   // Fall back to the strongest designed boss tier if this one hasn't been
   // designed yet, rather than inventing a new boss.
-  const useTier = BOSS_TYPES[tier] ? tier : highestDesigned;
-  return { tier: useTier, ...BOSS_TYPES[useTier] };
+  const useTier = roster.bossTypes[tier] ? tier : highestDesigned;
+  return { tier: useTier, terrain: getActiveMap().terrain, ...roster.bossTypes[useTier] };
 }
 
 function getUnlockedEnemyTypes(round) {
-  const tier1Count = Math.min(ENEMY_ORDER.length, Math.floor((round - 1) / 5) + 1);
-  const unlocked = ENEMY_ORDER.slice(0, tier1Count);
+  const roster = getActiveRoster();
+  const tier1Count = Math.min(roster.order.length, Math.floor((round - 1) / 5) + 1);
+  const unlocked = roster.order.slice(0, tier1Count);
 
   // Tier 2 starts unlocking the round right after the round-25 boss, on the
   // same progressive every-5-rounds cadence as tier 1, just starting later
@@ -81,8 +135,8 @@ function getUnlockedEnemyTypes(round) {
   // the third) rather than being available from round 1.
   if (round > BOSS_INTERVAL) {
     const roundsSinceTier2Start = round - (BOSS_INTERVAL + 1);
-    const tier2Count = Math.min(ENEMY_ORDER_TIER2.length, Math.floor(roundsSinceTier2Start / 5) + 1);
-    unlocked.push(...ENEMY_ORDER_TIER2.slice(0, tier2Count));
+    const tier2Count = Math.min(roster.orderTier2.length, Math.floor(roundsSinceTier2Start / 5) + 1);
+    unlocked.push(...roster.orderTier2.slice(0, tier2Count));
   }
 
   // Tier 3 starts unlocking the round right after the round-50 boss, same
@@ -90,8 +144,8 @@ function getUnlockedEnemyTypes(round) {
   // 61 the third, 66 the fourth).
   if (round > BOSS_INTERVAL * 2) {
     const roundsSinceTier3Start = round - (BOSS_INTERVAL * 2 + 1);
-    const tier3Count = Math.min(ENEMY_ORDER_TIER3.length, Math.floor(roundsSinceTier3Start / 5) + 1);
-    unlocked.push(...ENEMY_ORDER_TIER3.slice(0, tier3Count));
+    const tier3Count = Math.min(roster.orderTier3.length, Math.floor(roundsSinceTier3Start / 5) + 1);
+    unlocked.push(...roster.orderTier3.slice(0, tier3Count));
   }
 
   return unlocked;
@@ -133,7 +187,7 @@ function generateWave(round) {
     if (!boss) return []; // no boss tier designed yet — an empty wave, not a broken one
     return [
       {
-        enemyKey: `boss-tier-${boss.tier}`,
+        enemyKey: `${boss.terrain}-boss-tier-${boss.tier}`,
         name: boss.name,
         color: boss.color,
         radius: boss.radius,
@@ -149,13 +203,14 @@ function generateWave(round) {
   const scaling = getRoundScaling(round);
   const unlocked = getUnlockedEnemyTypes(round);
   if (unlocked.length === 0) return []; // no regular types designed/unlocked yet
+  const roster = getActiveRoster();
   // Spread this round's total wave size evenly across whichever types are
   // currently unlocked, so per-type count self-adjusts as new types unlock
   // rather than needing its own separate curve.
   const perTypeCount = Math.max(1, Math.round(getTotalWaveSize(round) / unlocked.length));
 
   return unlocked.map((key) => {
-    const type = ENEMY_TYPES[key];
+    const type = roster.enemyTypes[key];
     return {
       enemyKey: key,
       name: type.name,
@@ -177,15 +232,35 @@ let activeEnemies = [];
 // un-rotated drawing, that the enemy's "front" points toward) — used to
 // offset the computed movement heading so the art actually turns to face
 // where it's walking instead of just rotating around an arbitrary pivot.
-// Empty for now along with the roster itself (see ENEMY_TYPES above) — a
-// missing key already defaults to 0 wherever this is read (renderEnemies'
-// `?? 0`), which is a perfectly fine default for art with no strong
-// left/right "head" side, so there's nothing else to degrade here.
-const ENEMY_FACING_OFFSET = {};
-// Keyed by enemyKey (e.g. 'boss-tier-1'), same as ENEMY_FACING_OFFSET,
-// since different boss tiers can have different default facing directions
-// baked into their own art.
-const BOSS_FACING_OFFSET = {};
+// A missing key defaults to 0 wherever this is read (renderEnemies' `?? 0`).
+//
+// Ant/beetle/snail art all draws its head/front-end on the -x side (same
+// convention the original roster's Ant/Giant Beetle used), so they all get
+// Math.PI. Tadpole/Froglet draw roughly symmetric or already front-facing
+// +x, so 0. Frog Larva has no strong head side (a soft blob), so it's left
+// out entirely (falls through to the 0 default) same as it would if listed.
+const ENEMY_FACING_OFFSET = {
+  ant: Math.PI,
+  fireAnt: Math.PI,
+  armoredAnt: Math.PI,
+  babyBeetle: Math.PI,
+  dungBeetle: Math.PI,
+  tigerBeetle: Math.PI,
+  tadpole: 0,
+  froglet: 0,
+  appleSnail: Math.PI,
+  slug: Math.PI,
+  assassinSnail: Math.PI,
+};
+// Keyed by enemyKey (e.g. 'forest-boss-tier-1'), same as
+// ENEMY_FACING_OFFSET, since different boss tiers can have different
+// default facing directions baked into their own art.
+const BOSS_FACING_OFFSET = {
+  'forest-boss-tier-1': Math.PI, // Queen Ant — same ant-body convention as the regular ants
+  'forest-boss-tier-2': Math.PI, // Longhorn Beetle — same beetle-body convention
+  'marsh-boss-tier-1': 0, // Frog Boss — same tadpole/froglet convention
+  'marsh-boss-tier-2': Math.PI, // Military Helmet Snail — same snail-body convention
+};
 
 function getInitialPathHeading() {
   const dx = MAP_PATH_WAYPOINTS[1].x - MAP_PATH_WAYPOINTS[0].x;
@@ -277,8 +352,10 @@ function spawnSingleEnemy(entry) {
 // renderSandboxSpawnSection() in game.js) to list every enemy type that
 // could ever be spawnable, regardless of whether it's been unlocked yet.
 function getAllSpawnableEnemyKeys() {
-  const bossKeys = Object.keys(BOSS_TYPES).map((tier) => `boss-tier-${tier}`);
-  return [...ENEMY_ORDER, ...ENEMY_ORDER_TIER2, ...ENEMY_ORDER_TIER3, ...bossKeys];
+  const roster = getActiveRoster();
+  const terrain = getActiveMap().terrain;
+  const bossKeys = Object.keys(roster.bossTypes).map((tier) => `${terrain}-boss-tier-${tier}`);
+  return [...roster.order, ...roster.orderTier2, ...roster.orderTier3, ...bossKeys];
 }
 
 // Looks up a spawn-ready entry (same shape generateWave() produces, base
@@ -287,9 +364,12 @@ function getAllSpawnableEnemyKeys() {
 // rather than throwing, so a bad/renamed key just fails to spawn instead
 // of crashing the panel.
 function getSpawnEntryForEnemyKey(key) {
-  if (key.startsWith('boss-tier-')) {
-    const tier = Number(key.slice('boss-tier-'.length));
-    const boss = BOSS_TYPES[tier];
+  const roster = getActiveRoster();
+  const bossPrefix = `${getActiveMap().terrain}-boss-tier-`;
+
+  if (key.startsWith(bossPrefix)) {
+    const tier = Number(key.slice(bossPrefix.length));
+    const boss = roster.bossTypes[tier];
     if (!boss) return null;
     return {
       enemyKey: key,
@@ -303,7 +383,7 @@ function getSpawnEntryForEnemyKey(key) {
     };
   }
 
-  const type = ENEMY_TYPES[key];
+  const type = roster.enemyTypes[key];
   if (!type) return null;
   return {
     enemyKey: key,
@@ -494,20 +574,488 @@ function updateZombieMovement(enemy, deltaSeconds) {
   }
 }
 
-// Per-type hand-drawn art (Ant, Worm, Tiny Isopod, Fly, Giant Beetle,
-// Tadpole, Baby Frog, Poison Dart Frog, Hammerhead Worm, Boss Toad) was
-// removed along with the roster it drew (see ENEMY_TYPES/BOSS_TYPES
-// above) — every one of those draw functions existed only to be dispatched
-// to by enemyKey below, so none of them have any purpose with no types left
-// to reference them. drawEnemyShape itself stays: every caller (renderEnemies,
-// the Sandbox spawn-palette preview in game.js) keeps working unchanged,
-// just drawing the generic fallback until new per-type art is added back
-// here with its own dispatch branch.
-function drawEnemyShape(ctx, enemy) {
-  ctx.fillStyle = enemy.color;
+// Simple, distinguishable silhouettes per enemy type — canvas primitives
+// only, no external art, same budget/style as the rest of the game (a
+// handful of draw calls each, curved legs/shading via shadeColor from
+// towers.js, no gradients or per-frame allocation). Ant/beetle/snail
+// families share a body-shape helper so the family reads consistently at a
+// glance while each member still gets its own color + a distinguishing
+// detail on top.
+
+// --- Deep Forest: ants -----------------------------------------------
+
+function drawAntBody(ctx, e) {
+  ctx.strokeStyle = shadeColor(e.color, -30);
+  ctx.lineWidth = 1.2;
+  [-1, 0, 1].forEach((i) => {
+    const kneeY = e.y + i * e.radius * 0.45;
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y);
+    ctx.quadraticCurveTo(e.x - e.radius * 0.6, kneeY, e.x - e.radius * 1.1, e.y + i * e.radius * 0.55);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y);
+    ctx.quadraticCurveTo(e.x + e.radius * 0.6, kneeY, e.x + e.radius * 1.1, e.y + i * e.radius * 0.55);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = e.color;
   ctx.beginPath();
-  ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+  ctx.ellipse(e.x, e.y, e.radius * 0.8, e.radius * 0.5, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.85, e.y, e.radius * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, -20);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.1, e.y - e.radius * 0.2);
+  ctx.lineTo(e.x - e.radius * 1.5, e.y - e.radius * 0.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.1, e.y + e.radius * 0.2);
+  ctx.lineTo(e.x - e.radius * 1.5, e.y + e.radius * 0.5);
+  ctx.stroke();
+}
+
+function drawAnt(ctx, e) {
+  drawAntBody(ctx, e);
+}
+
+// Same body plan as the plain Ant (just a different color, which alone
+// reads as a distinct enemy), plus a pair of visible mandibles up front —
+// a touch more aggressive-looking to match the name.
+function drawFireAnt(ctx, e) {
+  drawAntBody(ctx, e);
+  ctx.strokeStyle = '#3e1a0a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.15, e.y - e.radius * 0.1);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.45, e.y - e.radius * 0.3, e.x - e.radius * 1.6, e.y - e.radius * 0.05);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.15, e.y + e.radius * 0.1);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.45, e.y + e.radius * 0.3, e.x - e.radius * 1.6, e.y + e.radius * 0.05);
+  ctx.stroke();
+}
+
+// Bulkier ant with a visible armor-plate highlight on the abdomen and a
+// larger body overall (bigger radius, set in FOREST_ROSTER).
+function drawArmoredAnt(ctx, e) {
+  drawAntBody(ctx, e);
+  ctx.fillStyle = shadeColor(e.color, 30);
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.1, e.y - e.radius * 0.15, e.radius * 0.45, e.radius * 0.2, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Boss: a much bigger ant with wings (queens are the only winged caste)
+// and small gold crown flecks trailing behind the head.
+function drawQueenAnt(ctx, e) {
+  ctx.fillStyle = 'rgba(224, 224, 224, 0.5)';
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.15, e.y - e.radius * 0.6, e.radius * 0.7, e.radius * 0.32, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.15, e.y + e.radius * 0.6, e.radius * 0.7, e.radius * 0.32, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawAntBody(ctx, e);
+
+  ctx.fillStyle = '#ffd54f';
+  [[0.3, -0.18], [0.3, 0.18], [0.5, 0]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// --- Deep Forest: beetles ----------------------------------------------
+
+function drawBeetleBody(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.85, e.y, e.radius * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(e.x, e.y - e.radius * 0.7);
+  ctx.lineTo(e.x, e.y + e.radius * 0.7);
+  ctx.stroke();
+
+  ctx.fillStyle = shadeColor(e.color, 20);
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.15, e.y - e.radius * 0.3, e.radius * 0.4, e.radius * 0.15, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawBabyBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+}
+
+// Its signature feature: a small dirt/dung ball drawn just ahead of the
+// head, pushed in front of it as it walks. A fixed relative position
+// rather than an independently spinning animation — in keeping with this
+// file's "no per-frame allocation" art budget for enemies (nothing else
+// here animates beyond the shared heading-rotation every enemy already
+// gets), but still clearly reads as "rolling a ball in front of it."
+function drawDungBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+
+  const ballX = e.x - e.radius * 1.75;
+  ctx.fillStyle = '#3e2723';
+  ctx.beginPath();
+  ctx.arc(ballX, e.y, e.radius * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor('#3e2723', -20);
+  [[-0.15, -0.15], [0.2, 0.1], [-0.05, 0.25]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(ballX + dx * e.radius, e.y + dy * e.radius, e.radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Pale stripe markings (the real insect's iridescent look) and long,
+// prominent mandibles — tiger beetles are known for both.
+function drawTigerBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = 1;
+  [-0.3, 0, 0.3].forEach((off) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 0.5, e.y + off * e.radius);
+    ctx.lineTo(e.x + e.radius * 0.6, e.y + off * e.radius);
+    ctx.stroke();
+  });
+
+  ctx.strokeStyle = '#1b1b1b';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.15, e.y - e.radius * 0.15);
+  ctx.lineTo(e.x - e.radius * 1.55, e.y - e.radius * 0.35);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.15, e.y + e.radius * 0.15);
+  ctx.lineTo(e.x - e.radius * 1.55, e.y + e.radius * 0.35);
+  ctx.stroke();
+}
+
+// Boss: a bigger beetle whose extremely long, sweeping antennae (the
+// animal's namesake feature) are the whole visual point.
+function drawLonghornBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+
+  ctx.strokeStyle = shadeColor(e.color, -10);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.8, e.y - e.radius * 0.2);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.5, e.y - e.radius * 1.1, e.x + e.radius * 1.8, e.y - e.radius * 0.9);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.8, e.y + e.radius * 0.2);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.5, e.y + e.radius * 1.1, e.x + e.radius * 1.8, e.y + e.radius * 0.9);
+  ctx.stroke();
+}
+
+// --- Marshland: amphibians ----------------------------------------------
+
+// A teardrop tail trailing behind a round head — head faces +x by default,
+// matching ENEMY_FACING_OFFSET.tadpole === 0.
+function drawTadpole(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.6, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.8, e.y - e.radius * 0.7, e.x - e.radius * 2.3, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.8, e.y + e.radius * 0.7, e.x - e.radius * 0.6, e.y);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, 25);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.15, e.y - e.radius * 0.3, e.radius * 0.35, e.radius * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.3, e.y - e.radius * 0.3, e.radius * 0.14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.3, e.y + e.radius * 0.3, e.radius * 0.14, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Mid-metamorphosis: small leg nubs just emerging, but still a stub of the
+// tadpole tail left over — distinct from both the pure Tadpole and the
+// fully-legged Frog Boss below.
+function drawFroglet(ctx, e) {
+  ctx.fillStyle = shadeColor(e.color, -10);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.6, e.y + e.radius * 0.5, e.radius * 0.3, e.radius * 0.2, 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.6, e.y + e.radius * 0.5, e.radius * 0.3, e.radius * 0.2, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.7, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.2, e.y - e.radius * 0.3, e.x - e.radius * 1.4, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.2, e.y + e.radius * 0.3, e.x - e.radius * 0.7, e.y);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.9, e.radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  [-0.3, 0.3].forEach((dx) => {
+    ctx.fillStyle = shadeColor(e.color, 20);
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.55, e.radius * 0.26, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.55, e.radius * 0.11, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// A plump, soft-bodied blob with translucent-looking internal speckles and
+// just a small tail nub — no legs yet, earlier-stage than even the
+// Tadpole visually, matching its outsized HP/tankiness for this tier.
+function drawFrogLarva(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, 25);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.1, e.y - e.radius * 0.3, e.radius * 0.5, e.radius * 0.22, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, -25);
+  [[-0.3, 0.1], [0.2, -0.1], [0, 0.35], [0.35, 0.2], [-0.4, -0.2]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 1.05, e.y, e.radius * 0.3, e.radius * 0.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Boss: a full adult frog — bulging eyes, a wide mouth line, properly
+// folded-back legs instead of Froglet's small nubs.
+function drawFrogBoss(ctx, e) {
+  ctx.fillStyle = shadeColor(e.color, -10);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.7, e.y + e.radius * 0.45, e.radius * 0.55, e.radius * 0.35, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.7, e.y + e.radius * 0.45, e.radius * 0.55, e.radius * 0.35, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.82, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  [-0.35, 0.35].forEach((dx) => {
+    ctx.fillStyle = shadeColor(e.color, 22);
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.62, e.radius * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.62, e.radius * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.strokeStyle = shadeColor(e.color, -35);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.55, e.y + e.radius * 0.15);
+  ctx.quadraticCurveTo(e.x, e.y + e.radius * 0.4, e.x + e.radius * 0.55, e.y + e.radius * 0.15);
+  ctx.stroke();
+}
+
+// --- Marshland: mollusks -------------------------------------------------
+
+function drawSnailBody(ctx, e) {
+  ctx.fillStyle = shadeColor(e.color, -15);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.6, e.y, e.radius * 0.5, e.radius * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = 1.3;
+  [-0.15, 0.15].forEach((dy) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius, e.y + dy * e.radius);
+    ctx.lineTo(e.x - e.radius * 1.3, e.y + dy * e.radius * 1.8);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.2, e.y, e.radius * 0.85, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -30);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.2, e.y, e.radius * 0.55, 0.5, Math.PI * 2.2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.2, e.y, e.radius * 0.3, 0.5, Math.PI * 2.2);
+  ctx.stroke();
+}
+
+function drawAppleSnail(ctx, e) {
+  drawSnailBody(ctx, e);
+}
+
+// No shell — an elongated soft body with simple ripple segments and a pair
+// of eye stalks, the classic slug silhouette.
+function drawSlug(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.3, e.radius * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, -20);
+  ctx.lineWidth = 1;
+  [-0.5, 0, 0.5].forEach((off) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x + off * e.radius, e.y - e.radius * 0.5);
+    ctx.lineTo(e.x + off * e.radius, e.y + e.radius * 0.5);
+    ctx.stroke();
+  });
+
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = 1.3;
+  [-0.12, 0.12].forEach((dy) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 1.2, e.y + dy * e.radius * 2);
+    ctx.lineTo(e.x - e.radius * 1.5, e.y + dy * e.radius * 4);
+    ctx.stroke();
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(e.x - e.radius * 1.5, e.y + dy * e.radius * 4, e.radius * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Same foot/tentacles as the Apple Snail, but a more pointed, conical
+// shell (the real animal's distinctive silhouette) with yellow banding
+// instead of a round spiral shell.
+function drawAssassinSnail(ctx, e) {
+  ctx.fillStyle = shadeColor(e.color, -15);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.6, e.y, e.radius * 0.5, e.radius * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = 1.3;
+  [-0.15, 0.15].forEach((dy) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius, e.y + dy * e.radius);
+    ctx.lineTo(e.x - e.radius * 1.3, e.y + dy * e.radius * 1.8);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 1.1, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.6, e.y - e.radius * 0.75, e.x - e.radius * 0.1, e.y - e.radius * 0.5);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.3, e.y, e.x - e.radius * 0.1, e.y + e.radius * 0.5);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.6, e.y + e.radius * 0.75, e.x + e.radius * 1.1, e.y);
+  ctx.fill();
+
+  ctx.strokeStyle = '#ffd54f';
+  ctx.lineWidth = 1.5;
+  [0.3, 0.6, 0.9].forEach((t) => {
+    ctx.beginPath();
+    ctx.arc(e.x + e.radius * (0.1 + t * 0.4), e.y, e.radius * (0.55 - t * 0.15), -0.9, 0.9);
+    ctx.stroke();
+  });
+}
+
+// Boss: a broad, flat conical shell — the "helmet" silhouette real helmet
+// snails are named for — much bigger than any regular snail's shell.
+function drawMilitaryHelmetSnail(ctx, e) {
+  ctx.fillStyle = shadeColor(e.color, -15);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.65, e.y, e.radius * 0.55, e.radius * 0.33, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = 1.5;
+  [-0.15, 0.15].forEach((dy) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 1.05, e.y + dy * e.radius);
+    ctx.lineTo(e.x - e.radius * 1.4, e.y + dy * e.radius * 1.8);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.3, e.y, e.radius * 1.05, e.radius * 0.95, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, 20);
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.2, e.y - e.radius * 0.2, e.radius * 0.55, e.radius * 0.3, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -30);
+  ctx.lineWidth = 1.3;
+  [0.4, 0.7].forEach((r) => {
+    ctx.beginPath();
+    ctx.ellipse(e.x + e.radius * 0.3, e.y, e.radius * 1.05 * r, e.radius * 0.95 * r, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+}
+
+const ENEMY_DRAW_FUNCTIONS = {
+  ant: drawAnt,
+  fireAnt: drawFireAnt,
+  armoredAnt: drawArmoredAnt,
+  babyBeetle: drawBabyBeetle,
+  dungBeetle: drawDungBeetle,
+  tigerBeetle: drawTigerBeetle,
+  tadpole: drawTadpole,
+  froglet: drawFroglet,
+  frogLarva: drawFrogLarva,
+  appleSnail: drawAppleSnail,
+  slug: drawSlug,
+  assassinSnail: drawAssassinSnail,
+};
+
+const BOSS_DRAW_FUNCTIONS = {
+  'forest-boss-tier-1': drawQueenAnt,
+  'forest-boss-tier-2': drawLonghornBeetle,
+  'marsh-boss-tier-1': drawFrogBoss,
+  'marsh-boss-tier-2': drawMilitaryHelmetSnail,
+};
+
+function drawFallbackCircle(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawEnemyShape(ctx, enemy) {
+  const draw = enemy.isBoss ? BOSS_DRAW_FUNCTIONS[enemy.enemyKey] : ENEMY_DRAW_FUNCTIONS[enemy.enemyKey];
+  (draw || drawFallbackCircle)(ctx, enemy);
 }
 
 // How far apart (in pixels actually walked, not time) consecutive trail

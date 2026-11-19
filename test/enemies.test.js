@@ -2,12 +2,14 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadGameContext } = require('./support/loadGame');
 
-// The enemy roster (ENEMY_TYPES/BOSS_TYPES/ENEMY_ORDER*) was deliberately
-// emptied — see js/enemies.js's own header comment. These tests cover the
-// generic engine around that empty roster (wave generation degrading
-// gracefully, movement/combat/targeting, the millipede-family trail
-// mechanism) rather than any specific enemy type, since there isn't one
-// right now.
+// Enemies are now per-map: each map's *terrain* (not its map id — see
+// js/map.js) has its own roster (MAP_ROSTERS.forest / .marsh), and
+// generateWave()/getUnlockedEnemyTypes()/getBossForRound() all read
+// whichever roster matches the currently active map (getActiveRoster()).
+// The light loadGameContext() defaults to Deep Forest (map.js's own
+// default active map), so these tests switch maps explicitly wherever the
+// roster itself — not just the generic engine around it — is what's being
+// checked.
 
 test('getTotalWaveSize scales from 5 at round 1 up to 25 at round 25, then holds flat', () => {
   const game = loadGameContext();
@@ -23,48 +25,128 @@ test('getRoundScaling keeps climbing regardless of round size — +10% health ev
   assert.ok(game.getRoundScaling(10).healthMultiplier > game.getRoundScaling(1).healthMultiplier);
 });
 
-test('getUnlockedEnemyTypes returns no types for any round — the roster is currently empty', () => {
+test('getActiveRoster defaults to the Forest roster (Deep Forest is the default active map)', () => {
   const game = loadGameContext();
-  assert.deepEqual(game.getUnlockedEnemyTypes(1), []);
-  assert.deepEqual(game.getUnlockedEnemyTypes(25), []);
-  assert.deepEqual(game.getUnlockedEnemyTypes(26), []);
-  assert.deepEqual(game.getUnlockedEnemyTypes(1000), []);
+  assert.equal(game.getActiveRoster(), game.FOREST_ROSTER);
 });
 
-test('generateWave degrades to an empty wave on a non-boss round — no regular types to draw from', () => {
+test('getActiveRoster switches to the Marsh roster once Marshland is the active map', () => {
   const game = loadGameContext();
-  assert.deepEqual(game.generateWave(1), []);
-  assert.deepEqual(game.generateWave(24), []);
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  assert.equal(game.getActiveRoster(), game.MARSH_ROSTER);
 });
 
-test('every 25th round is still flagged as a boss round, independent of whether a boss is designed', () => {
+test('Deep Forest tier 1 unlocks Ant, then Fire Ant, then Armored Ant over rounds 1/6/11', () => {
+  const game = loadGameContext();
+  assert.deepEqual(game.getUnlockedEnemyTypes(1), ['ant']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(6), ['ant', 'fireAnt']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(11), ['ant', 'fireAnt', 'armoredAnt']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(24), ['ant', 'fireAnt', 'armoredAnt']); // maxed out, tier 2 not started
+});
+
+test('Deep Forest tier 2 (Baby/Dung/Tiger Beetle) unlocks progressively after the round-25 boss', () => {
+  const game = loadGameContext();
+  const tier1 = ['ant', 'fireAnt', 'armoredAnt'];
+  assert.deepEqual(game.getUnlockedEnemyTypes(26), [...tier1, 'babyBeetle']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(31), [...tier1, 'babyBeetle', 'dungBeetle']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(36), [...tier1, 'babyBeetle', 'dungBeetle', 'tigerBeetle']);
+});
+
+test('Marshland has its own independent roster/unlock schedule from Deep Forest', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  assert.deepEqual(game.getUnlockedEnemyTypes(1), ['tadpole']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(11), ['tadpole', 'froglet', 'frogLarva']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(36), ['tadpole', 'froglet', 'frogLarva', 'appleSnail', 'slug', 'assassinSnail']);
+});
+
+test('generateWave(1) on Deep Forest is just Ant, scaled to the round-1 baseline count/health', () => {
+  const game = loadGameContext();
+  const wave = game.generateWave(1);
+  assert.equal(wave.length, 1);
+  assert.equal(wave[0].enemyKey, 'ant');
+  assert.equal(wave[0].count, 5); // WAVE_SIZE_AT_ROUND_1, undivided (1 unlocked type)
+  assert.equal(wave[0].health, 2);
+  assert.equal(wave[0].bounty, 2);
+});
+
+test('every 25th round is a boss wave, keyed and prefixed with the active map\'s own terrain', () => {
   const game = loadGameContext();
   assert.equal(game.isBossRound(24), false);
   assert.equal(game.isBossRound(25), true);
-  assert.equal(game.isBossRound(50), true);
+
+  const forestWave = game.generateWave(25);
+  assert.equal(forestWave[0].isBoss, true);
+  assert.equal(forestWave[0].name, 'Queen Ant');
+  assert.equal(forestWave[0].enemyKey, 'forest-boss-tier-1');
+  assert.equal(forestWave[0].bounty, 25);
+
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  const marshWave = game.generateWave(25);
+  assert.equal(marshWave[0].name, 'Frog Boss');
+  assert.equal(marshWave[0].enemyKey, 'marsh-boss-tier-1');
+  assert.equal(marshWave[0].bounty, 33);
 });
 
-test('getBossForRound returns null — no boss tier is currently designed', () => {
+test('round 50 spawns each map\'s own tier-2 boss', () => {
   const game = loadGameContext();
+  const forestWave = game.generateWave(50);
+  assert.equal(forestWave[0].name, 'Longhorn Beetle');
+  assert.equal(forestWave[0].enemyKey, 'forest-boss-tier-2');
+
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  const marshWave = game.generateWave(50);
+  assert.equal(marshWave[0].name, 'Military Helmet Snail');
+  assert.equal(marshWave[0].enemyKey, 'marsh-boss-tier-2');
+});
+
+test('boss keys are terrain-prefixed so the two maps\' tier-1/tier-2 bosses never collide', () => {
+  const game = loadGameContext();
+  const forestBoss1 = game.generateWave(25)[0].enemyKey;
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  const marshBoss1 = game.generateWave(25)[0].enemyKey;
+  assert.notEqual(forestBoss1, marshBoss1);
+});
+
+test('generateWave degrades to an empty wave on a non-boss round with nothing unlocked yet', () => {
+  const game = loadGameContext();
+  // round 0 is before tier 1's own round-1 unlock — an edge case the real
+  // game never reaches (round starts at 1), exercised here purely to prove
+  // the empty-roster/empty-unlock path still can't crash.
+  assert.deepEqual(game.getUnlockedEnemyTypes(0), []);
+});
+
+test('an undesigned boss tier (beyond the highest designed one) falls back, not a new boss', () => {
+  const game = loadGameContext();
+  const round75Wave = game.generateWave(75); // no tier-3 boss designed for either map
+  assert.equal(round75Wave[0].name, 'Longhorn Beetle'); // falls back to the strongest designed tier
+});
+
+test('generateWave degrades to an empty wave, not a crash, if a roster ever has nothing unlocked/designed', () => {
+  const game = loadGameContext();
+  // Simulates what a brand-new/blank roster would look like — this is the
+  // exact shape both built-in rosters started in before this content was
+  // designed (see git history), kept here as a regression test for that
+  // degrade-gracefully path now that neither roster is actually empty.
+  game.FOREST_ROSTER.order.length = 0;
+  game.FOREST_ROSTER.orderTier2.length = 0;
+  game.FOREST_ROSTER.orderTier3.length = 0;
+  delete game.FOREST_ROSTER.bossTypes[1];
+  delete game.FOREST_ROSTER.bossTypes[2];
+
+  assert.deepEqual(game.generateWave(1), []);
+  assert.deepEqual(game.generateWave(25), []); // boss round, no boss designed
   assert.equal(game.getBossForRound(25), null);
-  assert.equal(game.getBossForRound(50), null);
 });
 
-test('generateWave degrades to an empty wave on a boss round too, rather than spawning a broken boss', () => {
+test('bounties follow the ~HP/2 convention, Ant bumped up from round(2/2)=1 so the cheapest enemy is never worthless', () => {
   const game = loadGameContext();
-  assert.deepEqual(game.generateWave(25), []);
-  assert.deepEqual(game.generateWave(50), []);
-});
-
-test('getSpawnEntryForEnemyKey returns null for every key — nothing is spawnable with an empty roster', () => {
-  const game = loadGameContext();
-  // Not exported from the light context — exercised via the full context
-  // in game-modes.test.js instead. Covered here indirectly: an unknown
-  // key always resolving to "nothing" is exactly today's roster state for
-  // every key, not just a made-up one — see getSpawnEntryForEnemyKey
-  // itself in enemies.js, unchanged by the roster removal.
-  assert.deepEqual(game.ENEMY_TYPES, {});
-  assert.deepEqual(game.BOSS_TYPES, {});
+  assert.equal(game.FOREST_ROSTER.enemyTypes.ant.bounty, 2); // bumped, not literal HP/2
+  assert.equal(game.FOREST_ROSTER.enemyTypes.fireAnt.bounty, 2); // round(3/2)=2
+  assert.equal(game.FOREST_ROSTER.enemyTypes.armoredAnt.bounty, 5); // round(10/2)=5
+  assert.equal(game.FOREST_ROSTER.bossTypes[1].bounty, 25); // Queen Ant, round(50/2)=25
+  assert.equal(game.MARSH_ROSTER.enemyTypes.frogLarva.bounty, 12); // round(23/2)=12 (round(11.5)=12)
+  assert.equal(game.MARSH_ROSTER.bossTypes[2].bounty, 75); // Military Helmet Snail, round(150/2)=75
 });
 
 test('spawnWave lays out the right number of enemy instances from a manual composition, staggered', () => {
