@@ -29,7 +29,7 @@ test('the game boots into the menu, not straight into gameplay', () => {
   assert.deepEqual(game.getActiveEnemies(), []); // no auto-spawned wave before a mode is chosen
 });
 
-test('startGame switches to playing, resets run state, and spawns round 1 for a real mode', () => {
+test('startGame switches to playing and resets run state for a real mode', () => {
   const game = loadFullGameContext();
   game.startGame('medium');
 
@@ -38,7 +38,18 @@ test('startGame switches to playing, resets run state, and spawns round 1 for a 
   assert.equal(game.getRound(), 1);
   assert.equal(game.getMoney(), 50);
   assert.deepEqual(game.getTowers(), []);
-  assert.ok(game.getActiveEnemies().length > 0); // round 1 spawned automatically
+  // Round 1 "spawns" via spawnWave(generateWave(1)) same as always — with
+  // today's empty enemy roster that's gracefully zero enemies, not a crash.
+  assert.deepEqual(game.getActiveEnemies(), []);
+});
+
+test('startGame spawns round 1 for real once the roster has something in it', () => {
+  const game = loadFullGameContext();
+  game.ENEMY_TYPES.testBug = { name: 'Test Bug', speedMultiplier: 1, health: 2, color: '#000', radius: 8, bounty: 2 };
+  game.ENEMY_ORDER.push('testBug');
+
+  game.startGame('medium');
+  assert.ok(game.getActiveEnemies().length > 0);
 });
 
 test('startGame(sandbox) spawns nothing automatically', () => {
@@ -67,26 +78,23 @@ test('applyModeToWaveComposition never rounds health down to 0', () => {
   assert.ok(result.health >= 1);
 });
 
-test('getAllSpawnableEnemyKeys lists every regular enemy then every boss tier', () => {
+test('getAllSpawnableEnemyKeys is empty — no regular enemy or boss tier is currently designed', () => {
   const game = loadFullGameContext();
-  assert.deepEqual(game.getAllSpawnableEnemyKeys(), [
-    'ant', 'worm', 'tinyIsopod', 'fly',
-    'tadpole', 'babyFrog', 'poisonDartFrog',
-    'hammerheadWorm', 'babyMillipede', 'armoredMillipede', 'giantCentipede',
-    'boss-tier-1', 'boss-tier-2',
-  ]);
+  assert.deepEqual(game.getAllSpawnableEnemyKeys(), []);
 });
 
-test('getSpawnEntryForEnemyKey resolves regular enemies and bosses, or null for an unknown key', () => {
+test('getSpawnEntryForEnemyKey resolves regular enemies and bosses once designed, null for an unknown/undesigned key', () => {
   const game = loadFullGameContext();
+  game.ENEMY_TYPES.testBug = { name: 'Test Bug', speedMultiplier: 1, health: 2, color: '#000', radius: 8, bounty: 2 };
+  game.BOSS_TYPES[1] = { name: 'Test Boss', speedMultiplier: 0.4, health: 100, color: '#000', radius: 18, bounty: 50 };
 
-  const ant = game.getSpawnEntryForEnemyKey('ant');
-  assert.equal(ant.name, 'Ant');
-  assert.equal(ant.isBoss, false);
+  const bug = game.getSpawnEntryForEnemyKey('testBug');
+  assert.equal(bug.name, 'Test Bug');
+  assert.equal(bug.isBoss, false);
 
-  const beetle = game.getSpawnEntryForEnemyKey('boss-tier-1');
-  assert.equal(beetle.name, 'Giant Beetle');
-  assert.equal(beetle.isBoss, true);
+  const boss = game.getSpawnEntryForEnemyKey('boss-tier-1');
+  assert.equal(boss.name, 'Test Boss');
+  assert.equal(boss.isBoss, true);
 
   assert.equal(game.getSpawnEntryForEnemyKey('not-a-real-key'), null);
   assert.equal(game.getSpawnEntryForEnemyKey('boss-tier-99'), null);
@@ -96,10 +104,13 @@ test('spawnSingleEnemy appends one enemy without clearing what\'s already alive'
   const game = loadFullGameContext();
   game.startGame('sandbox');
 
-  game.spawnSingleEnemy(game.getSpawnEntryForEnemyKey('ant'));
+  const antEntry = { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, health: 2, speedMultiplier: 1, isBoss: false, bounty: 2 };
+  const wormEntry = { enemyKey: 'worm', name: 'Worm', color: '#000', radius: 10, health: 10, speedMultiplier: 0.6, isBoss: false, bounty: 5 };
+
+  game.spawnSingleEnemy(antEntry);
   assert.equal(game.getActiveEnemies().length, 1);
 
-  game.spawnSingleEnemy(game.getSpawnEntryForEnemyKey('worm'));
+  game.spawnSingleEnemy(wormEntry);
   assert.equal(game.getActiveEnemies().length, 2); // appended, not replaced
   assert.deepEqual(
     game.getActiveEnemies().map((e) => e.enemyKey).sort(),
@@ -110,7 +121,7 @@ test('spawnSingleEnemy appends one enemy without clearing what\'s already alive'
 test('spawnSingleEnemy spawns immediately, no stagger delay', () => {
   const game = loadFullGameContext();
   game.startGame('sandbox');
-  game.spawnSingleEnemy(game.getSpawnEntryForEnemyKey('ant'));
+  game.spawnSingleEnemy({ enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, health: 2, speedMultiplier: 1, isBoss: false, bounty: 2 });
   assert.equal(game.getActiveEnemies()[0].spawnDelay, 0);
 });
 
@@ -163,7 +174,7 @@ test('a kill in Sandbox still pays its bounty but is never recorded as defeated'
   game.startGame('sandbox');
   const moneyBefore = game.getMoney();
 
-  game.spawnSingleEnemy({ ...game.getSpawnEntryForEnemyKey('fly'), bounty: 2 });
+  game.spawnSingleEnemy({ enemyKey: 'fly', name: 'Fly', color: '#000', radius: 6, health: 3, speedMultiplier: 1, isBoss: false, bounty: 2 });
   game.getActiveEnemies()[0].health = -1;
 
   game.update(1 / 60);
@@ -172,14 +183,26 @@ test('a kill in Sandbox still pays its bounty but is never recorded as defeated'
   assert.ok(!game.getDefeatedEnemyKeys().includes('fly')); // but it doesn't unlock itself
 });
 
-// --- Horde Mode -------------------------------------------------------
+// --- Horde Mode ---------------------------------------------------------
+// Horde's own spawn-pacing/doubling logic is generic engine, independent of
+// which enemy types exist — but it only has anything to actually spawn once
+// the roster has at least one type in it, same as every other mode (see
+// generateWave's graceful empty-roster degradation, covered above). These
+// tests inject one synthetic type so the mechanism has something to move.
+
+function withOneEnemyType(game) {
+  game.ENEMY_TYPES.testBug = { name: 'Test Bug', speedMultiplier: 1, health: 2, color: '#000', radius: 8, bounty: 2 };
+  game.ENEMY_ORDER.push('testBug');
+  return game;
+}
 
 test('startGame(horde) spawns an initial batch immediately, doubled vs. the normal round-1 count', () => {
-  const game = loadFullGameContext();
+  const game = withOneEnemyType(loadFullGameContext());
   game.startGame('medium');
   const normalRound1Count = game.getActiveEnemies().length;
+  assert.ok(normalRound1Count > 0);
 
-  const hordeGame = loadFullGameContext();
+  const hordeGame = withOneEnemyType(loadFullGameContext());
   hordeGame.startGame('horde');
   assert.equal(hordeGame.getCurrentMode().horde, true);
   assert.equal(hordeGame.getRound(), 1);
@@ -187,9 +210,10 @@ test('startGame(horde) spawns an initial batch immediately, doubled vs. the norm
 });
 
 test('Horde Mode never gates on clearing: the next batch lands on top of survivors, not after them', () => {
-  const game = loadFullGameContext();
+  const game = withOneEnemyType(loadFullGameContext());
   game.startGame('horde');
   const firstBatchCount = game.getActiveEnemies().length;
+  assert.ok(firstBatchCount > 0);
 
   // Run well past the first batch's own spawn-stagger duration without
   // killing anything — a real wave-gated mode would just sit idle here.
@@ -200,7 +224,7 @@ test('Horde Mode never gates on clearing: the next batch lands on top of survivo
 });
 
 test('Horde Mode keeps spawning with zero gap: the spawn timer never sits idle at exactly 0 between batches', () => {
-  const game = loadFullGameContext();
+  const game = withOneEnemyType(loadFullGameContext());
   game.startGame('horde');
 
   let sawPositiveAfterHittingZero = false;
@@ -214,8 +238,18 @@ test('Horde Mode keeps spawning with zero gap: the spawn timer never sits idle a
   assert.ok(sawPositiveAfterHittingZero);
 });
 
-test('Horde Mode ignores autoContinue/Next Round entirely (no wave-cleared gating to drive)', () => {
+test('Horde Mode degrades gracefully with an empty roster: no crash, batches just spawn nothing', () => {
   const game = loadFullGameContext();
+  game.startGame('horde');
+  assert.deepEqual(game.getActiveEnemies(), []);
+
+  for (let i = 0; i < 600; i += 1) game.update(1 / 60); // 10 simulated seconds, nothing to spawn
+  assert.deepEqual(game.getActiveEnemies(), []);
+  assert.ok(game.getRound() > 1); // the round counter still advances on its own
+});
+
+test('Horde Mode ignores autoContinue/Next Round entirely (no wave-cleared gating to drive)', () => {
+  const game = withOneEnemyType(loadFullGameContext());
   game.startGame('horde');
   game.setAutoContinue(false);
 

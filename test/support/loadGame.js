@@ -40,6 +40,7 @@ function loadGameContext() {
       TOWER_TYPES, createTower, getAvailableUpgrade, purchaseUpgrade,
       ENEMY_TYPES, BOSS_TYPES, ENEMY_ORDER, BOSS_INTERVAL, BASE_SPEED,
       isBossRound, getBossForRound, getUnlockedEnemyTypes, getRoundScaling,
+      getTotalWaveSize,
       generateWave, spawnWave, updateEnemies,
       findNearestEnemyInRange, damageEnemy, applyBurn, getEnemiesInRadius,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath,
@@ -191,6 +192,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       setAutoContinue: (value) => { autoContinue = value; },
       canAfford,
       getHordeSpawnTimer: () => hordeSpawnTimer,
+      ENEMY_TYPES, ENEMY_ORDER, BOSS_TYPES, generateWave,
     };
     `,
     context

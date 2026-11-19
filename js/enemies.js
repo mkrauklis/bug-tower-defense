@@ -10,70 +10,45 @@
 
 const BASE_SPEED = 60; // px/second
 
-// `bounty` is the money awarded when the enemy dies (health hits 0, not
-// when it reaches the goal) — generic per enemy type, not hardcoded per-kill.
-// Bounty was originally set to roughly match health 1:1 (with a small flat
-// bump for the very cheapest enemy so it's not worth nothing), but a later
-// balance pass doubled every enemy's base health (Ant 1->2, Worm 5->10,
-// Tiny Isopod 10->20, Giant Beetle 50->100, Tadpole 20->40, Baby Frog
-// 30->60, Poison Dart Frog 50->100, Boss Toad 100->200) without touching
-// bounty — so the ratio is now roughly 1:2 (bounty ≈ half of health), not
-// 1:1 any more. Noted here so a future addition doesn't "restore" a 1:1
-// ratio that's no longer the actual convention.
-const ENEMY_TYPES = {
-  ant: { name: 'Ant', speedMultiplier: 0.5, health: 2, color: '#8d6e63', radius: 8, bounty: 2 },
-  worm: { name: 'Worm', speedMultiplier: 0.6, health: 10, color: '#c0ca33', radius: 10, bounty: 5 },
-  tinyIsopod: { name: 'Tiny Isopod', speedMultiplier: 0.7, health: 20, color: '#78909c', radius: 12, bounty: 10 },
-  // Fastest tier-1 enemy by a wide margin (1x vs. 0.5-0.7x for the other
-  // three) but fragile — introduced last in tier 1 (see ENEMY_ORDER) so the
-  // "fast bug" challenge shows up once a player already has some defense
-  // established, rather than complicating round 1. Bounty: ~HP/2 like the
-  // rest of the roster, rounded to the nearest dollar (3/2 = 1.5 -> 2).
-  fly: { name: 'Fly', speedMultiplier: 1, health: 3, color: '#424242', radius: 6, bounty: 2 },
-  // Tier 2 — unlocks after round 25 (see getUnlockedEnemyTypes), same
-  // progressive-unlock mechanism as tier 1, just gated to start later.
-  // A lighter olive than a real tadpole's near-black so it still reads
-  // clearly against the forest floor's own dark green.
-  tadpole: { name: 'Tadpole', speedMultiplier: 0.7, health: 40, color: '#5a7a3a', radius: 7, bounty: 20 },
-  babyFrog: { name: 'Baby Frog', speedMultiplier: 0.6, health: 60, color: '#66bb6a', radius: 10, bounty: 30 },
-  poisonDartFrog: { name: 'Poison Dart Frog', speedMultiplier: 0.65, health: 100, color: '#2979ff', radius: 9, bounty: 50 },
-  // Tier 3 — unlocks after round 50 (see getUnlockedEnemyTypes), same
-  // progressive-unlock mechanism as the earlier tiers. Bounty: ~HP/2, same
-  // convention as every tier before it.
-  hammerheadWorm: { name: 'Hammerhead Worm', speedMultiplier: 0.6, health: 50, color: '#8d6e63', radius: 11, bounty: 25 },
-  // Baby/Armored Millipede and Giant Centipede are the "millipede family"
-  // (see MILLIPEDE_FAMILY_KEYS below) — Hammerhead Worm isn't included
-  // despite being introduced alongside them, since it's a worm, not a
-  // milli/centipede (direct judgment call from the brief).
-  babyMillipede: { name: 'Baby Millipede', speedMultiplier: 0.7, health: 60, color: '#795548', radius: 7, bounty: 30 },
-  armoredMillipede: { name: 'Armored Millipede', speedMultiplier: 0.7, health: 100, color: '#5d4037', radius: 8, bounty: 50 },
-  giantCentipede: { name: 'Giant Centipede', speedMultiplier: 0.6, health: 250, color: '#bf360c', radius: 10, bounty: 125 },
-};
+// The enemy roster: every regular enemy type the game can spawn, keyed by
+// its own enemyKey. Deliberately empty right now — the entire previous
+// roster (Ant, Worm, Tiny Isopod, Fly, Tadpole, Baby Frog, Poison Dart
+// Frog, Hammerhead Worm, Baby/Armored Millipede, Giant Centipede) was
+// removed on direct request to clear the way for a new design, along with
+// every bit of roster-specific logic/art that only existed to serve those
+// types (see drawEnemyShape's dispatch, ENEMY_FACING_OFFSET,
+// MILLIPEDE_FAMILY_KEYS/MILLIPEDE_BODY, ENEMY_ORDER* below — all emptied,
+// not deleted, since the generic engine around them stays intact and is
+// meant to be filled back in). Shape a new entry needs:
+// { name, speedMultiplier, health, color, radius, bounty }.
+const ENEMY_TYPES = {};
 
-// The 3 enemy types whose body visibly curls around corners as a chain of
+// Enemy types whose body visibly curls around corners as a chain of
 // segments following the head's own recent path, instead of the single
-// rigid heading every other enemy (including Hammerhead Worm) uses — see
-// ENEMY_TRAIL_LENGTH / recordTrailPoint() / renderMillipedeBody() below.
-const MILLIPEDE_FAMILY_KEYS = new Set(['babyMillipede', 'armoredMillipede', 'giantCentipede']);
+// rigid heading every other enemy uses — add a key here (and a matching
+// entry in MILLIPEDE_BODY below) to opt a new type into it. See
+// recordTrailPoint()/renderMillipedeBody() below for the (still-intact)
+// generic mechanism this drives.
+const MILLIPEDE_FAMILY_KEYS = new Set();
 
-// Intro/difficulty order for tier 1 (unlocked from round 1), tier 2
-// (unlocked starting after round 25), and tier 3 (unlocked starting after
-// round 50) — see getUnlockedEnemyTypes. Kept as separate lists rather
-// than one long ENEMY_ORDER so each tier unlocks on its own progressive
-// every-5-rounds cadence instead of one continuous count across all of them.
-const ENEMY_ORDER = ['ant', 'worm', 'tinyIsopod', 'fly'];
-const ENEMY_ORDER_TIER2 = ['tadpole', 'babyFrog', 'poisonDartFrog'];
-const ENEMY_ORDER_TIER3 = ['hammerheadWorm', 'babyMillipede', 'armoredMillipede', 'giantCentipede'];
+// Intro order for tier 1 (unlocked from round 1), tier 2 (unlocked
+// starting after round 25), and tier 3 (unlocked starting after round 50)
+// — see getUnlockedEnemyTypes. Kept as separate lists rather than one long
+// ENEMY_ORDER so each tier can unlock on its own progressive every-5-rounds
+// cadence instead of one continuous count across all of them. Empty for
+// now, same as ENEMY_TYPES above — getUnlockedEnemyTypes degrades to
+// returning no types for any round, and generateWave() degrades to an
+// empty regular wave, rather than erroring.
+const ENEMY_ORDER = [];
+const ENEMY_ORDER_TIER2 = [];
+const ENEMY_ORDER_TIER3 = [];
 
 // Bosses, keyed by boss tier (tier 1 = round 25, tier 2 = round 50, ...).
-// Add more tiers here as they're designed — getBossForRound() falls back to
-// the strongest designed tier for any round whose tier isn't here yet.
-const BOSS_TYPES = {
-  1: { name: 'Giant Beetle', speedMultiplier: 0.4, health: 100, color: '#4e342e', radius: 18, bounty: 50 },
-  // Bounty follows the same ~1:1-with-health convention as the regular
-  // roster above (based on the pre-doubling health values, left as-is).
-  2: { name: 'Boss Toad', speedMultiplier: 0.4, health: 200, color: '#558b2f', radius: 24, bounty: 100 },
-};
+// Empty for now, same as ENEMY_TYPES above — getBossForRound() degrades to
+// returning null (no boss designed at all yet) rather than erroring, and
+// generateWave() turns that into an empty wave on what would otherwise be
+// a boss round.
+const BOSS_TYPES = {};
 
 const BOSS_INTERVAL = 25;
 
@@ -81,9 +56,14 @@ function isBossRound(round) {
   return round % BOSS_INTERVAL === 0;
 }
 
+// Returns null when no boss tier has been designed at all yet (empty
+// BOSS_TYPES) — generateWave() below turns that into a graceful empty wave
+// rather than spawning a boss built from missing data.
 function getBossForRound(round) {
-  const tier = round / BOSS_INTERVAL;
   const designedTiers = Object.keys(BOSS_TYPES).map(Number);
+  if (designedTiers.length === 0) return null;
+
+  const tier = round / BOSS_INTERVAL;
   const highestDesigned = Math.max(...designedTiers);
   // Fall back to the strongest designed boss tier if this one hasn't been
   // designed yet, rather than inventing a new boss.
@@ -150,6 +130,7 @@ function getRoundScaling(round) {
 function generateWave(round) {
   if (isBossRound(round)) {
     const boss = getBossForRound(round);
+    if (!boss) return []; // no boss tier designed yet — an empty wave, not a broken one
     return [
       {
         enemyKey: `boss-tier-${boss.tier}`,
@@ -167,6 +148,7 @@ function generateWave(round) {
 
   const scaling = getRoundScaling(round);
   const unlocked = getUnlockedEnemyTypes(round);
+  if (unlocked.length === 0) return []; // no regular types designed/unlocked yet
   // Spread this round's total wave size evenly across whichever types are
   // currently unlocked, so per-type count self-adjusts as new types unlock
   // rather than needing its own separate curve.
@@ -195,28 +177,15 @@ let activeEnemies = [];
 // un-rotated drawing, that the enemy's "front" points toward) — used to
 // offset the computed movement heading so the art actually turns to face
 // where it's walking instead of just rotating around an arbitrary pivot.
-// Ant/Giant Beetle draw their head/mandibles on the -x side; Worm draws its
-// eyes on the +x side; Tiny Isopod has no directional features, so its
-// offset is arbitrary.
-// Tadpole/Baby Frog/Poison Dart Frog have no strong left/right "head" side
-// in their art (see draw functions below), so 0 is as good a default as
-// any for them.
-const ENEMY_FACING_OFFSET = {
-  ant: Math.PI,
-  worm: 0,
-  tinyIsopod: 0,
-  fly: 0, // symmetric top-down silhouette, no strong head side
-  tadpole: 0,
-  babyFrog: 0,
-  poisonDartFrog: 0,
-  hammerheadWorm: 0, // hammerhead bar is on the +x side, like Worm's own eyes
-  // Millipede-family keys deliberately have no entry here — they never go
-  // through this single-rotation path at all (see renderMillipedeBody()).
-};
+// Empty for now along with the roster itself (see ENEMY_TYPES above) — a
+// missing key already defaults to 0 wherever this is read (renderEnemies'
+// `?? 0`), which is a perfectly fine default for art with no strong
+// left/right "head" side, so there's nothing else to degrade here.
+const ENEMY_FACING_OFFSET = {};
 // Keyed by enemyKey (e.g. 'boss-tier-1'), same as ENEMY_FACING_OFFSET,
 // since different boss tiers can have different default facing directions
 // baked into their own art.
-const BOSS_FACING_OFFSET = { 'boss-tier-1': Math.PI, 'boss-tier-2': 0 };
+const BOSS_FACING_OFFSET = {};
 
 function getInitialPathHeading() {
   const dx = MAP_PATH_WAYPOINTS[1].x - MAP_PATH_WAYPOINTS[0].x;
@@ -525,349 +494,20 @@ function updateZombieMovement(enemy, deltaSeconds) {
   }
 }
 
-// Simple, distinguishable silhouettes per enemy type — canvas primitives
-// only, no external art. A step up from flat shapes (curved limbs, a touch
-// of shading/highlight via shadeColor from towers.js) but still just a
-// handful of draw calls each, since dozens of these can be on screen at
-// once — no gradients or per-frame object allocation.
-function drawAnt(ctx, e) {
-  ctx.strokeStyle = '#2b1c12';
-  ctx.lineWidth = 1.5;
-  [-1, 0, 1].forEach((i) => {
-    const kneeY = e.y + i * e.radius * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(e.x, e.y);
-    ctx.quadraticCurveTo(e.x - e.radius * 0.7, kneeY, e.x - e.radius * 1.3, e.y + i * e.radius * 0.6);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(e.x, e.y);
-    ctx.quadraticCurveTo(e.x + e.radius * 0.7, kneeY, e.x + e.radius * 1.3, e.y + i * e.radius * 0.6);
-    ctx.stroke();
-  });
-
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius * 0.9, e.radius * 0.55, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(e.x - e.radius * 0.9, e.y, e.radius * 0.4, 0, Math.PI * 2);
-  ctx.fill();
-
-  // A small highlight on the abdomen suggests a glossy shell.
-  ctx.fillStyle = shadeColor(e.color, 25);
-  ctx.beginPath();
-  ctx.ellipse(e.x + e.radius * 0.15, e.y - e.radius * 0.2, e.radius * 0.3, e.radius * 0.15, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.moveTo(e.x - e.radius * 1.2, e.y - e.radius * 0.1);
-  ctx.lineTo(e.x - e.radius * 1.7, e.y - e.radius * 0.5);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(e.x - e.radius * 1.2, e.y + e.radius * 0.1);
-  ctx.lineTo(e.x - e.radius * 1.7, e.y + e.radius * 0.5);
-  ctx.stroke();
-}
-
-function drawWorm(ctx, e) {
-  const segments = 3;
-  for (let i = 0; i < segments; i += 1) {
-    const offset = (i - (segments - 1) / 2) * e.radius * 0.8;
-    // Alternating light/dark segments read as a simple ribbed body.
-    ctx.fillStyle = i % 2 === 0 ? e.color : shadeColor(e.color, -15);
-    ctx.beginPath();
-    ctx.arc(e.x + offset, e.y, e.radius * 0.6, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Eyes on the lead (front) segment.
-  const frontOffset = ((segments - 1) / 2) * e.radius * 0.8;
-  ctx.fillStyle = '#212121';
-  ctx.beginPath();
-  ctx.arc(e.x + frontOffset + e.radius * 0.15, e.y - e.radius * 0.2, e.radius * 0.1, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(e.x + frontOffset + e.radius * 0.15, e.y + e.radius * 0.2, e.radius * 0.1, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-// Same ribbed-segment body as the plain Worm, but with a flattened T-shaped
-// "hammerhead" bar up front instead of a round head — the real animal's
-// signature feature, and enough on its own to read as a distinct enemy at
-// a glance.
-function drawHammerheadWorm(ctx, e) {
-  const segments = 3;
-  for (let i = 0; i < segments; i += 1) {
-    const offset = (i - (segments - 1) / 2) * e.radius * 0.8;
-    ctx.fillStyle = i % 2 === 0 ? e.color : shadeColor(e.color, -15);
-    ctx.beginPath();
-    ctx.arc(e.x + offset, e.y, e.radius * 0.55, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  const frontOffset = ((segments - 1) / 2) * e.radius * 0.8;
-  ctx.fillStyle = shadeColor(e.color, -10);
-  ctx.beginPath();
-  ctx.ellipse(e.x + frontOffset + e.radius * 0.3, e.y, e.radius * 0.25, e.radius * 0.9, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#212121';
-  ctx.beginPath();
-  ctx.arc(e.x + frontOffset + e.radius * 0.3, e.y - e.radius * 0.55, e.radius * 0.1, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(e.x + frontOffset + e.radius * 0.3, e.y + e.radius * 0.55, e.radius * 0.1, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawTinyIsopod(ctx, e) {
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.7, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // A lighter top band gives the shell some roundness.
-  ctx.fillStyle = shadeColor(e.color, 20);
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y - e.radius * 0.25, e.radius * 0.85, e.radius * 0.3, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = '#37474f';
-  ctx.lineWidth = 1.5;
-  [-1, 0, 1].forEach((i) => {
-    ctx.beginPath();
-    ctx.moveTo(e.x + i * e.radius * 0.4, e.y - e.radius * 0.6);
-    ctx.lineTo(e.x + i * e.radius * 0.4, e.y + e.radius * 0.6);
-    ctx.stroke();
-  });
-}
-
-// Small, round body with a pair of translucent wings and red compound eyes
-// — the fastest tier-1 enemy, so a silhouette distinct enough to spot at a
-// glance amid slower bugs.
-function drawFly(ctx, e) {
-  ctx.fillStyle = 'rgba(224, 224, 224, 0.55)';
-  ctx.beginPath();
-  ctx.ellipse(e.x - e.radius * 0.3, e.y - e.radius * 0.5, e.radius * 0.55, e.radius * 0.3, -0.4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(e.x + e.radius * 0.3, e.y - e.radius * 0.5, e.radius * 0.55, e.radius * 0.3, 0.4, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius * 0.6, e.radius * 0.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#c62828';
-  ctx.beginPath();
-  ctx.arc(e.x - e.radius * 0.25, e.y - e.radius * 0.5, e.radius * 0.18, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(e.x + e.radius * 0.25, e.y - e.radius * 0.5, e.radius * 0.18, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawGiantBeetle(ctx, e) {
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.75, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(e.x - e.radius * 0.9, e.y, e.radius * 0.45, 0, Math.PI * 2);
-  ctx.fill();
-
-  // A shell highlight — a boss is rare on screen, so it can afford a bit
-  // more detail than the common enemies above.
-  ctx.fillStyle = shadeColor(e.color, 18);
-  ctx.beginPath();
-  ctx.ellipse(e.x + e.radius * 0.1, e.y - e.radius * 0.3, e.radius * 0.5, e.radius * 0.2, -0.3, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#ffd54f';
-  ctx.beginPath();
-  ctx.arc(e.x - e.radius * 1.05, e.y - e.radius * 0.15, e.radius * 0.1, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(e.x - e.radius * 1.05, e.y + e.radius * 0.15, e.radius * 0.1, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = '#2a1a10';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(e.x, e.y - e.radius * 0.7);
-  ctx.lineTo(e.x, e.y + e.radius * 0.7);
-  ctx.stroke();
-
-  // Mandibles.
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(e.x - e.radius * 1.3, e.y - e.radius * 0.2);
-  ctx.quadraticCurveTo(e.x - e.radius * 1.6, e.y - e.radius * 0.35, e.x - e.radius * 1.75, e.y - e.radius * 0.1);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(e.x - e.radius * 1.3, e.y + e.radius * 0.2);
-  ctx.quadraticCurveTo(e.x - e.radius * 1.6, e.y + e.radius * 0.35, e.x - e.radius * 1.75, e.y + e.radius * 0.1);
-  ctx.stroke();
-}
-
-// Tier 2 (post-round-25) roster — same hand-drawn-primitives discipline as
-// the tier-1 shapes above, each still distinguishable at a glance.
-function drawTadpole(ctx, e) {
-  // A teardrop tail trailing behind the round head (head faces +x by
-  // default, matching ENEMY_FACING_OFFSET.tadpole === 0).
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.moveTo(e.x - e.radius * 0.6, e.y);
-  ctx.quadraticCurveTo(e.x - e.radius * 1.8, e.y - e.radius * 0.7, e.x - e.radius * 2.4, e.y);
-  ctx.quadraticCurveTo(e.x - e.radius * 1.8, e.y + e.radius * 0.7, e.x - e.radius * 0.6, e.y);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-  ctx.fill();
-
-  // A small highlight so the round head doesn't read as a flat disc.
-  ctx.fillStyle = shadeColor(e.color, 25);
-  ctx.beginPath();
-  ctx.ellipse(e.x - e.radius * 0.15, e.y - e.radius * 0.3, e.radius * 0.35, e.radius * 0.2, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#000';
-  ctx.beginPath();
-  ctx.arc(e.x + e.radius * 0.3, e.y - e.radius * 0.3, e.radius * 0.15, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(e.x + e.radius * 0.3, e.y + e.radius * 0.3, e.radius * 0.15, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawBabyFrog(ctx, e) {
-  // Folded back legs, bulging on each side.
-  ctx.fillStyle = shadeColor(e.color, -10);
-  ctx.beginPath();
-  ctx.ellipse(e.x - e.radius * 0.7, e.y + e.radius * 0.4, e.radius * 0.5, e.radius * 0.32, 0.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(e.x + e.radius * 0.7, e.y + e.radius * 0.4, e.radius * 0.5, e.radius * 0.32, -0.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Bulging eyes on top — a frog's most recognizable feature.
-  [-0.35, 0.35].forEach((dx) => {
-    ctx.fillStyle = shadeColor(e.color, 15);
-    ctx.beginPath();
-    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.6, e.radius * 0.3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.6, e.radius * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-  });
-}
-
-function drawPoisonDartFrog(ctx, e) {
-  // Same body plan as the baby frog, but with contrasting dark spots on a
-  // vivid base color — the classic "poison" warning-color cue.
-  ctx.fillStyle = shadeColor(e.color, -10);
-  ctx.beginPath();
-  ctx.ellipse(e.x - e.radius * 0.7, e.y + e.radius * 0.4, e.radius * 0.5, e.radius * 0.32, 0.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(e.x + e.radius * 0.7, e.y + e.radius * 0.4, e.radius * 0.5, e.radius * 0.32, -0.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#1b1b1b';
-  [[-0.4, -0.15], [0.35, -0.25], [0, 0.3], [0.45, 0.15], [-0.35, 0.3]].forEach(([dx, dy]) => {
-    ctx.beginPath();
-    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.14, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  ctx.fillStyle = '#000';
-  ctx.beginPath();
-  ctx.arc(e.x - 0.3 * e.radius, e.y - e.radius * 0.55, e.radius * 0.12, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(e.x + 0.3 * e.radius, e.y - e.radius * 0.55, e.radius * 0.12, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawBossToad(ctx, e) {
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Warts — a boss-sized toad can afford a bit more surface detail than the
-  // common enemies above, same as Giant Beetle's shell highlight.
-  ctx.fillStyle = shadeColor(e.color, -18);
-  [[-0.5, -0.3], [0.4, -0.4], [0.1, 0.1], [-0.2, 0.4], [0.5, 0.3]].forEach(([dx, dy]) => {
-    ctx.beginPath();
-    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  [-0.4, 0.4].forEach((dx) => {
-    ctx.fillStyle = shadeColor(e.color, 25);
-    ctx.beginPath();
-    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.65, e.radius * 0.28, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#c62828';
-    ctx.beginPath();
-    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.65, e.radius * 0.13, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  ctx.strokeStyle = '#1b2e0e';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(e.x - e.radius * 0.6, e.y + e.radius * 0.15);
-  ctx.quadraticCurveTo(e.x, e.y + e.radius * 0.45, e.x + e.radius * 0.6, e.y + e.radius * 0.15);
-  ctx.stroke();
-}
-
+// Per-type hand-drawn art (Ant, Worm, Tiny Isopod, Fly, Giant Beetle,
+// Tadpole, Baby Frog, Poison Dart Frog, Hammerhead Worm, Boss Toad) was
+// removed along with the roster it drew (see ENEMY_TYPES/BOSS_TYPES
+// above) — every one of those draw functions existed only to be dispatched
+// to by enemyKey below, so none of them have any purpose with no types left
+// to reference them. drawEnemyShape itself stays: every caller (renderEnemies,
+// the Sandbox spawn-palette preview in game.js) keeps working unchanged,
+// just drawing the generic fallback until new per-type art is added back
+// here with its own dispatch branch.
 function drawEnemyShape(ctx, enemy) {
-  if (enemy.isBoss) {
-    if (enemy.enemyKey === 'boss-tier-2') {
-      drawBossToad(ctx, enemy);
-    } else {
-      drawGiantBeetle(ctx, enemy);
-    }
-    return;
-  }
-  if (enemy.enemyKey === 'ant') {
-    drawAnt(ctx, enemy);
-  } else if (enemy.enemyKey === 'worm') {
-    drawWorm(ctx, enemy);
-  } else if (enemy.enemyKey === 'tinyIsopod') {
-    drawTinyIsopod(ctx, enemy);
-  } else if (enemy.enemyKey === 'fly') {
-    drawFly(ctx, enemy);
-  } else if (enemy.enemyKey === 'tadpole') {
-    drawTadpole(ctx, enemy);
-  } else if (enemy.enemyKey === 'babyFrog') {
-    drawBabyFrog(ctx, enemy);
-  } else if (enemy.enemyKey === 'poisonDartFrog') {
-    drawPoisonDartFrog(ctx, enemy);
-  } else if (enemy.enemyKey === 'hammerheadWorm') {
-    drawHammerheadWorm(ctx, enemy);
-  } else {
-    // Fallback for any future enemy type without custom art yet.
-    ctx.fillStyle = enemy.color;
-    ctx.beginPath();
-    ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  ctx.fillStyle = enemy.color;
+  ctx.beginPath();
+  ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // How far apart (in pixels actually walked, not time) consecutive trail
@@ -875,16 +515,16 @@ function drawEnemyShape(ctx, enemy) {
 // it's driven by distance moved, not frames elapsed.
 const TRAIL_POINT_SPACING = 4;
 
-// How many segments trail the head, and how far apart they sit — both
-// tuned per type (a Giant Centipede is both bigger and meant to look more
-// "many-legged", so it gets more, wider-spaced segments than a Baby
-// Millipede). Segment spacing is expressed as a multiple of the type's own
-// radius so it scales sensibly with body size.
-const MILLIPEDE_BODY = {
-  babyMillipede: { segmentCount: 4, spacingFactor: 1.3 },
-  armoredMillipede: { segmentCount: 5, spacingFactor: 1.3 },
-  giantCentipede: { segmentCount: 7, spacingFactor: 1.4 },
-};
+// How many segments trail the head, and how far apart they sit — tuned per
+// type (e.g. a bigger, more "many-legged"-looking type would want more,
+// wider-spaced segments than a small one). Segment spacing is expressed as
+// a multiple of the type's own radius so it scales sensibly with body
+// size. Empty for now along with MILLIPEDE_FAMILY_KEYS above — add a type's
+// key to both to opt it into this rendering. DEFAULT_MILLIPEDE_BODY is the
+// fallback for any key missing its own entry here, so the mechanism itself
+// stays exercisable/testable even with no types configured.
+const MILLIPEDE_BODY = {};
+const DEFAULT_MILLIPEDE_BODY = { segmentCount: 5, spacingFactor: 1.3 };
 
 // Appends the enemy's current (x, y) to its trail once it's moved at least
 // TRAIL_POINT_SPACING since the last recorded point — called from
@@ -900,7 +540,7 @@ function recordTrailPoint(enemy) {
 
   enemy.trail.push({ x: enemy.x, y: enemy.y });
 
-  const body = MILLIPEDE_BODY[enemy.enemyKey];
+  const body = MILLIPEDE_BODY[enemy.enemyKey] || DEFAULT_MILLIPEDE_BODY;
   const maxPoints = Math.ceil((body.segmentCount * enemy.radius * body.spacingFactor) / TRAIL_POINT_SPACING) + 4;
   if (enemy.trail.length > maxPoints) enemy.trail.shift();
 }
@@ -964,7 +604,7 @@ function drawMillipedeSegment(ctx, x, y, radius, color, heading, segmentIndex) {
 // actually produces the "curls around corners" look instead of the whole
 // body snapping to one rotation.
 function renderMillipedeBody(ctx, enemy) {
-  const body = MILLIPEDE_BODY[enemy.enemyKey];
+  const body = MILLIPEDE_BODY[enemy.enemyKey] || DEFAULT_MILLIPEDE_BODY;
   const spacing = enemy.radius * body.spacingFactor;
 
   drawMillipedeSegment(ctx, enemy.x, enemy.y, enemy.radius, enemy.color, enemy.heading, 0);

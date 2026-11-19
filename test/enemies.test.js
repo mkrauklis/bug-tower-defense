@@ -2,92 +2,79 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadGameContext } = require('./support/loadGame');
 
-test('round 1 wave is just 5 Ants, scaled to a baseline count/health', () => {
-  const game = loadGameContext();
-  const wave = game.generateWave(1);
+// The enemy roster (ENEMY_TYPES/BOSS_TYPES/ENEMY_ORDER*) was deliberately
+// emptied — see js/enemies.js's own header comment. These tests cover the
+// generic engine around that empty roster (wave generation degrading
+// gracefully, movement/combat/targeting, the millipede-family trail
+// mechanism) rather than any specific enemy type, since there isn't one
+// right now.
 
-  assert.equal(wave.length, 1);
-  assert.equal(wave[0].enemyKey, 'ant');
-  assert.equal(wave[0].count, 5); // WAVE_SIZE_AT_ROUND_1, undivided (1 unlocked type)
-  assert.equal(wave[0].health, 2); // Ant's doubled base health
-  assert.equal(wave[0].bounty, game.ENEMY_TYPES.ant.bounty);
+test('getTotalWaveSize scales from 5 at round 1 up to 25 at round 25, then holds flat', () => {
+  const game = loadGameContext();
+  assert.equal(game.getTotalWaveSize(1), 5);
+  assert.equal(game.getTotalWaveSize(25), 25);
+  assert.equal(game.getTotalWaveSize(60), 25); // capped, not still climbing
+  assert.ok(game.getTotalWaveSize(13) > game.getTotalWaveSize(1) && game.getTotalWaveSize(13) < game.getTotalWaveSize(25));
 });
 
-test('total wave size scales from 5 at round 1 up to 25 at round 25, then holds flat', () => {
+test('getRoundScaling keeps climbing regardless of round size — +10% health every 3 rounds', () => {
   const game = loadGameContext();
-  const totalAt = (round) => game.generateWave(round).reduce((sum, entry) => sum + entry.count, 0);
-
-  const round1Total = totalAt(1);
-  const round13Total = totalAt(13); // midpoint
-  const round25Total = totalAt(25);
-  const round60Total = totalAt(60); // well past 25
-
-  assert.equal(round1Total, 5);
-  assert.ok(round13Total > round1Total && round13Total < round25Total);
-  assert.equal(round25Total, 25);
-  assert.equal(round60Total, 25); // capped, not still climbing
-
-  // Health, meanwhile, keeps climbing regardless — the count curve is an
-  // additional lever on top of it, not a replacement for it.
-  const round1Health = game.generateWave(1)[0].health;
-  const round10Health = game.generateWave(10).find((entry) => entry.enemyKey === 'ant').health;
-  assert.ok(round10Health > round1Health);
+  assert.equal(game.getRoundScaling(1).healthMultiplier, 1);
+  assert.ok(game.getRoundScaling(10).healthMultiplier > game.getRoundScaling(1).healthMultiplier);
 });
 
-test('more enemy types unlock as rounds progress, Fly joining last in tier 1', () => {
+test('getUnlockedEnemyTypes returns no types for any round — the roster is currently empty', () => {
   const game = loadGameContext();
-  assert.deepEqual(game.getUnlockedEnemyTypes(5), ['ant']);
-  assert.deepEqual(game.getUnlockedEnemyTypes(6), ['ant', 'worm']);
-  assert.deepEqual(game.getUnlockedEnemyTypes(11), ['ant', 'worm', 'tinyIsopod']);
-  // Tier 1 stays at 3 types through round 15 — Fly hasn't unlocked yet.
-  assert.deepEqual(game.getUnlockedEnemyTypes(15), ['ant', 'worm', 'tinyIsopod']);
-  assert.deepEqual(game.getUnlockedEnemyTypes(16), ['ant', 'worm', 'tinyIsopod', 'fly']);
-  // Tier 1 stays maxed out (all 4) through round 25 — tier 2 hasn't started yet.
-  assert.deepEqual(game.getUnlockedEnemyTypes(25), ['ant', 'worm', 'tinyIsopod', 'fly']);
+  assert.deepEqual(game.getUnlockedEnemyTypes(1), []);
+  assert.deepEqual(game.getUnlockedEnemyTypes(25), []);
+  assert.deepEqual(game.getUnlockedEnemyTypes(26), []);
+  assert.deepEqual(game.getUnlockedEnemyTypes(1000), []);
 });
 
-test('tier-2 enemies unlock progressively starting the round after the round-25 boss', () => {
+test('generateWave degrades to an empty wave on a non-boss round — no regular types to draw from', () => {
   const game = loadGameContext();
-  const tier1 = ['ant', 'worm', 'tinyIsopod', 'fly'];
-  assert.deepEqual(game.getUnlockedEnemyTypes(26), [...tier1, 'tadpole']);
-  assert.deepEqual(game.getUnlockedEnemyTypes(31), [...tier1, 'tadpole', 'babyFrog']);
-  assert.deepEqual(game.getUnlockedEnemyTypes(36), [...tier1, 'tadpole', 'babyFrog', 'poisonDartFrog']);
-  // Never unlocks more than either roster has, however high the round.
-  assert.deepEqual(game.getUnlockedEnemyTypes(1000), [...tier1, 'tadpole', 'babyFrog', 'poisonDartFrog']);
+  assert.deepEqual(game.generateWave(1), []);
+  assert.deepEqual(game.generateWave(24), []);
 });
 
-test('every 25th round is a boss wave, carrying the boss\'s own bounty', () => {
+test('every 25th round is still flagged as a boss round, independent of whether a boss is designed', () => {
   const game = loadGameContext();
   assert.equal(game.isBossRound(24), false);
   assert.equal(game.isBossRound(25), true);
   assert.equal(game.isBossRound(50), true);
-
-  const wave = game.generateWave(25);
-  assert.equal(wave.length, 1);
-  assert.equal(wave[0].isBoss, true);
-  assert.equal(wave[0].name, 'Giant Beetle');
-  assert.equal(wave[0].bounty, game.BOSS_TYPES[1].bounty);
 });
 
-test('round 50 spawns the tier-2 boss (Boss Toad), not a tier-1 fallback', () => {
+test('getBossForRound returns null — no boss tier is currently designed', () => {
   const game = loadGameContext();
-  const round50Wave = game.generateWave(50);
-  assert.equal(round50Wave[0].name, 'Boss Toad');
-  assert.equal(round50Wave[0].bounty, game.BOSS_TYPES[2].bounty);
+  assert.equal(game.getBossForRound(25), null);
+  assert.equal(game.getBossForRound(50), null);
 });
 
-test('an undesigned boss tier (beyond the highest designed one) falls back, not a new boss', () => {
+test('generateWave degrades to an empty wave on a boss round too, rather than spawning a broken boss', () => {
   const game = loadGameContext();
-  const round75Wave = game.generateWave(75); // tier 3, not designed yet
-  assert.equal(round75Wave[0].name, 'Boss Toad'); // falls back to the strongest designed tier
+  assert.deepEqual(game.generateWave(25), []);
+  assert.deepEqual(game.generateWave(50), []);
 });
 
-test('spawnWave lays out the right number of enemy instances, staggered', () => {
+test('getSpawnEntryForEnemyKey returns null for every key — nothing is spawnable with an empty roster', () => {
   const game = loadGameContext();
-  game.spawnWave(game.generateWave(1));
+  // Not exported from the light context — exercised via the full context
+  // in game-modes.test.js instead. Covered here indirectly: an unknown
+  // key always resolving to "nothing" is exactly today's roster state for
+  // every key, not just a made-up one — see getSpawnEntryForEnemyKey
+  // itself in enemies.js, unchanged by the roster removal.
+  assert.deepEqual(game.ENEMY_TYPES, {});
+  assert.deepEqual(game.BOSS_TYPES, {});
+});
+
+test('spawnWave lays out the right number of enemy instances from a manual composition, staggered', () => {
+  const game = loadGameContext();
+  game.spawnWave([
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 5, health: 2, speedMultiplier: 1, isBoss: false, bounty: 2 },
+  ]);
   const active = game.getActiveEnemies();
 
-  assert.equal(active.length, 5); // 5 Ants (round 1's wave size)
+  assert.equal(active.length, 5);
   assert.equal(active[0].spawnDelay, 0);
   assert.ok(active[1].spawnDelay > active[0].spawnDelay);
 });
@@ -95,7 +82,7 @@ test('spawnWave lays out the right number of enemy instances, staggered', () => 
 test('updateEnemies moves a spawned enemy toward the next waypoint', () => {
   const game = loadGameContext();
   game.spawnWave([
-    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 1, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
   const [enemy] = game.getActiveEnemies();
   const startX = enemy.x;
@@ -107,7 +94,7 @@ test('updateEnemies moves a spawned enemy toward the next waypoint', () => {
 test('an immobilized enemy (Rose Root Path\'s grab) does not move, but still takes burn damage', () => {
   const game = loadGameContext();
   game.spawnWave([
-    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
   const [enemy] = game.getActiveEnemies();
   enemy.spawned = true;
@@ -125,7 +112,7 @@ test('an immobilized enemy (Rose Root Path\'s grab) does not move, but still tak
 test('an already-dead enemy does not move or take further burn damage before being swept up', () => {
   const game = loadGameContext();
   game.spawnWave([
-    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
   const [enemy] = game.getActiveEnemies();
   enemy.spawned = true;
@@ -143,7 +130,7 @@ test('an already-dead enemy does not move or take further burn damage before bei
 test('updateEnemies returns enemies that died, separately from ones that reached the goal', () => {
   const game = loadGameContext();
   game.spawnWave([
-    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 1, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
   const [enemy] = game.getActiveEnemies();
 
@@ -158,7 +145,7 @@ test('updateEnemies returns enemies that died, separately from ones that reached
 test('an enemy that reaches the final waypoint is removed but not reported as killed', () => {
   const game = loadGameContext();
   game.spawnWave([
-    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
 
   // Push it straight past the end of the path in one giant tick rather
@@ -172,7 +159,7 @@ test('an enemy that reaches the final waypoint is removed but not reported as ki
 test('findNearestEnemyInRange ignores unspawned, dead, and out-of-range enemies', () => {
   const game = loadGameContext();
   game.spawnWave([
-    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 3, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 3, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
   const [a, b, c] = game.getActiveEnemies();
   a.spawned = true; a.x = 0; a.y = 0;
@@ -186,7 +173,7 @@ test('findNearestEnemyInRange ignores unspawned, dead, and out-of-range enemies'
 test('getEnemiesInRadius returns every live enemy within range, not just the nearest', () => {
   const game = loadGameContext();
   game.spawnWave([
-    { enemyKey: 'ant', name: 'Ant', color: '#000', radius: 8, count: 2, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 2, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
   const [a, b] = game.getActiveEnemies();
   a.spawned = true; a.x = 0; a.y = 0;
@@ -203,58 +190,28 @@ test('applyBurn sets a fresh damage-over-time window on the enemy', () => {
   assert.deepEqual(enemy.burn, { damagePerSecond: 10, duration: 5 });
 });
 
-test('tier-3 enemies unlock progressively starting the round after the round-50 boss', () => {
+// --- Millipede-family trail mechanism (generic engine, no real type left) --
+
+test('MILLIPEDE_FAMILY_KEYS is empty — no current type opts into the segmented-trail rendering', () => {
   const game = loadGameContext();
-  const tier1and2 = ['ant', 'worm', 'tinyIsopod', 'fly', 'tadpole', 'babyFrog', 'poisonDartFrog'];
-  assert.deepEqual(game.getUnlockedEnemyTypes(50), tier1and2); // round 50 itself is still the boss round's gate
-  assert.deepEqual(game.getUnlockedEnemyTypes(51), [...tier1and2, 'hammerheadWorm']);
-  assert.deepEqual(game.getUnlockedEnemyTypes(56), [...tier1and2, 'hammerheadWorm', 'babyMillipede']);
-  assert.deepEqual(game.getUnlockedEnemyTypes(61), [...tier1and2, 'hammerheadWorm', 'babyMillipede', 'armoredMillipede']);
-  assert.deepEqual(
-    game.getUnlockedEnemyTypes(66),
-    [...tier1and2, 'hammerheadWorm', 'babyMillipede', 'armoredMillipede', 'giantCentipede']
-  );
+  assert.deepEqual([...game.MILLIPEDE_FAMILY_KEYS], []);
 });
 
-test('round 50 is a boss wave (Boss Toad), not the tier-3 regular roster', () => {
+test('an enemy whose key is in MILLIPEDE_FAMILY_KEYS gets a trail array; others get null', () => {
   const game = loadGameContext();
-  const wave = game.generateWave(50);
-  assert.equal(wave.length, 1);
-  assert.equal(wave[0].isBoss, true);
-  assert.equal(wave[0].name, 'Boss Toad');
-});
-
-test('tier-3 bounties follow the ~HP/2 convention', () => {
-  const game = loadGameContext();
-  assert.equal(game.ENEMY_TYPES.hammerheadWorm.bounty, 25); // 50/2
-  assert.equal(game.ENEMY_TYPES.babyMillipede.bounty, 30); // 60/2
-  assert.equal(game.ENEMY_TYPES.armoredMillipede.bounty, 50); // 100/2
-  assert.equal(game.ENEMY_TYPES.giantCentipede.bounty, 125); // 250/2
-});
-
-test('only the 3 milli/centipede types are in the millipede family, not Hammerhead Worm', () => {
-  const game = loadGameContext();
-  assert.deepEqual(
-    [...game.MILLIPEDE_FAMILY_KEYS].sort(),
-    ['armoredMillipede', 'babyMillipede', 'giantCentipede']
-  );
-  assert.equal(game.MILLIPEDE_FAMILY_KEYS.has('hammerheadWorm'), false);
-});
-
-test('a millipede-family enemy gets a trail array; a non-millipede enemy does not', () => {
-  const game = loadGameContext();
+  game.MILLIPEDE_FAMILY_KEYS.add('testSegmentedBug'); // simulates a future type opting in
   game.spawnWave([
-    { enemyKey: 'babyMillipede', name: 'Baby Millipede', color: '#000', radius: 7, count: 1, health: 60, speedMultiplier: 0.7, isBoss: false, bounty: 30 },
-    { enemyKey: 'hammerheadWorm', name: 'Hammerhead Worm', color: '#000', radius: 11, count: 1, health: 50, speedMultiplier: 0.6, isBoss: false, bounty: 25 },
+    { enemyKey: 'testSegmentedBug', name: 'Test Segmented Bug', color: '#000', radius: 7, count: 1, health: 60, speedMultiplier: 0.7, isBoss: false, bounty: 30 },
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 11, count: 1, health: 50, speedMultiplier: 0.6, isBoss: false, bounty: 25 },
   ]);
-  const [millipede, worm] = game.getActiveEnemies();
-  assert.deepEqual(millipede.trail, []);
-  assert.equal(worm.trail, null);
+  const [segmented, plain] = game.getActiveEnemies();
+  assert.deepEqual(segmented.trail, []);
+  assert.equal(plain.trail, null);
 });
 
 test('recordTrailPoint only adds a point once the enemy has moved far enough', () => {
   const game = loadGameContext();
-  const enemy = { x: 0, y: 0, radius: 7, enemyKey: 'babyMillipede', trail: [] };
+  const enemy = { x: 0, y: 0, radius: 7, enemyKey: 'testSegmentedBug', trail: [] };
 
   game.recordTrailPoint(enemy); // first point always recorded
   assert.equal(enemy.trail.length, 1);
@@ -266,6 +223,14 @@ test('recordTrailPoint only adds a point once the enemy has moved far enough', (
   enemy.x = 10; // now far enough from the last recorded point
   game.recordTrailPoint(enemy);
   assert.equal(enemy.trail.length, 2);
+});
+
+test('recordTrailPoint falls back to a default body config for a key with no MILLIPEDE_BODY entry', () => {
+  const game = loadGameContext();
+  const enemy = { x: 0, y: 0, radius: 7, enemyKey: 'someKeyNotInMilliBody', trail: [] };
+  // Would throw if recordTrailPoint assumed MILLIPEDE_BODY[enemy.enemyKey] always exists.
+  game.recordTrailPoint(enemy);
+  assert.equal(enemy.trail.length, 1);
 });
 
 test('getTrailPointAtDistance walks back through the trail by arc length, interpolating between points', () => {
@@ -295,10 +260,11 @@ test('getTrailPointAtDistance returns the oldest point when asked for more dista
   assert.deepEqual(result, { x: 0, y: 0 });
 });
 
-test('a millipede that walks around a corner leaves a trail that actually bends, not a straight line', () => {
+test('a segmented-family enemy that walks around a corner leaves a trail that actually bends, not a straight line', () => {
   const game = loadGameContext();
+  game.MILLIPEDE_FAMILY_KEYS.add('testSegmentedBug'); // simulates a future type opting in
   game.spawnWave([
-    { enemyKey: 'babyMillipede', name: 'Baby Millipede', color: '#000', radius: 7, count: 1, health: 60, speedMultiplier: 1, isBoss: false, bounty: 30 },
+    { enemyKey: 'testSegmentedBug', name: 'Test Segmented Bug', color: '#000', radius: 7, count: 1, health: 60, speedMultiplier: 1, isBoss: false, bounty: 30 },
   ]);
   const [enemy] = game.getActiveEnemies();
   enemy.spawned = true;
