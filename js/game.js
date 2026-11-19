@@ -234,6 +234,7 @@ function startGame(modeKey) {
   damageBoostRemaining = 0;
   round = 1;
   money = 50;
+  wildlife = createWildlifeSwarm(getActiveMap());
 
   if (currentMode.sandbox) {
     currentWave = [];
@@ -249,9 +250,13 @@ function startGame(modeKey) {
 // speed/determinism instead of real time.
 let animationTime = 0;
 
-// Purely decorative fireflies, plus ladybugs that grant a power-up when
-// clicked (js/wildlife.js). Neither fights or is fought.
-const wildlife = createWildlifeSwarm();
+// Purely decorative fireflies/frogs, plus ladybugs that grant a power-up
+// when clicked (js/wildlife.js). None of them fight or are fought.
+// Regenerated per game start (see startGame()) since which critters spawn
+// depends on the active map (frogs only where there are lily pads to hop
+// between) — the initial value here only matters before any mode is
+// chosen, while the menu is up.
+let wildlife = createWildlifeSwarm(getActiveMap());
 
 // Clicking a ladybug grants every tower +50% damage for 10 seconds —
 // a simple, clearly-beneficial, temporary power-up. Baseline numbers,
@@ -693,6 +698,7 @@ function render() {
   // of how big the real canvas is (map.js itself is untouched).
   renderMap(ctx, { width: WORLD_WIDTH, height: WORLD_HEIGHT });
   renderWildlife(ctx, wildlife, animationTime, 'ladybug'); // ground-level, under everything else
+  renderWildlife(ctx, wildlife, animationTime, 'frog'); // also ground-level, alongside ladybugs
 
   towers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
   towers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
