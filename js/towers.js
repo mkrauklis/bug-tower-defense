@@ -547,6 +547,65 @@ const TOWER_TYPES = {
       },
     ],
   },
+  // A different kind of tower entirely — passive income, no combat. Same
+  // generic 3-path/4-upgrade model as every other tower (mutually
+  // exclusive paths, cost gates, etc.) even though it never attacks:
+  // damage/range/attackInterval are just zeroed out rather than special-
+  // cased away, which is what makes updateTowerAttack() in game.js need
+  // no Coneflower-specific branch at all — a 0 range means
+  // findNearestEnemyInRange() never finds a target, so the attack-firing
+  // branch simply never runs. baseIncomeRate (not part of baseStats,
+  // same reasoning as zombifyChance/aura below being plain top-level
+  // tower fields rather than nested in stats) is the new generic bit:
+  // see createTower()'s incomeRate field and updateTowerIncome() in
+  // game.js, which sums every tower's incomeRate — Coneflower is just
+  // the first tower to ever set it to something nonzero, not a
+  // hardcoded special case.
+  coneflower: {
+    name: 'Coneflower',
+    baseStats: {
+      damage: 0,
+      size: 16,
+      color: '#b06bc4',
+      range: 0,
+      attackInterval: 999999,
+    },
+    baseIncomeRate: 2, // $/sec while a wave is active — see updateTowerIncome()
+    upgradePaths: [
+      {
+        name: 'Quality Path',
+        upgrades: [
+          {
+            name: 'Quality Control',
+            description: 'Grows taller and brighter; income becomes $5/sec (replaces the base rate, not additive).',
+            cost: 600,
+            effects: { sizeMultiplier: 1.2, glow: '#e0b0ff', income: 5 },
+          },
+          {
+            name: 'High Standard',
+            description: 'Grows larger still and sprouts two extra stems; income becomes $12/sec.',
+            cost: 1500,
+            effects: { sizeMultiplier: 1.3, extraStems: true, income: 12 },
+          },
+          {
+            name: 'Quality Market',
+            description: 'Grows taller again and the flower turns gold; income becomes $20/sec.',
+            cost: 4500,
+            effects: { sizeMultiplier: 1.2, color: '#ffd54f', income: 20 },
+          },
+          {
+            name: 'Perfect Condition',
+            description:
+              'The flower turns ruby red and sheds a faint red mist drifting down from it; income becomes $35/sec.',
+            cost: 8000,
+            effects: { color: '#c62828', redMist: true, income: 35 },
+          },
+        ],
+      },
+      null, // Path 2 — not yet designed, same convention every other tower's undesigned paths use
+      null, // Path 3 — not yet designed
+    ],
+  },
 };
 
 function createTower(typeKey) {
@@ -663,6 +722,15 @@ function createTower(typeKey) {
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
+    // Coneflower: $/sec generated while a wave is active (see
+    // updateTowerIncome() in game.js) — 0 for every tower type without a
+    // baseIncomeRate, which is every type except Coneflower today. Not
+    // nested in `stats` for the same reason zombifyChance/aura aren't:
+    // each Quality Path tier replaces this outright rather than scaling
+    // it, same REPLACE convention as those.
+    incomeRate: type.baseIncomeRate || 0,
+    hasExtraStems: false, // High Standard tier and up — purely visual (drawConeflower())
+    hasRedMist: false, // Perfect Condition tier only — purely visual (drawConeflower())
   };
 }
 
@@ -800,6 +868,16 @@ function purchaseUpgrade(tower, pathIndex) {
   // in this generic, side-effect-free-on-other-towers function. Nothing
   // to do with it here beyond leaving it in `effects` for that caller to
   // read.
+
+  // Coneflower's Quality Path: each tier's income REPLACES the previous
+  // tier's outright, same convention as zombifyChance/aura/infectStun
+  // above (the spec gives each tier as an absolute $/sec rate, not a
+  // multiplier) — see updateTowerIncome() in game.js for what actually
+  // reads tower.incomeRate. extraStems/redMist are purely visual
+  // (drawConeflower()).
+  if (effects.income !== undefined) tower.incomeRate = effects.income;
+  if (effects.extraStems) tower.hasExtraStems = true;
+  if (effects.redMist) tower.hasRedMist = true;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -977,6 +1055,8 @@ function renderTower(ctx, tower, x, y, time) {
         tower.sporeParticles
       );
     }
+  } else if (tower.type === 'coneflower') {
+    drawConeflower(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount, tower.hasExtraStems, tower.hasRedMist);
   } else {
     // Fallback for any future tower type without custom art yet.
     ctx.fillStyle = tower.stats.color;
@@ -1745,4 +1825,126 @@ function drawNeurologicalCap(ctx, x, y, size, time) {
   ctx.arc(x + size * 0.08, y - size * 0.6 + dripT * size * 0.7, size * 0.045, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
+}
+
+// --- Coneflower (passive income, no combat) --------------------------------
+
+// A ring of narrow pointed petals around a raised, bristly central cone —
+// the cone is the one feature that reads as "coneflower" rather than a
+// generic daisy/sunflower-shaped bloom. Shared between the main flower
+// head and High Standard's extra side stems (isMain just thins out the
+// bristle count on the smaller side heads so they don't look as busy).
+function drawConeflowerHead(ctx, x, y, size, color, isMain) {
+  const petalCount = 10;
+  const darkerColor = shadeColor(color, -15);
+  for (let i = 0; i < petalCount; i += 1) {
+    const angle = (i / petalCount) * Math.PI * 2;
+    ctx.fillStyle = i % 2 === 0 ? color : darkerColor;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(size * 0.2, 0);
+    ctx.quadraticCurveTo(size * 0.75, -size * 0.14, size * 0.95, 0);
+    ctx.quadraticCurveTo(size * 0.75, size * 0.14, size * 0.2, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.fillStyle = '#6b4423';
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.42, size * 0.38, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor('#6b4423', -12);
+  ctx.beginPath();
+  ctx.arc(x, y - size * 0.08, size * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#4a2f18';
+  const bristleCount = isMain ? 10 : 6;
+  for (let i = 0; i < bristleCount; i += 1) {
+    const angle = (i / bristleCount) * Math.PI * 2 + 0.3;
+    const bx = x + Math.cos(angle) * size * 0.22;
+    const by = y - size * 0.08 + Math.sin(angle) * size * 0.2;
+    ctx.beginPath();
+    ctx.arc(bx, by, size * 0.04, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Perfect Condition only: a few faint red motes drifting DOWN from the
+// flower head — deliberately the opposite direction of Mushroom's rising
+// gasColor puffs, so the two don't read as the same effect recolored.
+function drawConeflowerRedMist(ctx, x, y, size, time) {
+  ctx.fillStyle = 'rgba(198, 40, 40, 0.5)';
+  [0, 1, 2].forEach((i) => {
+    const t = (time * 0.35 + i / 3) % 1;
+    const mx = x + Math.sin(time * 0.8 + i * 2) * size * 0.3;
+    const my = y + size * 0.2 + t * size * 1.4;
+    ctx.globalAlpha = 0.5 * (1 - t);
+    ctx.beginPath();
+    ctx.arc(mx, my, size * 0.14 * (1 - t * 0.4), 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawConeflower(ctx, x, y, size, color, glow, time, flashAmount, hasExtraStems, hasRedMist) {
+  const stemHeight = size * 1.3;
+  const groundY = y + stemHeight;
+  const sway = Math.sin(time * 1.4 + x * 0.01) * 0.05;
+
+  ctx.save();
+  ctx.translate(x, groundY);
+  ctx.rotate(sway);
+  ctx.translate(-x, -groundY);
+
+  ctx.fillStyle = '#4b7a3a';
+  ctx.strokeStyle = '#2f5522';
+  ctx.lineWidth = 1;
+  ctx.fillRect(x - size * 0.07, y, size * 0.14, stemHeight);
+  ctx.strokeRect(x - size * 0.07, y, size * 0.14, stemHeight);
+
+  // High Standard tier and up: two smaller side stems, each with their
+  // own small flower head, so the plant reads as visibly bushier rather
+  // than just uniformly scaled up.
+  if (hasExtraStems) {
+    [-1, 1].forEach((side) => {
+      const stemX = x + side * size * 0.45;
+      const stemTopY = y + stemHeight * 0.25;
+      ctx.strokeStyle = '#4b7a3a';
+      ctx.lineWidth = Math.max(1.5, size * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(x, groundY);
+      ctx.quadraticCurveTo(x + side * size * 0.3, groundY - stemHeight * 0.4, stemX, stemTopY);
+      ctx.stroke();
+      drawConeflowerHead(ctx, stemX, stemTopY, size * 0.45, color, false);
+    });
+  }
+
+  ctx.fillStyle = '#4b7a3a';
+  ctx.beginPath();
+  ctx.ellipse(x - size * 0.3, y + stemHeight * 0.55, size * 0.26, size * 0.1, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x + size * 0.3, y + stemHeight * 0.75, size * 0.26, size * 0.1, 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Never actually pulses today (Coneflower has no attack, so
+  // flashAmount is always 0) but kept for the same structural reason
+  // every other tower's draw function keeps it: free consistency, no
+  // cost if it's a no-op.
+  ctx.translate(x, y);
+  ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
+  ctx.translate(-x, -y);
+
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 20;
+  }
+
+  drawConeflowerHead(ctx, x, y, size, color, true);
+  if (hasRedMist) drawConeflowerRedMist(ctx, x, y, size, time);
+
+  ctx.restore();
 }

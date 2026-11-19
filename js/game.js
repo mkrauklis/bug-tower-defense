@@ -165,6 +165,7 @@ const SHOP_ITEMS = [
   { typeKey: 'sunflower', name: 'Sunflower', cost: 25 },
   { typeKey: 'rose', name: 'Rose', cost: 45 },
   { typeKey: 'mushroom', name: 'Mushroom', cost: 75 }, // cost confirmed directly with the user
+  { typeKey: 'coneflower', name: 'Coneflower', cost: 250 },
 ];
 
 // How far a placed tower's center must stay from the path's centerline,
@@ -752,6 +753,30 @@ function updateTowerVines(tower, x, y, deltaSeconds) {
   }
 }
 
+// Generic passive-income accrual — sums every tower's incomeRate (0 for
+// every type except Coneflower today, see towers.js's createTower()) and
+// credits it to `money`, scaled by the elapsed time, exactly like any
+// other per-second rate in this game. Deliberately has no Coneflower-
+// specific code: a future income-generating tower just needs its own
+// nonzero incomeRate and this already covers it.
+//
+// Gated on activeEnemies.length > 0 — the exact same condition the manual
+// "Next Round" button's own waveInProgress check already uses (see
+// renderWaveSection()) — so income ticks only while a wave is actually
+// happening: not idle at the menu (MENU_STATES don't call update() at
+// all), not between waves waiting on Next Round, and no separate "paused"
+// check is needed since nothing calls update() while the tab isn't
+// animating anyway. In Sandbox this also means it ticks whenever a
+// manually-spawned test enemy is alive — harmless, given Sandbox's
+// existing "unlimited money, no consequences" philosophy. Horde Mode
+// counts too: this runs before its early-return below, since Horde's
+// enemies are "a wave" just as much as a normal round's are.
+function updateTowerIncome(deltaSeconds) {
+  if (activeEnemies.length === 0) return;
+  const totalIncomeRate = towers.reduce((sum, tower) => sum + tower.incomeRate, 0);
+  if (totalIncomeRate > 0) money += totalIncomeRate * deltaSeconds;
+}
+
 function update(deltaSeconds) {
   animationTime += deltaSeconds;
   updateWildlife(wildlife, deltaSeconds);
@@ -788,6 +813,7 @@ function update(deltaSeconds) {
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
   updateProjectiles(deltaSeconds);
   updateConsumedTowerEffects(deltaSeconds);
+  updateTowerIncome(deltaSeconds);
 
   // Horde Mode has no wave boundary to auto-continue across — it paces
   // itself independently of autoContinue/activeEnemies, via its own timer.
@@ -945,7 +971,16 @@ function renderShopSection(ctx, x, width, startY) {
   ctx.fillStyle = '#c0ca33';
   ctx.font = '13px sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText(currentMode && currentMode.sandbox ? '∞' : `$${money}`, x + width, y + 1);
+  // Floored, not the raw value — Coneflower's passive income accrues in
+  // fractional dollars every frame (updateTowerIncome(), $/sec * a
+  // fractional deltaSeconds), so `money` itself is allowed to carry a
+  // fractional remainder between ticks rather than losing it to rounding
+  // every single frame (which, at a $2/sec rate and 60fps, would round
+  // every frame's ~$0.03 contribution down to $0 and money would never
+  // actually increase). Every comparison/spend against `money` elsewhere
+  // (canAfford, `money -= cost`) works identically on a float, so only
+  // this display site needs to care.
+  ctx.fillText(currentMode && currentMode.sandbox ? '∞' : `$${Math.floor(money)}`, x + width, y + 1);
   ctx.textAlign = 'left';
   y += 26;
 
@@ -1026,6 +1061,10 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
           selectedTower.thornShotPoison ? ', poisons' : ''
         }`
       : 'none';
+    // Shown for every tower (0/'none' for every type but Coneflower today),
+    // same "always listed, defaults to none" convention as every other
+    // stat line here — not hidden behind a type check.
+    const incomeText = selectedTower.incomeRate > 0 ? `$${selectedTower.incomeRate}/sec while a wave is active` : 'none';
     const lines = [
       `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
       `Size: ${selectedTower.stats.size.toFixed(1)}`,
@@ -1037,6 +1076,7 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
       `Vines: ${vineText}`,
       `Roots: ${rootsText}`,
       `Thorn Shot: ${thornShotText}`,
+      `Income: ${incomeText}`,
     ];
     y = uiDrawTextLines(ctx, lines, x, y, 14, '#ccc', '12px sans-serif') + 8;
   }
