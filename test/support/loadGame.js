@@ -165,7 +165,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
   vm.runInContext(
     `
     globalThis.__fullExports = {
-      createTower, purchaseUpgrade,
+      createTower, purchaseUpgrade, getAvailableUpgrade,
       damageEnemy, applyBurn, findNearestEnemyInRange, getEnemiesInRadius,
       updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies, getLastLeakedEnemies,
       getStrongestAuraFor,
@@ -189,6 +189,9 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       setSelectedTower: (tower) => { selectedTower = tower; },
       getSelectedShopItem: () => selectedShopItem,
       setSelectedShopItem: (item) => { selectedShopItem = item; },
+      SHOP_ITEMS, getShopItemCost, isTowerPlacementBlocked,
+      getConeflowerTier4Count: () => coneflowerTier4Count,
+      STARTING_MONEY,
       getRound: () => round,
       getGameSpeed: () => gameSpeed,
       getTowers: () => towers,

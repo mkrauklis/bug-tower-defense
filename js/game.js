@@ -134,9 +134,14 @@ let selectedTower = null;
 let round = 1;
 let currentWave = [];
 
-// Starting money — $50 in every mode; nothing about starting money
-// differing per mode was ever asked for, so this doesn't vary.
-let money = 50;
+// Starting money — same in every mode; nothing about starting money
+// differing per mode was ever asked for, so this doesn't vary. Bumped
+// from $50 to $75 (direct request, part of the same balance pass that
+// doubled every tower's base placement cost — see SHOP_ITEMS) so the
+// player can still afford an opening tower or two under the new prices
+// without feeling too pinched in the first couple of rounds.
+const STARTING_MONEY = 75;
+let money = STARTING_MONEY;
 
 // Player/base health — starts at 500, loses an enemy's own max HP (not
 // whatever partial HP it had left after tower damage — a tougher enemy
@@ -161,12 +166,30 @@ function canAfford(cost) {
 
 // Buyable towers. Scaffolded as a list so more towers can be added later;
 // only the Sunflower is a real purchasable option for now.
+// Base placement costs doubled across the board (direct request, part of
+// the same balance pass as the $75 starting money above) — just the shop
+// price to place a brand new tower, not any upgrade cost.
 const SHOP_ITEMS = [
-  { typeKey: 'sunflower', name: 'Sunflower', cost: 25 },
-  { typeKey: 'rose', name: 'Rose', cost: 45 },
-  { typeKey: 'mushroom', name: 'Mushroom', cost: 75 }, // cost confirmed directly with the user
-  { typeKey: 'coneflower', name: 'Coneflower', cost: 250 },
+  { typeKey: 'sunflower', name: 'Sunflower', cost: 50 }, // was 25
+  { typeKey: 'rose', name: 'Rose', cost: 90 }, // was 45
+  { typeKey: 'mushroom', name: 'Mushroom', cost: 150 }, // was 75
+  { typeKey: 'coneflower', name: 'Coneflower', cost: 500 }, // was 250
 ];
+
+// Coneflower-specific, on top of the doubling above: every time ANY
+// Coneflower on the map reaches tier 4 on either of its paths, the
+// placement cost of every FUTURE Coneflower purchase doubles again,
+// globally, for the rest of the run (see the upgrade-purchase handler in
+// activateRegion() below, which increments this). A running multiplier
+// rather than a flat per-tower cost, specifically to make spamming many
+// maxed-out Coneflowers for runaway income increasingly expensive — it
+// does NOT touch upgrade costs, only the shop price of a brand new one.
+let coneflowerTier4Count = 0;
+
+function getShopItemCost(item) {
+  if (item.typeKey === 'coneflower') return item.cost * 2 ** coneflowerTier4Count;
+  return item.cost;
+}
 
 // How far a placed tower's center must stay from the path's centerline,
 // on top of the path's own half-width — keeps towers clear of the lane
@@ -261,7 +284,7 @@ function startGame(modeKey) {
   selectedShopItem = null;
   projectiles = [];
   round = 1;
-  money = 50;
+  money = STARTING_MONEY;
   playerHealth = PLAYER_STARTING_HEALTH;
   wildlife = createWildlifeSwarm(getActiveMap());
 
@@ -969,7 +992,10 @@ function render() {
   renderFloatingTexts(ctx); // "+$X" income popups etc. — always the topmost world layer, so they stay legible
 
   if (selectedShopItem && mouseX !== null && isWorldPoint(mouseX, mouseY)) {
-    const buildable = canAfford(selectedShopItem.cost) && !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN);
+    const buildable =
+      canAfford(getShopItemCost(selectedShopItem)) &&
+      !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
+      !isTowerPlacementBlocked(mouseX, mouseY, selectedShopItem.typeKey);
     ctx.fillStyle = buildable ? 'rgba(76, 175, 80, 0.4)' : 'rgba(229, 57, 53, 0.4)';
     ctx.beginPath();
     ctx.arc(mouseX, mouseY, 20, 0, Math.PI * 2);
@@ -1019,6 +1045,24 @@ function getShopPreviewTower(typeKey) {
   return shopPreviewTowers[typeKey];
 }
 
+// Direct request: towers can't be placed overlapping each other. A new
+// tower needs to be at least both towers' own current visual radii apart
+// from every existing one — reusing getTowerVisualSize() (not a flat
+// placement radius) means a big upgraded tower blocks more space around
+// it than a freshly-placed one would, and a freshly-placed big tower
+// (Rose's Root Path can push size up to ~200+) correctly needs more
+// clearance too. The candidate's own size is read off the cached shop-
+// preview tower (base stats, pre-upgrade — exactly what a brand new
+// tower's size actually is at the moment it's placed) rather than
+// creating a throwaway tower just to measure it. Shared by the hover
+// preview (render()) and the actual placement (handleCanvasTap()) so
+// both agree on exactly the same spots, in both normal play and Sandbox
+// — handleCanvasTap is the one placement code path for both.
+function isTowerPlacementBlocked(x, y, typeKey) {
+  const newSize = getTowerVisualSize(getShopPreviewTower(typeKey));
+  return towers.some((tower) => Math.hypot(tower.x - x, tower.y - y) < newSize + getTowerVisualSize(tower));
+}
+
 const SHOP_TILE_SIZE = 60;
 const SHOP_TILE_GAP = 10;
 
@@ -1050,7 +1094,7 @@ function renderShopSection(ctx, x, width, startY) {
       rowY += SHOP_TILE_SIZE + SHOP_TILE_GAP;
     }
 
-    const affordable = canAfford(item.cost);
+    const affordable = canAfford(getShopItemCost(item));
     const selected = selectedShopItem === item;
     const regionId = `shop:${item.typeKey}`;
     const hovered = hoverRegion && hoverRegion.id === regionId;
@@ -2020,7 +2064,7 @@ function renderUI(ctx) {
 function getTooltipLines(region) {
   if (region.id.startsWith('shop:')) {
     const item = region.data;
-    return [item.name, `$${item.cost} — place on open ground`];
+    return [item.name, `$${getShopItemCost(item)} — place on open ground`];
   }
 
   if (region.id.startsWith('upgrade:')) {
@@ -2108,6 +2152,18 @@ function activateRegion(region) {
       money -= upgrade.cost;
       selectedTower.moneySpent += upgrade.cost;
       if (upgrade.effects.consumeTowersInRange) consumeTowersInRange(selectedTower);
+      // Direct request: every time ANY Coneflower reaches tier 4 on
+      // either of its paths (Quality Path's Perfect Condition or
+      // Overgrowth Path's Plantation — upgradesPurchased hitting 4 is
+      // the same signal regardless of which path got it there), the
+      // BASE PLACEMENT cost of buying a brand new Coneflower doubles,
+      // globally, for the rest of the game — see
+      // getConeflowerPlacementCost() below. Meant to stop spamming many
+      // maxed Coneflowers for runaway income, not to discourage maxing
+      // out the one you already have.
+      if (selectedTower.type === 'coneflower' && selectedTower.upgradesPurchased === 4) {
+        coneflowerTier4Count += 1;
+      }
     }
     return;
   }
@@ -2207,15 +2263,17 @@ function findTowerAt(x, y) {
 // instead (see the click/touch handlers).
 function handleCanvasTap(x, y) {
   if (selectedShopItem) {
-    if (!canAfford(selectedShopItem.cost)) return;
+    const cost = getShopItemCost(selectedShopItem);
+    if (!canAfford(cost)) return;
     if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
+    if (isTowerPlacementBlocked(x, y, selectedShopItem.typeKey)) return;
 
     const tower = createTower(selectedShopItem.typeKey);
     tower.x = x;
     tower.y = y;
-    tower.moneySpent = selectedShopItem.cost; // tracked for the Sell button's refund — see getSellRefund()
+    tower.moneySpent = cost; // tracked for the Sell button's refund — see getSellRefund()
     towers.push(tower);
-    money -= selectedShopItem.cost;
+    money -= cost;
 
     selectedTower = tower; // jump straight to managing the tower just bought
     return;
