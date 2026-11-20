@@ -68,11 +68,20 @@ test('applyModeToWaveComposition never rounds health down to 0', () => {
   assert.ok(result.health >= 1);
 });
 
+// Armored beetles (direct request) are shared across every map, so they
+// now appear in this list too — between the roster's own types and its
+// boss keys, same position generateWave()/getUnlockedEnemyTypes() build
+// them in. See armor-mechanic.test.js for dedicated coverage of that
+// mechanic; these two just confirm the per-map roster listing itself
+// still works with them folded in.
+const ARMORED_BEETLE_KEYS = ['carapaceBeetle', 'ironshellBeetle', 'titanBeetle'];
+
 test('getAllSpawnableEnemyKeys lists the active map\'s own roster — Deep Forest by default', () => {
   const game = loadFullGameContext();
   assert.deepEqual(game.getAllSpawnableEnemyKeys(), [
     'ant', 'fireAnt', 'armoredAnt',
     'babyBeetle', 'dungBeetle', 'tigerBeetle',
+    ...ARMORED_BEETLE_KEYS,
     'forest-boss-tier-1', 'forest-boss-tier-2',
   ]);
 });
@@ -83,6 +92,7 @@ test('getAllSpawnableEnemyKeys switches to Marshland\'s roster once that\'s the 
   assert.deepEqual(game.getAllSpawnableEnemyKeys(), [
     'tadpole', 'froglet', 'frogLarva',
     'appleSnail', 'slug', 'assassinSnail',
+    ...ARMORED_BEETLE_KEYS,
     'marsh-boss-tier-1', 'marsh-boss-tier-2',
   ]);
 });

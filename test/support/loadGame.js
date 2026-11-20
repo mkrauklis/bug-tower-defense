@@ -44,6 +44,8 @@ function loadGameContext() {
       getTotalWaveSize,
       generateWave, spawnWave, updateEnemies, getLastLeakedEnemies,
       findNearestEnemyInRange, damageEnemy, applyBurn, getEnemiesInRadius,
+      ARMORED_BEETLE_TIERS, getUnlockedArmoredBeetleKeys, getArmoredBeetleTier,
+      getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath,
       // A getter, not a plain binding — MAP_PATHS (like activeEnemies
       // below) is reassigned by setActiveMap(), so a plain destructured

@@ -172,6 +172,112 @@ function getActiveRoster() {
   return (map && MAP_ROSTERS[map.terrain]) || FOREST_ROSTER;
 }
 
+// Armored enemies (direct request) — a forcing function meant to require
+// an actually-upgraded tower, not just more base towers. The "armor"
+// trait itself is generic and reusable (see damageEnemy() below): a
+// hard per-hit minimum-damage gate, not a percentage reduction — any
+// single hit dealing LESS than enemy.armorThreshold is fully negated (0
+// damage), full stop. A future enemy on any roster can opt in just by
+// setting its own armorThreshold.
+//
+// Shared across every map (direct request: "regardless of map") rather
+// than reskinned per terrain or added into any one MAP_ROSTERS entry —
+// every map gets the identical three tiers, unlocking by round alone.
+// Deliberately NOT using orderTier3's existing unlock cadence (every-5-
+// rounds-per-type starting right after round 50, landing at round
+// 51/56/61) since that can't be made to land on the specific rounds
+// asked for here — these use their own explicit unlockRound instead.
+//
+// Threshold calibration — pulled every attacking path's real per-hit
+// damage at each of its own 4 tiers from towers.js (Sunflower's Solar/
+// Fire/Storm, Rose's Thorn/Root/Projectile, Mushroom's Decay; Enable
+// Path buffs OTHER towers rather than the Mushroom's own hit, Infect
+// Path deals no damage at all, and Coneflower never attacks — none of
+// those three have a "per-hit damage" to calibrate against, so they're
+// excluded from this comparison on purpose, not an oversight):
+//   tier1 hits: Solar 10, Fire 5, Storm 5, Thorn 4, Root 6, Projectile 6, Decay 3
+//   tier2 hits: Solar 15, Fire 10, Storm 5, Thorn 8, Root 12, Projectile 6, Decay 3
+//   tier3 hits: Solar 30, Fire 20, Storm 5, Thorn 16, Root 24, Projectile 6, Decay 7.5
+//   tier4 hits: Solar 30, Fire 40, Storm 5, Thorn 32, Root 24, Projectile 12, Decay 15
+// (Storm Path's own base attack never gains damage at any tier — it's a
+// pure attack-speed/AoE-tick path; its spark/shockwave pulses are 7/15
+// damage, each its own separate hit subject to the same gate.)
+//
+//   Carapace Beetle (round 75), threshold 8: blocks every tier-1 hit
+//   except Solar's (an intentional, acceptable exception — Solar Path is
+//   already the "hits hard early" path by its own numbers above); lets
+//   most tier-2 builds (Solar/Fire/Thorn/Root) through while Storm/
+//   Projectile/Decay — the speed/volume/DoT-flavored paths — still can't
+//   scratch it even at tier 2.
+//   Ironshell Beetle (round 100), threshold 16: no tier-2 hit reaches it
+//   (max is 15); most tier-3 builds (Solar/Fire/Thorn/Root) get through.
+//   Titan Beetle (round 125), threshold 24: no tier-3 hit but Solar's and
+//   Root's own (30 and, at exactly 24, Root's tier-3 Tanglement) reach
+//   it; needs genuine tier-4 investment (Fire, Thorn, and Root all clear
+//   it) from a real heavy-hitter path. Storm, Projectile, and Decay
+//   never break through at any tier even fully maxed — a deliberate
+//   characterization (those are volume/speed/DoT playstyles, not single-
+//   hit powerhouses), not an oversight; a player relying purely on one of
+//   those needs a different tower in the mix once these show up.
+//
+// HP, separately from the armor gate (direct request: "not just
+// unkillable until then... a real health sink once you can hurt them")
+// — base values doubling tier over tier (150/300/600), which on top of
+// the same round-based healthMultiplier every other enemy gets (far
+// higher at round 125 than round 75 — see getRoundScaling()) compounds
+// into a dramatic actual in-game HP curve, intentionally comparable to
+// or past a same-tier boss's own HP: these are meant to read as a
+// genuine elite threat once armor stops being the obstacle. Bounty
+// follows the same ~HP/2 convention as everywhere else, scaled by the
+// same round multiplier as every other enemy's bounty.
+//
+// Each tier spawns at a fixed count of 1 per wave (see generateWave()),
+// not split evenly across unlocked types like regular roster enemies —
+// a rare, attention-grabbing elite unit each wave, not a wave-filler.
+const ARMORED_BEETLE_TIERS = [
+  {
+    key: 'carapaceBeetle',
+    name: 'Carapace Beetle',
+    unlockRound: 75,
+    health: 150,
+    armorThreshold: 8,
+    color: '#5d6d4a',
+    radius: 13,
+    bounty: 75,
+    speedMultiplier: 0.45,
+  },
+  {
+    key: 'ironshellBeetle',
+    name: 'Ironshell Beetle',
+    unlockRound: 100,
+    health: 300,
+    armorThreshold: 16,
+    color: '#4a5a6d',
+    radius: 15,
+    bounty: 150,
+    speedMultiplier: 0.4,
+  },
+  {
+    key: 'titanBeetle',
+    name: 'Titan Beetle',
+    unlockRound: 125,
+    health: 600,
+    armorThreshold: 24,
+    color: '#3a3a4a',
+    radius: 18,
+    bounty: 300,
+    speedMultiplier: 0.35,
+  },
+];
+
+function getUnlockedArmoredBeetleKeys(round) {
+  return ARMORED_BEETLE_TIERS.filter((tier) => round >= tier.unlockRound).map((tier) => tier.key);
+}
+
+function getArmoredBeetleTier(key) {
+  return ARMORED_BEETLE_TIERS.find((tier) => tier.key === key) || null;
+}
+
 // Enemy types whose body visibly curls around corners as a chain of
 // segments following the head's own recent path, instead of the single
 // rigid heading every other enemy uses — add a key here (and a matching
@@ -227,6 +333,11 @@ function getUnlockedEnemyTypes(round) {
     const tier3Count = Math.min(roster.orderTier3.length, Math.floor(roundsSinceTier3Start / 5) + 1);
     unlocked.push(...roster.orderTier3.slice(0, tier3Count));
   }
+
+  // Armored beetles (shared across every map — see ARMORED_BEETLE_TIERS'
+  // own comment) unlock on their own explicit rounds, not this function's
+  // every-5-rounds cadence.
+  unlocked.push(...getUnlockedArmoredBeetleKeys(round));
 
   return unlocked;
 }
@@ -319,6 +430,7 @@ function generateWave(round) {
         bounty: Math.round(boss.bounty * scaling.healthMultiplier),
         tunnelInterval: boss.tunnelInterval || 0,
         tunnelDuration: boss.tunnelDuration || 0,
+        armorThreshold: 0,
       },
     ];
   }
@@ -326,12 +438,21 @@ function generateWave(round) {
   const unlocked = getUnlockedEnemyTypes(round);
   if (unlocked.length === 0) return []; // no regular types designed/unlocked yet
   const roster = getActiveRoster();
-  // Spread this round's total wave size evenly across whichever types are
-  // currently unlocked, so per-type count self-adjusts as new types unlock
-  // rather than needing its own separate curve.
-  const perTypeCount = Math.max(1, Math.round(getTotalWaveSize(round) / unlocked.length));
 
-  return unlocked.map((key) => {
+  // Armored beetles are pulled out of the regular per-type split below —
+  // they spawn at a fixed count of 1 each (see ARMORED_BEETLE_TIERS' own
+  // comment: a rare elite, not a wave-filler), not sharing the evenly-
+  // divided perTypeCount every other unlocked type gets.
+  const armoredKeys = new Set(getUnlockedArmoredBeetleKeys(round));
+  const regularKeys = unlocked.filter((key) => !armoredKeys.has(key));
+
+  // Spread this round's total wave size evenly across whichever REGULAR
+  // types are currently unlocked, so per-type count self-adjusts as new
+  // types unlock rather than needing its own separate curve.
+  const perTypeCount =
+    regularKeys.length > 0 ? Math.max(1, Math.round(getTotalWaveSize(round) / regularKeys.length)) : 0;
+
+  const regularEntries = regularKeys.map((key) => {
     const type = roster.enemyTypes[key];
     return {
       enemyKey: key,
@@ -345,8 +466,29 @@ function generateWave(round) {
       bounty: Math.round(type.bounty * scaling.healthMultiplier),
       tunnelInterval: type.tunnelInterval || 0,
       tunnelDuration: type.tunnelDuration || 0,
+      armorThreshold: type.armorThreshold || 0,
     };
   });
+
+  const armoredEntries = [...armoredKeys].map((key) => {
+    const tier = getArmoredBeetleTier(key);
+    return {
+      enemyKey: key,
+      name: tier.name,
+      color: tier.color,
+      radius: tier.radius,
+      count: 1,
+      health: Math.round(tier.health * scaling.healthMultiplier),
+      speedMultiplier: tier.speedMultiplier,
+      isBoss: false,
+      bounty: Math.round(tier.bounty * scaling.healthMultiplier),
+      tunnelInterval: 0,
+      tunnelDuration: 0,
+      armorThreshold: tier.armorThreshold,
+    };
+  });
+
+  return [...regularEntries, ...armoredEntries];
 }
 
 // Live enemy instances for the current wave.
@@ -393,6 +535,11 @@ const ENEMY_FACING_OFFSET = {
   giantLubberGrasshopper: Math.PI,
   desertPrayingMantis: Math.PI,
   kissingBug: Math.PI,
+  // Armored beetles (shared across every map): same shared beetle body
+  // plan (drawBeetleBody), same head/front-toward -x convention.
+  carapaceBeetle: Math.PI,
+  ironshellBeetle: Math.PI,
+  titanBeetle: Math.PI,
 };
 // Keyed by enemyKey (e.g. 'forest-boss-tier-1'), same as
 // ENEMY_FACING_OFFSET, since different boss tiers can have different
@@ -482,6 +629,12 @@ function createEnemyInstance(entry, spawnDelay) {
     isZombie: false,
     markedForRemoval: false,
     zombieExplosionDamage: 0,
+    // Armored beetles (and any future enemy that sets its own
+    // armorThreshold on its roster/tier entry): a hard per-hit minimum-
+    // damage gate, enforced generically in damageEnemy() below — any
+    // single hit below this amount is fully negated. 0 for every type
+    // without one, so the gate never applies by accident.
+    armorThreshold: entry.armorThreshold || 0,
   };
 }
 
@@ -533,7 +686,8 @@ function getAllSpawnableEnemyKeys() {
   const roster = getActiveRoster();
   const terrain = getActiveMap().terrain;
   const bossKeys = Object.keys(roster.bossTypes).map((tier) => `${terrain}-boss-tier-${tier}`);
-  return [...roster.order, ...roster.orderTier2, ...roster.orderTier3, ...bossKeys];
+  const armoredKeys = ARMORED_BEETLE_TIERS.map((tier) => tier.key);
+  return [...roster.order, ...roster.orderTier2, ...roster.orderTier3, ...armoredKeys, ...bossKeys];
 }
 
 // Looks up a spawn-ready entry (same shape generateWave() produces, base
@@ -560,6 +714,27 @@ function getSpawnEntryForEnemyKey(key) {
       bounty: boss.bounty,
       tunnelInterval: boss.tunnelInterval || 0,
       tunnelDuration: boss.tunnelDuration || 0,
+      armorThreshold: 0,
+    };
+  }
+
+  // Armored beetles (shared across every map, not part of any one
+  // roster's own enemyTypes) are checked before falling through to the
+  // active roster.
+  const armoredTier = getArmoredBeetleTier(key);
+  if (armoredTier) {
+    return {
+      enemyKey: key,
+      name: armoredTier.name,
+      color: armoredTier.color,
+      radius: armoredTier.radius,
+      health: armoredTier.health,
+      speedMultiplier: armoredTier.speedMultiplier,
+      isBoss: false,
+      bounty: armoredTier.bounty,
+      tunnelInterval: 0,
+      tunnelDuration: 0,
+      armorThreshold: armoredTier.armorThreshold,
     };
   }
 
@@ -576,6 +751,7 @@ function getSpawnEntryForEnemyKey(key) {
     bounty: type.bounty,
     tunnelInterval: type.tunnelInterval || 0,
     tunnelDuration: type.tunnelDuration || 0,
+    armorThreshold: type.armorThreshold || 0,
   };
 }
 
@@ -615,7 +791,19 @@ function getEnemiesInRadius(x, y, radius) {
   );
 }
 
+// The one choke point every damage source in the game already goes
+// through (direct hits, projectiles, burn ticks, puddle/orbit ticks,
+// root traps/rootGrab, spark/shockwave, vines, zombie explosions) — which
+// is what makes the armor gate below apply generically everywhere for
+// free, with no per-effect special-casing needed. A hit below
+// enemy.armorThreshold is fully negated (0 damage, not reduced) — this
+// includes DoT ticks (burn/puddle/orbit apply damagePerSecond*deltaSeconds
+// as their own tiny individual "hit" every frame), so a weak-but-
+// persistent effect can't bypass armor just by ticking enough times;
+// deliberate, not an oversight — armor is a hard per-hit gate, not a
+// damage-reduction percentage.
 function damageEnemy(enemy, amount) {
+  if (enemy.armorThreshold > 0 && amount < enemy.armorThreshold) return;
   enemy.health -= amount;
 }
 
@@ -1484,6 +1672,77 @@ function drawTunnelMound(ctx, x, y, radius, time) {
   ctx.stroke();
 }
 
+// --- Armored beetles (shared across every map) ----------------------------
+
+// A thick, segmented plate pattern drawn over the shared beetle body —
+// the one visual element all three armored tiers build on, progressively
+// heavier/more ornate each tier. Distinct from the regular beetle types'
+// smooth shell (drawBeetleBody's own highlight ellipse) by design: these
+// need to read as "hard to crack" at a glance, not just a palette swap.
+function drawBeetlePlates(ctx, e, plateCount, ridged) {
+  ctx.strokeStyle = shadeColor(e.color, -40);
+  ctx.lineWidth = Math.max(1.5, e.radius * 0.1);
+  for (let i = 1; i < plateCount; i += 1) {
+    const t = i / plateCount;
+    const px = e.x + e.radius * (0.7 - t * 1.3);
+    ctx.beginPath();
+    ctx.moveTo(px, e.y - e.radius * 0.7);
+    ctx.lineTo(px, e.y + e.radius * 0.7);
+    ctx.stroke();
+  }
+  // Titan Beetle only: small ridged bumps along each plate seam, on top
+  // of the segment lines every tier gets.
+  if (ridged) {
+    ctx.fillStyle = shadeColor(e.color, -20);
+    for (let i = 0; i < plateCount; i += 1) {
+      const t = (i + 0.5) / plateCount;
+      const px = e.x + e.radius * (0.7 - t * 1.3);
+      ctx.beginPath();
+      ctx.moveTo(px, e.y - e.radius * 0.75);
+      ctx.lineTo(px - e.radius * 0.08, e.y - e.radius * 0.55);
+      ctx.lineTo(px + e.radius * 0.08, e.y - e.radius * 0.55);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+
+// Round 75: 3 plate segments — armored, but the lightest of the three.
+function drawCarapaceBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  drawBeetlePlates(ctx, e, 3, false);
+}
+
+// Round 100: 4 plate segments plus a few metallic rivets down the center
+// seam — the one extra detail that reads as "iron," not just "more
+// segmented than Carapace."
+function drawIronshellBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  drawBeetlePlates(ctx, e, 4, false);
+  ctx.fillStyle = shadeColor(e.color, 45);
+  [-0.4, 0, 0.4].forEach((t) => {
+    ctx.beginPath();
+    ctx.arc(e.x, e.y + t * e.radius * 0.6, e.radius * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Round 125: 5 ridged plate segments plus a heavy frontal horn — the
+// horn is the one feature that reads as "titan" past just heavier
+// plating, same spirit as the Longhorn Beetle boss's antennae being its
+// one signature feature.
+function drawTitanBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  drawBeetlePlates(ctx, e, 5, true);
+  ctx.fillStyle = shadeColor(e.color, -30);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.9, e.y - e.radius * 0.15);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.5, e.y - e.radius * 0.1, e.x - e.radius * 1.7, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.5, e.y + e.radius * 0.1, e.x - e.radius * 0.9, e.y + e.radius * 0.15);
+  ctx.closePath();
+  ctx.fill();
+}
+
 const ENEMY_DRAW_FUNCTIONS = {
   ant: drawAnt,
   fireAnt: drawFireAnt,
@@ -1503,6 +1762,9 @@ const ENEMY_DRAW_FUNCTIONS = {
   giantLubberGrasshopper: drawGiantLubberGrasshopper,
   desertPrayingMantis: drawDesertPrayingMantis,
   kissingBug: drawKissingBug,
+  carapaceBeetle: drawCarapaceBeetle,
+  ironshellBeetle: drawIronshellBeetle,
+  titanBeetle: drawTitanBeetle,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -1762,5 +2024,40 @@ function renderEnemies(ctx, time) {
     ctx.fillRect(enemy.x - barWidth / 2, enemy.y - enemy.radius - 8, barWidth, 4);
     ctx.fillStyle = '#e53935';
     ctx.fillRect(enemy.x - barWidth / 2, enemy.y - enemy.radius - 8, barWidth * healthRatio, 4);
+
+    // Armor telegraph (direct request): always visible, not just on a
+    // failed hit — the whole point is the player understanding *before*
+    // attacking why a weak tower will do nothing, not being left to
+    // guess after their shots silently fail. Sits just above the health
+    // bar so it reads as "this enemy" rather than a separate HUD element.
+    if (enemy.armorThreshold > 0) drawArmorShieldIcon(ctx, enemy.x, enemy.y - enemy.radius - 15, enemy.radius * 0.5);
   });
+}
+
+// A simple metallic shield badge — deliberately a different, unmistakable
+// silhouette from the health bar/status rings every enemy already has, so
+// "this one has armor" reads at a glance rather than blending into the
+// existing UI chrome.
+function drawArmorShieldIcon(ctx, x, y, size) {
+  ctx.fillStyle = '#90a4ae';
+  ctx.strokeStyle = '#263238';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + size * 0.8, y - size * 0.5);
+  ctx.lineTo(x + size * 0.8, y + size * 0.2);
+  ctx.quadraticCurveTo(x + size * 0.8, y + size * 0.9, x, y + size * 1.2);
+  ctx.quadraticCurveTo(x - size * 0.8, y + size * 0.9, x - size * 0.8, y + size * 0.2);
+  ctx.lineTo(x - size * 0.8, y - size * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = '#eceff1';
+  ctx.lineWidth = Math.max(1, size * 0.18);
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.35, y);
+  ctx.lineTo(x - size * 0.1, y + size * 0.35);
+  ctx.lineTo(x + size * 0.4, y - size * 0.35);
+  ctx.stroke();
 }
