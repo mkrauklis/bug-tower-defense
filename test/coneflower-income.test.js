@@ -164,6 +164,15 @@ test('Overgrowth Path doubles the plant count tier over tier, except the last (a
   assert.equal(coneflower.numPlants, 11);
 });
 
+test('Plantation (Overgrowth Path tier 4) costs $10000 (balance tweak, was $5000)', () => {
+  const game = loadFullGameContext();
+  const coneflower = game.createTower('coneflower');
+  for (let i = 0; i < 3; i += 1) game.purchaseUpgrade(coneflower, 1); // Overgrowth/Splurge/Surplus
+  const plantation = game.getAvailableUpgrade(coneflower, 1);
+  assert.equal(plantation.name, 'Plantation');
+  assert.equal(plantation.cost, 10000);
+});
+
 test('Overgrowth Path\'s per-plant cash is set once (tier 1) and never changes again', () => {
   const game = loadFullGameContext();
   const coneflower = game.createTower('coneflower');

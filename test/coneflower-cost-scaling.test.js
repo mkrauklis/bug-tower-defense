@@ -106,7 +106,7 @@ test('the doubling never touches upgrade costs themselves, only the shop placeme
   for (let i = 0; i < 4; i += 1) buyConeflowerUpgrade(game, first, 0);
 
   // A second, freshly-placed Coneflower's own upgrade costs ($300/$850/
-  // $2000/$5000 for Overgrowth) are plain static numbers on the upgrade
+  // $2000/$10000 for Overgrowth) are plain static numbers on the upgrade
   // data itself — confirm they're untouched by coneflowerTier4Count.
   const second = game.createTower('coneflower');
   const nextUpgrade = game.getAvailableUpgrade(second, 1);

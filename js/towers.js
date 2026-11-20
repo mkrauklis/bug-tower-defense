@@ -670,7 +670,7 @@ const TOWER_TYPES = {
             name: 'Plantation',
             description:
               'The plant grows taller and 3 more spring up (11 total); the cash tick comes 50% faster still.',
-            cost: 5000,
+            cost: 10000, // balance tweak (direct request): was $5000
             effects: { addPlants: 3, incomeTickIntervalMultiplier: 0.5, tallPlant: true },
           },
         ],
