@@ -675,7 +675,73 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 3 — not yet designed
+      // Coupons Path (direct request): a discount-aura path, mutually
+      // exclusive with Quality/Overgrowth like every other tower's 3
+      // paths. User's exact tier wording was informal/terse, same as
+      // Overgrowth Path above — judgment calls made here, not
+      // re-litigated per tier below:
+      // - Discount applies only to the PLACEMENT cost of a new tower
+      //   bought within discountRadius (150px, set once at tier 1 and
+      //   never restated), same scoping as the existing Coneflower-
+      //   tier-4 cost-doubling feature ("placement cost only, never
+      //   upgrade costs") — not stated explicitly for this path, but kept
+      //   consistent with that established convention rather than
+      //   guessed fresh.
+      // - Non-stacking: the user only explicitly said "doesn't stack" at
+      //   tier 4, but applied here across the WHOLE path (a tower in
+      //   range of several Coupons-path Coneflowers gets the single
+      //   strongest discount, not a sum) for consistency with Mushroom's
+      //   existing Enable Path aura, which is non-stacking the same way
+      //   at every tier, not just its last. Flagged in the commit message
+      //   in case "only tier 4 is non-stacking" (implying 1-3 DO stack)
+      //   was actually meant.
+      // - Cash/sec is a flat absolute value per tier (3/5/7/10), replacing
+      //   the previous tier's rate — the Quality Path's own `income`
+      //   effect convention, reused unchanged, NOT Overgrowth's plant-
+      //   multiplying mechanism (this path never grows multiple plants).
+      // - Visuals: roots appear at tier 1 (drawConeflowerRoots()) and grow
+      //   longer at tiers 2 and 3; the stem grows at tier 1 and again at
+      //   tier 3; petals grow larger at tier 2 (drawConeflowerHead()'s own
+      //   size, scaled up); "kinda neon" at tier 3 reuses the existing
+      //   generic `glow` effect (same field Quality Path's own tiers set)
+      //   rather than inventing a parallel glow mechanism. All tier-gated
+      //   by chosenPath===2 && upgradesPurchased directly in
+      //   drawConeflower(), the same pattern Mushroom's Infect Path
+      //   already uses for its own tiered art — no extra per-tier boolean
+      //   fields needed on the tower itself.
+      {
+        name: 'Coupons Path',
+        upgrades: [
+          {
+            name: 'Coupons',
+            description:
+              'The flower grows lots of roots and its stem grows longer; towers placed within range cost 5% less; income becomes $3/sec.',
+            cost: 1500,
+            effects: { income: 3, discountPercent: 5, discountRadius: 150 },
+          },
+          {
+            name: 'Cheaper Products',
+            description:
+              'Towers placed within range now cost 10% less (replacing the previous discount, not stacking); income becomes $5/sec; the roots grow longer and the petals grow larger.',
+            cost: 3000,
+            effects: { income: 5, discountPercent: 10 },
+          },
+          {
+            name: 'Discounted',
+            description:
+              'Towers placed within range now cost 15% less; income becomes $7/sec; the stem and roots grow longer again, and the flower takes on a neon glow.',
+            cost: 7500,
+            effects: { income: 7, discountPercent: 15, glow: '#ff2fd6' },
+          },
+          {
+            name: 'Dealership',
+            description:
+              "Towers placed within range now cost 25% less; income becomes $10/sec. This discount never stacks with another Coupons-path Coneflower's own.",
+            cost: 12500,
+            effects: { income: 10, discountPercent: 25 },
+          },
+        ],
+      },
     ],
   },
   // Prodigies (direct request, reworked from an earlier standalone-tower
@@ -915,6 +981,18 @@ function createTower(typeKey) {
     hasTallPlant: false, // Plantation tier only — purely visual (drawConeflower())
     hasExtraStems: false, // Quality Path's High Standard tier and up — purely visual (drawConeflower())
     hasRedMist: false, // Quality Path's Perfect Condition tier only — purely visual (drawConeflower())
+    // Coneflower's Coupons Path: the discount (a flat percent, 0-25) this
+    // Coneflower's own aura currently offers towers placed within
+    // discountRadius of it — see getStrongestDiscountPercentAt()/
+    // getShopItemCostAt() in game.js, which read these two fields directly
+    // (not through a nested `aura` object the way Mushroom's Enable Path
+    // does, since there's only ever this one number to track, not a whole
+    // stats bundle). Both 0 for every tower without this path, so the
+    // lookup skips everyone else entirely. discountRadius is set once, on
+    // the path's first tier, and never restated by later tiers (only the
+    // percent itself grows) — see purchaseUpgrade()'s own comment.
+    discountPercent: 0,
+    discountRadius: 0,
     // The Mangler (Rose's Prodigy) only: every grabInterval seconds,
     // grabs one random non-boss enemy in range for grabDamage bonus
     // damage, holding it immobilized for grabDuration — on top of (not
@@ -1081,6 +1159,13 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.income !== undefined) tower.incomeRate = effects.income;
   if (effects.extraStems) tower.hasExtraStems = true;
   if (effects.redMist) tower.hasRedMist = true;
+  // Coneflower's Coupons Path: discountPercent REPLACES the previous
+  // tier's outright (each tier states its own absolute new percent, same
+  // convention as income/zombifyChance/aura above), while discountRadius
+  // is only ever set by the path's first tier — later tiers never
+  // mention it again, so there's nothing to overwrite it with.
+  if (effects.discountPercent !== undefined) tower.discountPercent = effects.discountPercent;
+  if (effects.discountRadius !== undefined) tower.discountRadius = effects.discountRadius;
 
   // Coneflower's Overgrowth Path: numPlants/perPlantCash each compound or
   // get set independently (see each field's own comment on createTower()
@@ -1285,7 +1370,12 @@ function renderTower(ctx, tower, x, y, time) {
       tower.hasExtraStems,
       tower.hasRedMist,
       tower.numPlants,
-      tower.hasTallPlant
+      tower.hasTallPlant,
+      // Coupons Path's own tiered art (roots/petals growing in) is gated
+      // the same way Mushroom's Infect Path already gates its own tiered
+      // species art — chosenPath + upgradesPurchased directly, no extra
+      // per-tier boolean fields needed on the tower itself.
+      tower.chosenPath === 2 ? tower.upgradesPurchased : 0
     );
   } else if (tower.type === 'sunlitConductor') {
     drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
@@ -2146,11 +2236,51 @@ function drawConeflowerCluster(ctx, x, y, size, color, numPlants) {
   }
 }
 
-function drawConeflower(ctx, x, y, size, color, glow, time, flashAmount, hasExtraStems, hasRedMist, numPlants = 1, tallPlant = false) {
-  // Plantation's "grows taller" — the only Overgrowth Path visual that
-  // isn't just "more heads," so it gets its own flag rather than being
-  // folded into the cluster-drawing logic above.
-  const stemHeight = size * 1.3 * (tallPlant ? 1.3 : 1);
+// Coupons Path tier 1 and up: a handful of thin dirt-brown root tendrils
+// fanning out below the stem's base — same drawn-tendril style as Rose's
+// own drawRoseBodyRoots(), just more of them ("lots of roots" per the
+// spec, vs. that one's 4) and growing longer at tiers 2 and 3 rather than
+// via a single longThorns-style boolean, since this path explicitly calls
+// out "longer roots" twice (tiers 2 and 3) rather than once.
+function drawConeflowerRoots(ctx, x, y, groundY, size, tier) {
+  const lengthMultiplier = tier >= 3 ? 1.6 : tier >= 2 ? 1.3 : 1;
+  const spikeLength = size * 0.32 * lengthMultiplier;
+  const angles = [-2.5, -2.0, -1.57, 1.57, 2.0, 2.5]; // fanning down-and-outward on both sides, plus one straight down each
+  ctx.strokeStyle = '#5d4037';
+  ctx.lineWidth = 2;
+  angles.forEach((angle) => {
+    const baseX = x + Math.cos(angle) * size * 0.12;
+    const baseY = groundY - size * 0.05;
+    const tipX = baseX + Math.cos(angle) * spikeLength;
+    const tipY = baseY + Math.sin(angle) * spikeLength * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    ctx.quadraticCurveTo(baseX + Math.cos(angle) * spikeLength * 0.5, baseY + spikeLength * 0.1, tipX, tipY);
+    ctx.stroke();
+  });
+}
+
+function drawConeflower(
+  ctx,
+  x,
+  y,
+  size,
+  color,
+  glow,
+  time,
+  flashAmount,
+  hasExtraStems,
+  hasRedMist,
+  numPlants = 1,
+  tallPlant = false,
+  couponTier = 0
+) {
+  // Plantation's "grows taller" and Coupons' own tier-1/tier-3 stem growth
+  // are two independent sources of "taller stem," so they both just
+  // multiply the same base height rather than one replacing the other —
+  // harmless since a tower only ever has one chosen path at a time anyway.
+  const couponStemMultiplier = couponTier >= 3 ? 1.5 : couponTier >= 1 ? 1.25 : 1;
+  const stemHeight = size * 1.3 * (tallPlant ? 1.3 : 1) * couponStemMultiplier;
   const groundY = y + stemHeight;
   const sway = Math.sin(time * 1.4 + x * 0.01) * 0.05;
 
@@ -2206,9 +2336,14 @@ function drawConeflower(ctx, x, y, size, color, glow, time, flashAmount, hasExtr
   if (numPlants > 1) {
     drawConeflowerCluster(ctx, x, y, size, color, numPlants);
   } else {
-    drawConeflowerHead(ctx, x, y, size, color, true);
+    // Cheaper Products tier and up: "larger flower petals" — Coupons Path
+    // never multiplies numPlants, so this is the only path that ever
+    // scales the single head's own size up rather than adding more heads.
+    const headSize = couponTier >= 2 ? size * 1.2 : size;
+    drawConeflowerHead(ctx, x, y, headSize, color, true);
   }
   if (hasRedMist) drawConeflowerRedMist(ctx, x, y, size, time);
+  if (couponTier >= 1) drawConeflowerRoots(ctx, x, y, groundY, size, couponTier);
 
   ctx.restore();
 }

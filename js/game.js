@@ -191,6 +191,37 @@ function getShopItemCost(item) {
   return item.cost;
 }
 
+// Coneflower's Coupons Path: the strongest active placement discount
+// reaching (x, y) right now — "strongest" = highest discountPercent among
+// every Coupons-path Coneflower whose own discountRadius reaches that
+// point, non-stacking (a point in range of several gets the single best
+// discount, not a sum — see towers.js's own comment on why, on the Coupons
+// Path's TOWER_TYPES entry). Read fresh every call, same as every other
+// live aura lookup in this file (getStrongestAuraFor() for Mushroom's
+// Enable Path is the direct precedent) — never cached on any tower.
+function getStrongestDiscountPercentAt(x, y) {
+  let best = 0;
+  towers.forEach((tower) => {
+    if (!tower.discountPercent) return;
+    if (Math.hypot(tower.x - x, tower.y - y) > tower.discountRadius) return;
+    best = Math.max(best, tower.discountPercent);
+  });
+  return best;
+}
+
+// getShopItemCost() above is an item's base price — what the shop tile
+// itself displays, independent of where the player might end up placing
+// it (the tile has no position to check an aura against). This is the
+// REAL price at a specific spot, applying the Coupons Path discount (if
+// any) reaching there — used by the actual placement/affordability checks
+// (handleCanvasTap, the hover-preview buildable check in render()), not by
+// anything that only needs the tile's own listed price.
+function getShopItemCostAt(item, x, y) {
+  const base = getShopItemCost(item);
+  const discountPercent = getStrongestDiscountPercentAt(x, y);
+  return Math.round(base * (1 - discountPercent / 100));
+}
+
 // The Fungal Mess's reanimated purple zombie deals this flat amount when it
 // reaches the goal, replacing (not adding to) the usual maxHealth-based
 // leak damage every other enemy deals — see update()'s leaked-enemy block.
@@ -1094,7 +1125,7 @@ function render() {
 
   if (selectedShopItem && mouseX !== null && isWorldPoint(mouseX, mouseY)) {
     const buildable =
-      canAfford(getShopItemCost(selectedShopItem)) &&
+      canAfford(getShopItemCostAt(selectedShopItem, mouseX, mouseY)) &&
       !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
       !isTowerPlacementBlocked(mouseX, mouseY, selectedShopItem.typeKey);
     ctx.fillStyle = buildable ? 'rgba(76, 175, 80, 0.4)' : 'rgba(229, 57, 53, 0.4)';
@@ -1276,6 +1307,12 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
           ? `$${selectedTower.incomeRate}/sec while a wave is active`
           : `$${selectedTower.incomeRate} every ${selectedTower.incomeTickInterval.toFixed(2)}s while a wave is active`
         : 'none';
+    // Coneflower's Coupons Path only — same "always listed, defaults to
+    // none" convention as Income above.
+    const discountText =
+      selectedTower.discountPercent > 0
+        ? `${selectedTower.discountPercent}% off towers placed within ${selectedTower.discountRadius}px`
+        : 'none';
     const lines = [
       `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
       `Size: ${selectedTower.stats.size.toFixed(1)}`,
@@ -1288,6 +1325,7 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
       `Roots: ${rootsText}`,
       `Thorn Shot: ${thornShotText}`,
       `Income: ${incomeText}`,
+      `Discount: ${discountText}`,
     ];
     y = uiDrawTextLines(ctx, lines, x, y, 14, '#ccc', '12px sans-serif') + 8;
   }
@@ -2440,7 +2478,7 @@ function findTowerAt(x, y) {
 // instead (see the click/touch handlers).
 function handleCanvasTap(x, y) {
   if (selectedShopItem) {
-    const cost = getShopItemCost(selectedShopItem);
+    const cost = getShopItemCostAt(selectedShopItem, x, y);
     if (!canAfford(cost)) return;
     if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
     if (isTowerPlacementBlocked(x, y, selectedShopItem.typeKey)) return;
