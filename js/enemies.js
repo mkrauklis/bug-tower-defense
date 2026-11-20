@@ -51,6 +51,34 @@ const FOREST_ROSTER = {
     babyBeetle: { name: 'Baby Beetle', speedMultiplier: 0.7, health: 25, color: '#558b2f', radius: 9, bounty: 13 },
     dungBeetle: { name: 'Dung Beetle', speedMultiplier: 0.6, health: 45, color: '#3e2723', radius: 10, bounty: 23 },
     tigerBeetle: { name: 'Tiger Beetle', speedMultiplier: 0.8, health: 50, color: '#2e7d32', radius: 9, bounty: 25 },
+    // Snakes (direct request): Deep Forest's first tier-3 roster — well
+    // above the ant/beetle lines' own HP (2-50), exactly the "clearly
+    // belongs later" gap orderTier3's existing every-5-rounds-starting-
+    // after-round-50 cadence was already built for (round 51/56/61/66,
+    // one new snake each), so they slot in as its 4 entries rather than
+    // needing any new unlock machinery. Health/speed are the user's exact
+    // numbers; bounty follows the roster's own ~HP/2 convention. Armored
+    // Snake is the one judgment call: given the armor-gate mechanic
+    // (armorThreshold, see damageEnemy()) by name-thematic request, but
+    // calibrated as a light, early nod to it rather than a real forcing
+    // function on the Armored Beetle line's own scale — threshold 5 blocks
+    // only the very weakest tier-1 hits (Fire/Storm/Decay, 3-5 damage)
+    // while every tier-2+ build (and Solar Path at any tier) still gets
+    // through untouched; it unlocks at round 61, a full 14 rounds before
+    // Carapace Beetle's own round-75/threshold-8 debut, so it reads as a
+    // preview of the mechanic, not a repeat of it.
+    gardenerSnake: { name: 'Gardener Snake', speedMultiplier: 0.8, health: 150, color: '#558b2f', radius: 9, bounty: 75 },
+    bananaSnake: { name: 'Banana Snake', speedMultiplier: 0.7, health: 225, color: '#fdd835', radius: 10, bounty: 113 },
+    armoredSnake: {
+      name: 'Armored Snake',
+      speedMultiplier: 0.5,
+      health: 350,
+      color: '#6d7a5a',
+      radius: 11,
+      bounty: 175,
+      armorThreshold: 5,
+    },
+    anaconda: { name: 'Anaconda', speedMultiplier: 0.4, health: 450, color: '#1b3a1b', radius: 13, bounty: 225 },
   },
   // Boss health doubled across every map (direct request) — a straight
   // 2x multiplier on each boss's own health only, not a redesign; bounty/
@@ -62,7 +90,10 @@ const FOREST_ROSTER = {
   },
   order: ['ant', 'fireAnt', 'armoredAnt'],
   orderTier2: ['babyBeetle', 'dungBeetle', 'tigerBeetle'],
-  orderTier3: [], // no tier-3 roster designed for this map (yet) — degrades the same way an empty roster always has
+  // Snakes (direct request): unlock weakest-to-strongest on the existing
+  // every-5-rounds-after-round-50 cadence (round 51/56/61/66) — see each
+  // one's own entry above for the stat/armor rationale.
+  orderTier3: ['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda'],
 };
 
 const MARSH_ROSTER = {
@@ -286,7 +317,7 @@ function getArmoredBeetleTier(key) {
 // creatures, nothing here warrants it. See recordTrailPoint()/
 // renderMillipedeBody() below for the (still-intact) generic mechanism
 // this drives, kept ready for a future multi-segment type.
-const MILLIPEDE_FAMILY_KEYS = new Set();
+const MILLIPEDE_FAMILY_KEYS = new Set(['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda']);
 
 const BOSS_INTERVAL = 25;
 
@@ -1822,11 +1853,18 @@ const TRAIL_POINT_SPACING = 4;
 // type (e.g. a bigger, more "many-legged"-looking type would want more,
 // wider-spaced segments than a small one). Segment spacing is expressed as
 // a multiple of the type's own radius so it scales sensibly with body
-// size. Empty for now along with MILLIPEDE_FAMILY_KEYS above — add a type's
-// key to both to opt it into this rendering. DEFAULT_MILLIPEDE_BODY is the
-// fallback for any key missing its own entry here, so the mechanism itself
-// stays exercisable/testable even with no types configured.
-const MILLIPEDE_BODY = {};
+// size. `segmentDrawFn` lets a family member draw its segments its own
+// way (e.g. the snakes below use a smooth, legless body instead of the
+// default "many-legged" look) — defaults to drawMillipedeSegment when
+// omitted. DEFAULT_MILLIPEDE_BODY is the fallback for any key missing its
+// own entry here entirely, so the mechanism itself stays exercisable/
+// testable even with a type that never opted into a custom one.
+const MILLIPEDE_BODY = {
+  gardenerSnake: { segmentCount: 4, spacingFactor: 1.1, segmentDrawFn: drawGardenerSnakeSegment },
+  bananaSnake: { segmentCount: 5, spacingFactor: 1.1, segmentDrawFn: drawBananaSnakeSegment },
+  armoredSnake: { segmentCount: 6, spacingFactor: 1.05, segmentDrawFn: drawArmoredSnakeSegment },
+  anaconda: { segmentCount: 8, spacingFactor: 1.0, segmentDrawFn: drawAnacondaSegment },
+};
 const DEFAULT_MILLIPEDE_BODY = { segmentCount: 5, spacingFactor: 1.3 };
 
 // Appends the enemy's current (x, y) to its trail once it's moved at least
@@ -1900,17 +1938,97 @@ function drawMillipedeSegment(ctx, x, y, radius, color, heading, segmentIndex) {
   ctx.restore();
 }
 
+// Shared snake-family segment renderer: a smooth, legless tapering body
+// (no "leg" strokes — that look is millipede-specific) with a lighter
+// belly stripe down the underside, plus (segment 0, the head, only) a
+// pair of eyes and an occasionally-flicking forked tongue so the head end
+// reads as a snake's at a glance regardless of which of the 4 types it is.
+// `scaled` swaps the plain belly stripe for a line of diamond scale
+// plates instead — Armored Snake only, the one type whose own spec calls
+// for a visibly "plated/scaled" body distinct from the other three.
+function drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, scaled, time) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(heading);
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius * 1.15, radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (scaled) {
+    ctx.fillStyle = shadeColor(color, -25);
+    const offset = segmentIndex % 2 === 0 ? -radius * 0.25 : radius * 0.25;
+    ctx.save();
+    ctx.translate(offset, -radius * 0.05);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-radius * 0.3, -radius * 0.3, radius * 0.6, radius * 0.6);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = shadeColor(color, 30);
+    ctx.beginPath();
+    ctx.ellipse(0, radius * 0.35, radius * 0.85, radius * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (segmentIndex === 0) {
+    ctx.fillStyle = '#1a1a1a';
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.arc(radius * 0.6, side * radius * 0.35, radius * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    // The tongue only flicks out part of the time, not every frame —
+    // reads as a periodic flick rather than a permanently-extended prop.
+    if (Math.sin(time * 8) > 0.3) {
+      ctx.strokeStyle = '#d32f2f';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(radius * 1.1, 0);
+      ctx.lineTo(radius * 1.4, 0);
+      ctx.moveTo(radius * 1.4, 0);
+      ctx.lineTo(radius * 1.55, -radius * 0.12);
+      ctx.moveTo(radius * 1.4, 0);
+      ctx.lineTo(radius * 1.55, radius * 0.12);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+// Deep Forest's 4 snakes (direct request) all share drawSnakeSegment()
+// above — these thin wrappers are what MILLIPEDE_BODY's segmentDrawFn
+// actually points at, since that field takes a plain
+// (ctx, x, y, radius, color, heading, segmentIndex, time) function and
+// `scaled` isn't part of that generic signature (only Armored Snake needs
+// it, so it's baked in here per type instead of threaded through the
+// whole shared mechanism for everyone else's benefit).
+function drawGardenerSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
+  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, false, time);
+}
+function drawBananaSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
+  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, false, time);
+}
+function drawArmoredSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
+  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, true, time);
+}
+function drawAnacondaSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
+  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, false, time);
+}
+
 // The millipede-family renderer: draws the head at the enemy's own (x, y)/
 // heading like any other enemy, then walks the trail to place each
 // trailing segment at a fixed arc-length distance behind it, each with its
 // own heading computed from the segment just ahead of it — this is what
 // actually produces the "curls around corners" look instead of the whole
 // body snapping to one rotation.
-function renderMillipedeBody(ctx, enemy) {
+function renderMillipedeBody(ctx, enemy, time) {
   const body = MILLIPEDE_BODY[enemy.enemyKey] || DEFAULT_MILLIPEDE_BODY;
+  const draw = body.segmentDrawFn || drawMillipedeSegment;
   const spacing = enemy.radius * body.spacingFactor;
 
-  drawMillipedeSegment(ctx, enemy.x, enemy.y, enemy.radius, enemy.color, enemy.heading, 0);
+  draw(ctx, enemy.x, enemy.y, enemy.radius, enemy.color, enemy.heading, 0, time);
 
   let prevX = enemy.x;
   let prevY = enemy.y;
@@ -1918,7 +2036,7 @@ function renderMillipedeBody(ctx, enemy) {
     const point = getTrailPointAtDistance(enemy, i * spacing);
     const heading = Math.atan2(point.y - prevY, point.x - prevX) + Math.PI; // facing back toward the segment ahead
     const taper = Math.max(0.4, 1 - i * 0.09);
-    drawMillipedeSegment(ctx, point.x, point.y, enemy.radius * taper, enemy.color, heading, i);
+    draw(ctx, point.x, point.y, enemy.radius * taper, enemy.color, heading, i, time);
     prevX = point.x;
     prevY = point.y;
   }
@@ -1965,7 +2083,7 @@ function renderEnemies(ctx, time) {
       // Millipede family: each body segment has its own position (read
       // from the trail) and its own heading, rather than the whole body
       // snapping to one rigid rotation — see renderMillipedeBody() below.
-      renderMillipedeBody(ctx, enemy);
+      renderMillipedeBody(ctx, enemy, time);
     } else {
       // Rotate the art to face the enemy's current movement heading,
       // correcting for that type's own baked-in default facing direction

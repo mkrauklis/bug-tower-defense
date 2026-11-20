@@ -76,11 +76,18 @@ test('applyModeToWaveComposition never rounds health down to 0', () => {
 // still works with them folded in.
 const ARMORED_BEETLE_KEYS = ['carapaceBeetle', 'ironshellBeetle', 'titanBeetle'];
 
+// Snakes (direct request) are Deep Forest's own tier-3 roster, so they
+// only appear in that map's own listing, between its tier-2 types and the
+// shared armored beetles — same "roster.orderTier3" slot every other map's
+// (currently-empty) tier-3 list already had room for.
+const DEEP_FOREST_SNAKE_KEYS = ['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda'];
+
 test('getAllSpawnableEnemyKeys lists the active map\'s own roster — Deep Forest by default', () => {
   const game = loadFullGameContext();
   assert.deepEqual(game.getAllSpawnableEnemyKeys(), [
     'ant', 'fireAnt', 'armoredAnt',
     'babyBeetle', 'dungBeetle', 'tigerBeetle',
+    ...DEEP_FOREST_SNAKE_KEYS,
     ...ARMORED_BEETLE_KEYS,
     'forest-boss-tier-1', 'forest-boss-tier-2',
   ]);
