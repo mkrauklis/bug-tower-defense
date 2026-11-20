@@ -70,12 +70,26 @@ const TOWER_TYPES = {
             // internal heat, about to start erupting).
             name: 'Molten Core',
             description:
-              'Sunflower turns more orange; attack speed doubles again (4x from base); damage doubles; ' +
+              'Sunflower turns more orange; attack speed increases further (2.67x from base); damage doubles; ' +
               'periodically spits a magma puddle that burns bugs standing in it.',
             cost: 300,
             effects: {
               color: '#ff7043',
-              attackIntervalMultiplier: 0.5,
+              // Balance pass (direct request — see getRoundScaling()'s own
+              // comment in enemies.js for the full writeup): this used to
+              // be another flat 0.5x (a second full speed-doubling, on top
+              // of Spark's own), combining with this path's three separate
+              // damageMultiplier:2 tiers (8x total) for a ~32x DPS
+              // multiplier from base before the puddle/orbit AoE are even
+              // counted — dramatically ahead of Solar Path's ~6x and Storm
+              // Path's ~2.5x for comparable total cost, the clearest
+              // single outlier found while reviewing all 4 towers' paths.
+              // Softened to 0.75x (interval chain becomes 0.5 * 0.75 =
+              // 0.375, i.e. 2.67x speed instead of 4x) — still the
+              // fastest-attacking Sunflower path by a wide margin once the
+              // puddle/orbit AoE are added back in, just no longer in a
+              // different league entirely.
+              attackIntervalMultiplier: 0.75,
               damageMultiplier: 2,
               // Baseline numbers, not balanced/tuned: a puddle every 5s,
               // lasting 2.5s, dealing 12 dmg/s to anything standing in its

@@ -236,32 +236,73 @@ function getUnlockedEnemyTypes(round) {
 // turned out to make every round feel the same, since the only real
 // progression was per-enemy health). Scales linearly from
 // WAVE_SIZE_AT_ROUND_1 at round 1 up to WAVE_SIZE_AT_ROUND_25 at round 25,
-// then holds flat at that cap for every round after — a deliberate choice
-// so very late waves don't grow unbounded; round-over-round difficulty past
-// 25 keeps climbing via healthMultiplier (below) and the ongoing tier-2
-// type unlocks instead of an ever-larger enemy count.
+// then — direct request, part of the balance pass documented on
+// getRoundScaling() below — keeps growing past round 25 too, just much
+// more slowly (+1 enemy every 5 rounds) up to a hard ceiling
+// (WAVE_SIZE_MAX), rather than freezing flat forever. A flat-forever cap
+// meant the back half of a long game had literally zero count pressure,
+// only healthMultiplier — some continued (gentle) count growth gives
+// late rounds a second axis of difficulty too, without waves ballooning
+// to an unmanageable/laggy size the way an uncapped linear curve would.
 const WAVE_SIZE_AT_ROUND_1 = 5;
 const WAVE_SIZE_AT_ROUND_25 = 25;
+const WAVE_SIZE_MAX = 50; // reached at round 150 under the +1/5-rounds trickle below
 
 function getTotalWaveSize(round) {
-  if (round >= 25) return WAVE_SIZE_AT_ROUND_25;
-  const progress = (round - 1) / 24; // 0 at round 1, 1 at round 25
-  return Math.round(WAVE_SIZE_AT_ROUND_1 + (WAVE_SIZE_AT_ROUND_25 - WAVE_SIZE_AT_ROUND_1) * progress);
+  if (round <= 25) {
+    const progress = (round - 1) / 24; // 0 at round 1, 1 at round 25
+    return Math.round(WAVE_SIZE_AT_ROUND_1 + (WAVE_SIZE_AT_ROUND_25 - WAVE_SIZE_AT_ROUND_1) * progress);
+  }
+  const extraPastRound25 = Math.floor((round - 25) / 5);
+  return Math.min(WAVE_SIZE_MAX, WAVE_SIZE_AT_ROUND_25 + extraPastRound25);
 }
 
-// Round-over-round health scaling — unchanged, and still stacks with the
-// count curve above rather than replacing it: rounds now get both more
-// numerous and individually tougher enemies. Not tuned — just a reasonable
-// baseline curve: +10% health every 3 rounds.
+// Round-over-round health scaling — balance pass (direct request): this
+// used to be a flat +10% every 3 rounds (linear, ~3.3%/round on average,
+// and literally flat for 2 out of every 3 rounds). That curve is the
+// actual root cause behind "difficulty doesn't escalate meaningfully
+// late-game": a single maxed-out tower path can reach a combined 20-30x
+// damage/speed multiplier from its base stats well within an early-to-
+// mid-game economy (e.g. Sunflower's Fire Path, ~32x before this same
+// pass trimmed it — see its own comment in towers.js), and a player
+// keeps adding MORE towers on top of that as rounds go on. Player power
+// compounds; the old enemy curve didn't — it grows additively while
+// player investment grows multiplicatively, so no matter how far a run
+// goes, the gap only widens in the player's favor. The fix is to make
+// enemy health compound too: a fixed 3.5% COMPOUNDING increase every
+// single round (not bucketed by 3), i.e. healthMultiplier = 1.035^(round-1).
+// This lands close to the old curve's round-25 value (2.28x new vs 1.8x
+// old — a modest, not jarring, early-game bump) but diverges hard from
+// there: 5.49x at round 50 (old: 2.6x) and 29.0x at round 100 (old:
+// 4.3x) — roughly 6-7x tougher than before by the deep late-game, which
+// is where the flat-feeling plateau actually lived.
+//
+// bounty (generateWave() below) scales by this exact same multiplier, on
+// both regular enemies and bosses, so a kill's reward keeps pace with
+// how much tankier that enemy actually is at this round — the old code
+// left bounty flat forever, which (combined with Coneflower's passive,
+// difficulty-independent income) let the player's economy float
+// completely free of how hard the current round actually was. Boss
+// health/bounty get the same treatment too (previously bosses never
+// scaled with round at all, not even the old linear curve — every boss
+// fight from its first designed round onward, round 25 or round 250
+// alike, used identical stats. getBossForRound() already falls back to
+// the strongest *designed* tier once round outgrows the roster, so this
+// is what makes a round-75 rematch of a round-50 boss actually hit
+// harder than the original fight, instead of being a verbatim replay).
+const HEALTH_GROWTH_PER_ROUND = 1.035;
+
 function getRoundScaling(round) {
   return {
-    healthMultiplier: 1 + Math.floor((round - 1) / 3) * 0.1,
+    healthMultiplier: HEALTH_GROWTH_PER_ROUND ** (round - 1),
   };
 }
 
 // Builds this round's wave as a composition list:
 // { enemyKey, name, color, radius, count, health, speedMultiplier, isBoss, bounty }
 function generateWave(round) {
+  const scaling = getRoundScaling(round);
+
   if (isBossRound(round)) {
     const boss = getBossForRound(round);
     if (!boss) return []; // no boss tier designed yet — an empty wave, not a broken one
@@ -272,17 +313,16 @@ function generateWave(round) {
         color: boss.color,
         radius: boss.radius,
         count: 1,
-        health: boss.health,
+        health: Math.round(boss.health * scaling.healthMultiplier),
         speedMultiplier: boss.speedMultiplier,
         isBoss: true,
-        bounty: boss.bounty,
+        bounty: Math.round(boss.bounty * scaling.healthMultiplier),
         tunnelInterval: boss.tunnelInterval || 0,
         tunnelDuration: boss.tunnelDuration || 0,
       },
     ];
   }
 
-  const scaling = getRoundScaling(round);
   const unlocked = getUnlockedEnemyTypes(round);
   if (unlocked.length === 0) return []; // no regular types designed/unlocked yet
   const roster = getActiveRoster();
@@ -302,7 +342,7 @@ function generateWave(round) {
       health: Math.round(type.health * scaling.healthMultiplier),
       speedMultiplier: type.speedMultiplier,
       isBoss: false,
-      bounty: type.bounty,
+      bounty: Math.round(type.bounty * scaling.healthMultiplier),
       tunnelInterval: type.tunnelInterval || 0,
       tunnelDuration: type.tunnelDuration || 0,
     };

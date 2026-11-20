@@ -88,7 +88,10 @@ test('Fire Path stacks attack interval, size, and damage as specified', () => {
   assert.equal(tower.flame, 'small');
 
   game.purchaseUpgrade(tower, 1); // Molten Core
-  assert.equal(tower.stats.attackInterval, baseInterval * 0.25);
+  // 0.75x, not another 0.5x — balance pass, softened so Fire Path isn't
+  // dramatically ahead of Solar/Storm's DPS-per-dollar; see this tier's
+  // own comment in towers.js for the full before/after math.
+  assert.equal(tower.stats.attackInterval, baseInterval * 0.5 * 0.75);
   assert.equal(tower.stats.damage, 10);
   assert.ok(tower.puddle);
 

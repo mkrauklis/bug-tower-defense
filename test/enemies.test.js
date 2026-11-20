@@ -11,18 +11,37 @@ const { loadGameContext } = require('./support/loadGame');
 // roster itself — not just the generic engine around it — is what's being
 // checked.
 
-test('getTotalWaveSize scales from 5 at round 1 up to 25 at round 25, then holds flat', () => {
+test('getTotalWaveSize scales from 5 at round 1 up to 25 at round 25, then keeps trickling up (not flat) to a hard ceiling', () => {
   const game = loadGameContext();
   assert.equal(game.getTotalWaveSize(1), 5);
   assert.equal(game.getTotalWaveSize(25), 25);
-  assert.equal(game.getTotalWaveSize(60), 25); // capped, not still climbing
   assert.ok(game.getTotalWaveSize(13) > game.getTotalWaveSize(1) && game.getTotalWaveSize(13) < game.getTotalWaveSize(25));
+
+  // Balance pass (direct request): past round 25 this used to hold flat
+  // at 25 forever — now it keeps climbing, just much more slowly
+  // (+1 enemy every 5 rounds) up to a hard ceiling, so the back half of
+  // a long game isn't left with zero count pressure.
+  assert.equal(game.getTotalWaveSize(60), 25 + Math.floor((60 - 25) / 5)); // 32, still climbing
+  assert.ok(game.getTotalWaveSize(60) > game.getTotalWaveSize(25));
+  assert.equal(game.getTotalWaveSize(10000), 50); // ceilinged, not unbounded
 });
 
-test('getRoundScaling keeps climbing regardless of round size — +10% health every 3 rounds', () => {
+test('getRoundScaling compounds 3.5% EVERY round (not bucketed), so it grows past any flat-every-3-rounds curve', () => {
   const game = loadGameContext();
   assert.equal(game.getRoundScaling(1).healthMultiplier, 1);
   assert.ok(game.getRoundScaling(10).healthMultiplier > game.getRoundScaling(1).healthMultiplier);
+  // Unlike the old "+10% every 3 rounds" bucketed curve, round 2 must
+  // already be strictly ahead of round 1 — no 2-round-long flat plateau.
+  assert.ok(game.getRoundScaling(2).healthMultiplier > game.getRoundScaling(1).healthMultiplier);
+
+  // Balance pass: this is the actual root-cause fix for "difficulty
+  // doesn't escalate late-game" — compounding growth, not linear, so it
+  // diverges sharply the further a run goes. Spot-check the exact curve.
+  assert.ok(Math.abs(game.getRoundScaling(25).healthMultiplier - 1.035 ** 24) < 1e-9);
+  assert.ok(Math.abs(game.getRoundScaling(100).healthMultiplier - 1.035 ** 99) < 1e-9);
+  // Round 100 should be dramatically harder than round 25 — not just a
+  // little, which is exactly what the old linear curve got wrong.
+  assert.ok(game.getRoundScaling(100).healthMultiplier / game.getRoundScaling(25).healthMultiplier > 10);
 });
 
 test('getActiveRoster defaults to the Forest roster (Deep Forest is the default active map)', () => {
@@ -75,17 +94,23 @@ test('every 25th round is a boss wave, keyed and prefixed with the active map\'s
   assert.equal(game.isBossRound(24), false);
   assert.equal(game.isBossRound(25), true);
 
+  // Balance pass: boss bounty (and health) now scale with round the same
+  // way regular enemies' do (see getRoundScaling()'s own comment in
+  // enemies.js) — no longer the roster's flat base bounty — so this
+  // checks the real scaled value rather than the old static 25/33.
+  const roundScaling = game.getRoundScaling(25).healthMultiplier;
+
   const forestWave = game.generateWave(25);
   assert.equal(forestWave[0].isBoss, true);
   assert.equal(forestWave[0].name, 'Queen Ant');
   assert.equal(forestWave[0].enemyKey, 'forest-boss-tier-1');
-  assert.equal(forestWave[0].bounty, 25);
+  assert.equal(forestWave[0].bounty, Math.round(game.FOREST_ROSTER.bossTypes[1].bounty * roundScaling));
 
   game.setActiveMap(game.MAP_TYPES.marshland);
   const marshWave = game.generateWave(25);
   assert.equal(marshWave[0].name, 'Frog Boss');
   assert.equal(marshWave[0].enemyKey, 'marsh-boss-tier-1');
-  assert.equal(marshWave[0].bounty, 33);
+  assert.equal(marshWave[0].bounty, Math.round(game.MARSH_ROSTER.bossTypes[1].bounty * roundScaling));
 });
 
 test('round 50 spawns each map\'s own tier-2 boss', () => {
@@ -120,6 +145,25 @@ test('an undesigned boss tier (beyond the highest designed one) falls back, not 
   const game = loadGameContext();
   const round75Wave = game.generateWave(75); // no tier-3 boss designed for either map
   assert.equal(round75Wave[0].name, 'Longhorn Beetle'); // falls back to the strongest designed tier
+});
+
+test('a round-75 rematch of the round-50 boss actually hits harder, not a verbatim replay (balance pass)', () => {
+  const game = loadGameContext();
+  const round50Boss = game.generateWave(50)[0];
+  const round75Boss = game.generateWave(75)[0];
+  assert.equal(round50Boss.enemyKey, round75Boss.enemyKey); // same fallback tier...
+  assert.ok(round75Boss.health > round50Boss.health); // ...but not the same stats
+  assert.ok(round75Boss.bounty > round50Boss.bounty);
+});
+
+test('a regular enemy\'s bounty scales with the round, same multiplier as its health (balance pass)', () => {
+  const game = loadGameContext();
+  const round1 = game.generateWave(1)[0];
+  const round40 = game.generateWave(40)[0];
+  const scaling40 = game.getRoundScaling(40).healthMultiplier;
+  assert.equal(round40.health, Math.round(round1.health * scaling40));
+  assert.equal(round40.bounty, Math.round(round1.bounty * scaling40));
+  assert.ok(round40.bounty > round1.bounty); // reward keeps pace with difficulty
 });
 
 test('generateWave degrades to an empty wave, not a crash, if a roster ever has nothing unlocked/designed', () => {
