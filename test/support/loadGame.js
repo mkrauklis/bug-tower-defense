@@ -55,6 +55,7 @@ function loadGameContext() {
       getActiveEnemies: () => activeEnemies,
       MILLIPEDE_FAMILY_KEYS, recordTrailPoint, getTrailPointAtDistance,
       MAP_TYPES, getActiveMap, setActiveMap,
+      PRODIGY_BASE_TYPE, turnIntoPurpleZombie,
     };
     `,
     context
@@ -191,7 +192,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       setSelectedTower: (tower) => { selectedTower = tower; },
       getSelectedShopItem: () => selectedShopItem,
       setSelectedShopItem: (item) => { selectedShopItem = item; },
-      SHOP_ITEMS, getShopItemCost, isTowerPlacementBlocked,
+      SHOP_ITEMS, getShopItemCost, isTowerPlacementBlocked, getTowerVisualSize,
       getConeflowerTier4Count: () => coneflowerTier4Count,
       STARTING_MONEY,
       getRound: () => round,
@@ -218,8 +219,10 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       PLAYER_STARTING_HEALTH,
       triggerGameOver,
       getGameOverStats: () => gameOverStats,
-      getTowersInRange, consumeTowersInRange,
+      getTowersInRange, consumeTowersInRange, getOtherTowersOfSameType, destroyTowers,
       getConsumedTowerEffects: () => consumedTowerEffects,
+      getProdigyOption, getProdigyTypeKeyFor,
+      PRODIGY_BASE_TYPE, updateTowerGrab, turnIntoPurpleZombie,
     };
     `,
     context

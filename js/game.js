@@ -191,6 +191,40 @@ function getShopItemCost(item) {
   return item.cost;
 }
 
+// The Fungal Mess's reanimated purple zombie deals this flat amount when it
+// reaches the goal, replacing (not adding to) the usual maxHealth-based
+// leak damage every other enemy deals — see update()'s leaked-enemy block.
+const PURPLE_ZOMBIE_LEAK_DAMAGE = 20;
+
+// Prodigies (reworked per direct request: an upgrade on an already-maxed
+// tower, not a separate standalone tower bought from the shop). Once a
+// base tower reaches tier 4 on its own chosen path, it can be upgraded ONE
+// MORE TIME into its ultimate "Prodigy" form — see activateRegion()'s
+// 'prodigy-upgrade' branch, which replaces the tower in place (same spot
+// on the field) rather than requiring a brand-new placement. Looked up by
+// base type -> Prodigy typeKey; the inverse of PRODIGY_BASE_TYPE
+// (towers.js), computed on demand rather than hand-maintained as a second
+// mapping that could drift out of sync with it.
+function getProdigyTypeKeyFor(baseTypeKey) {
+  return Object.keys(PRODIGY_BASE_TYPE).find((key) => PRODIGY_BASE_TYPE[key] === baseTypeKey) || null;
+}
+
+// The Prodigy option available for a specific tower right now, or null if
+// none applies — re-checked fresh every call (not cached), same as every
+// other live UI-gating function in this file. null covers every reason a
+// tower might not have one: it's not maxed yet, its base type doesn't have
+// a Prodigy at all (Coneflower), or that Prodigy is already capped at 1 on
+// the field (independent per type — a maxed Rose never blocks a maxed
+// Sunflower's own option, and vice versa).
+function getProdigyOption(tower) {
+  if (!tower || tower.upgradesPurchased < 4) return null;
+  const prodigyTypeKey = getProdigyTypeKeyFor(tower.type);
+  if (!prodigyTypeKey) return null;
+  if (towers.some((other) => other.type === prodigyTypeKey)) return null;
+  const prodigyType = TOWER_TYPES[prodigyTypeKey];
+  return { typeKey: prodigyTypeKey, name: prodigyType.name, cost: prodigyType.cost };
+}
+
 // How far a placed tower's center must stay from the path's centerline,
 // on top of the path's own half-width — keeps towers clear of the lane
 // instead of just touching its edge.
@@ -421,7 +455,8 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
     damage: tower.stats.damage * damageMultiplier,
     burn: tower.burn,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
-    shape: tower.attackType === 'fireball' ? 'fireball' : tower.type === 'mushroom' ? 'spore' : 'petal',
+    shape:
+      tower.attackType === 'fireball' ? 'fireball' : tower.type === 'mushroom' || tower.type === 'fungalMess' ? 'spore' : 'petal',
     // Mushroom's Zombify: carried per-projectile (not read from the tower
     // at resolve time) since the tower that fired it is the one and only
     // source of truth for "was this a spore, and at what chance/damage" —
@@ -429,6 +464,13 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
     isSpore: tower.type === 'mushroom',
     zombifyChance: tower.type === 'mushroom' ? tower.zombifyChance : 0,
     zombieExplosionDamage: tower.type === 'mushroom' ? tower.zombieExplosionDamage : 0,
+    // The Fungal Mess (Mushroom's Prodigy): a completely separate roll from
+    // Zombify above (deliberately not folded into isSpore/zombifyChance —
+    // see towers.js's own comment on reanimateChance for why these two
+    // "a kill doesn't quite take" mechanics are kept apart) that can
+    // reanimate its own killing blow's victim as a purple zombie instead —
+    // see resolveProjectile() below and turnIntoPurpleZombie() in enemies.js.
+    reanimateChance: tower.type === 'fungalMess' ? tower.reanimateChance : 0,
     resolved: false,
   });
 }
@@ -465,6 +507,21 @@ function resolveProjectile(projectile) {
     random() < projectile.zombifyChance
   ) {
     turnIntoZombie(target, projectile.zombieExplosionDamage);
+  }
+
+  // The Fungal Mess's reanimation: same "only this hit's own killing blow
+  // counts, never a boss" shape as Zombify above, just a separate chance
+  // rolled independently (a target could in principle be eligible for
+  // both rolls if some future upgrade let it, and they wouldn't interact —
+  // whichever check runs first and succeeds wins, since both set health
+  // back to a positive number and return via their own distinct flag).
+  if (
+    target.health <= 0 &&
+    !target.isBoss &&
+    projectile.reanimateChance > 0 &&
+    random() < projectile.reanimateChance
+  ) {
+    turnIntoPurpleZombie(target);
   }
 }
 
@@ -605,7 +662,28 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.roots.length > 0) updateTowerRoots(tower);
   if (tower.hasThornShot) updateTowerThornShot(tower, x, y, deltaSeconds);
   if (tower.infectStun) updateTowerInfectStun(tower, x, y, deltaSeconds);
+  if (tower.grabInterval > 0) updateTowerGrab(tower, x, y, deltaSeconds);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
+}
+
+// The Mangler (Rose's Prodigy) only: every grabInterval seconds, grabs one
+// random non-boss enemy currently in range, dealing grabDamage bonus
+// damage and holding it immobilized for grabDuration — additive on top of
+// the tower's own normal continuous attack above, not a replacement (same
+// "a second independent effect on its own cooldown" shape as every other
+// periodic add-on in this file). Reuses the existing immobilizedRemaining
+// field — the same one Rose's own Root Path grab sets — rather than
+// inventing a parallel "held" state.
+function updateTowerGrab(tower, x, y, deltaSeconds) {
+  tower.grabCooldown -= deltaSeconds;
+  if (tower.grabCooldown > 0) return;
+  tower.grabCooldown = tower.grabInterval;
+
+  const eligible = getEnemiesInRadius(x, y, tower.stats.range).filter((enemy) => !enemy.isBoss);
+  if (eligible.length === 0) return;
+  const victim = eligible[Math.floor(random() * eligible.length)];
+  damageEnemy(victim, tower.grabDamage);
+  victim.immobilizedRemaining = Math.max(victim.immobilizedRemaining, tower.grabDuration);
 }
 
 // Mushroom's Infect Path (all 4 tiers): once a second, independently roll
@@ -638,6 +716,27 @@ function getTowersInRange(mushroom) {
   return towers.filter((tower) => tower !== mushroom && Math.hypot(tower.x - mushroom.x, tower.y - mushroom.y) <= mushroom.stats.range);
 }
 
+// Every other tower on the field sharing `tower`'s own base type — what
+// the Prodigy upgrade destroys when it transforms `tower` (direct
+// request). A plain query function, same "shared by the confirm-prompt
+// preview and the thing that actually destroys them" reasoning as
+// getTowersInRange() above.
+function getOtherTowersOfSameType(tower) {
+  return towers.filter((other) => other !== tower && other.type === tower.type);
+}
+
+// Removes every tower in `victims` from the field, no refund, each leaving
+// behind the same fading "consumed" ring effect — shared by Neurological
+// (consumeTowersInRange(), below) and the Prodigy upgrade's same-type
+// destruction (activateRegion()'s 'prodigy-upgrade' branch) rather than
+// each duplicating this.
+function destroyTowers(victims) {
+  victims.forEach((tower) => {
+    consumedTowerEffects.push({ x: tower.x, y: tower.y, remaining: CONSUMED_EFFECT_DURATION });
+  });
+  towers = towers.filter((tower) => !victims.includes(tower));
+}
+
 // Neurological's one-time effect: instantly destroys every other tower
 // currently in range, no refund, the moment it's purchased — confirmed by
 // the user as a ONE-TIME effect, not an ongoing aura, so this runs once
@@ -645,11 +744,7 @@ function getTowersInRange(mushroom) {
 // later. Towers placed afterward, or towers that move into range later,
 // are never touched by it.
 function consumeTowersInRange(mushroom) {
-  const victims = getTowersInRange(mushroom);
-  victims.forEach((tower) => {
-    consumedTowerEffects.push({ x: tower.x, y: tower.y, remaining: CONSUMED_EFFECT_DURATION });
-  });
-  towers = towers.filter((tower) => !victims.includes(tower));
+  destroyTowers(getTowersInRange(mushroom));
 }
 
 // Rose's Projectile Path: a second, independent ranged attack alongside the
@@ -884,7 +979,13 @@ function update(deltaSeconds) {
   if (!currentMode.sandbox) {
     const leaked = getLastLeakedEnemies();
     if (leaked.length > 0) {
-      const totalDamage = leaked.reduce((sum, enemy) => sum + enemy.maxHealth, 0);
+      // A purple zombie (The Fungal Mess's reanimation) deals a flat 20
+      // instead of its own maxHealth — per spec, this replaces the usual
+      // health-based leak damage for that one enemy, it doesn't add to it.
+      const totalDamage = leaked.reduce(
+        (sum, enemy) => sum + (enemy.isPurpleZombie ? PURPLE_ZOMBIE_LEAK_DAMAGE : enemy.maxHealth),
+        0
+      );
       playerHealth = Math.max(0, playerHealth - totalDamage);
       if (playerHealth <= 0) {
         triggerGameOver();
@@ -1194,6 +1295,26 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
   y = renderUpgradePaths(ctx, x, width, y) + 10;
 
   if (selectedTower) {
+    // The Prodigy upgrade (direct request): offered here, below the 3
+    // regular paths, rather than as a 4th path column — it isn't tied to
+    // any one of them (a tower reaches it from whichever path it maxed),
+    // and it replaces the whole tower rather than adding one more tier.
+    const prodigyOption = getProdigyOption(selectedTower);
+    if (prodigyOption) {
+      const affordableProdigy = canAfford(prodigyOption.cost);
+      uiDrawButton(ctx, {
+        x,
+        y,
+        w: width,
+        h: 28,
+        label: `Become ${prodigyOption.name} ($${prodigyOption.cost})`,
+        state: affordableProdigy ? 'accent' : 'disabled',
+        hovered: Boolean(hoverRegion) && hoverRegion.id === 'prodigy-upgrade',
+      });
+      uiRegisterRegion('prodigy-upgrade', x, y, width, 28, prodigyOption);
+      y += 36;
+    }
+
     const refund = getSellRefund(selectedTower);
     uiDrawButton(ctx, {
       x,
@@ -2067,6 +2188,14 @@ function getTooltipLines(region) {
     return [item.name, `$${getShopItemCost(item)} — place on open ground`];
   }
 
+  if (region.id === 'prodigy-upgrade') {
+    const option = region.data;
+    return [
+      `Become ${option.name}`,
+      `$${option.cost} — replaces this tower in place with its ultimate form.`,
+    ];
+  }
+
   if (region.id.startsWith('upgrade:')) {
     const { upgrade, bought, isLockedOut } = region.data;
     ctx.font = '12px sans-serif';
@@ -2125,6 +2254,54 @@ function activateRegion(region) {
   if (region.id.startsWith('shop:')) {
     const item = region.data;
     selectedShopItem = selectedShopItem === item ? null : item;
+    return;
+  }
+
+  if (region.id === 'prodigy-upgrade') {
+    if (!selectedTower) return;
+    // Re-validated here, not just trusted from the button's own render —
+    // the option is live (another tower could grab the last singleton-cap
+    // slot, or this exact tower could already have stopped qualifying)
+    // between the frame that drew the button and the click landing on it.
+    const option = getProdigyOption(selectedTower);
+    if (!option || !canAfford(option.cost)) return;
+    if (!towers.includes(selectedTower)) return;
+
+    // Direct request: becoming a Prodigy destroys every OTHER tower of the
+    // same base type still on the field (e.g. every other Sunflower, the
+    // moment this one becomes The Sunlit Conductor) — a real tradeoff for
+    // the upgrade's power, not a free lateral move. Same no-refund,
+    // confirm-first treatment as Mushroom's Neurological upgrade above
+    // (same destroyTowers() helper and visual effect too), and skipped
+    // entirely when there's nothing else of that type to lose.
+    const sameTypeVictims = getOtherTowersOfSameType(selectedTower);
+    if (sameTypeVictims.length > 0) {
+      const baseName = TOWER_TYPES[selectedTower.type].name;
+      const confirmed = confirm(
+        `Becoming ${option.name} will destroy ${sameTypeVictims.length} other ${baseName}(s) on the field. No refund. Continue?`
+      );
+      if (!confirmed) return;
+    }
+
+    // Transforms the tower in place: a brand-new Prodigy tower (clean
+    // defaults for every upgrade-effect field — none of the old tower's
+    // path effects carry over, it's a genuinely different tower, not a
+    // 4th tier bolted onto the old one) at the exact same spot, with
+    // everything ever spent on the old tower plus this upgrade's own cost
+    // folded into its moneySpent — so selling it afterward refunds a fair
+    // share of the whole investment, not just this last step.
+    const prodigy = createTower(option.typeKey);
+    prodigy.x = selectedTower.x;
+    prodigy.y = selectedTower.y;
+    prodigy.moneySpent = selectedTower.moneySpent + option.cost;
+
+    if (sameTypeVictims.length > 0) destroyTowers(sameTypeVictims);
+    // destroyTowers() (when it ran) just reassigned `towers` to a filtered
+    // copy — selectedTower itself is never in that filter, so it's still
+    // in the new array, just possibly at a different index than before.
+    towers[towers.indexOf(selectedTower)] = prodigy;
+    selectedTower = prodigy;
+    money -= option.cost;
     return;
   }
 

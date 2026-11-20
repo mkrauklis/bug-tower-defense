@@ -629,6 +629,12 @@ function createEnemyInstance(entry, spawnDelay) {
     isZombie: false,
     markedForRemoval: false,
     zombieExplosionDamage: 0,
+    // The Fungal Mess (Mushroom's Prodigy) only: a deliberately much
+    // simpler, separate reanimation state from isZombie above — see
+    // turnIntoPurpleZombie() below for exactly why it's kept apart (no
+    // backward walk, no explosion, just a flat-damage leak) despite both
+    // being "a kill that doesn't quite take."
+    isPurpleZombie: false,
     // Armored beetles (and any future enemy that sets its own
     // armorThreshold on its roster/tier entry): a hard per-hit minimum-
     // damage gate, enforced generically in damageEnemy() below — any
@@ -926,7 +932,7 @@ function updateEnemies(deltaSeconds) {
   // from resolveProjectile() before this sweep ever sees it as "killed")
   // — a zombie's own eventual removal (below) is never a bounty-eligible
   // kill either.
-  const killed = activeEnemies.filter((enemy) => enemy.health <= 0 && !enemy.isZombie);
+  const killed = activeEnemies.filter((enemy) => enemy.health <= 0 && !enemy.isZombie && !enemy.isPurpleZombie);
 
   // Enemies that reached the goal alive this frame (the base/player-health
   // system in game.js reads this right after calling updateEnemies() to
@@ -966,6 +972,25 @@ function turnIntoZombie(enemy, explosionDamage) {
   // the enemy's current position" (forward movement always targets
   // waypointIndex + 1), which is exactly the first target a backward walk
   // needs.
+}
+
+// The Fungal Mess's (Mushroom's Prodigy) reanimation: converts a just-
+// killed, non-boss enemy into a "purple zombie" instead of letting it be
+// swept up as a normal kill — called from resolveProjectile() in game.js
+// when its reanimateChance roll succeeds. Deliberately NOT isZombie: true
+// — a purple zombie is a much simpler, distinct state (per direct
+// instruction, to keep it from colliding with Decay Path's own zombie
+// system): resetting health to a positive number here is enough on its
+// own to dodge the next frame's "killed" sweep above (the same trick
+// turnIntoZombie() uses), and since isZombie/isPurpleZombie both stay
+// false/true independently, updateEnemies() just keeps running this
+// enemy through its ordinary forward-movement code with no rerouting —
+// it walks toward the goal at its own normal speed, same as before it
+// died, and deals the flat purple-zombie leak damage (see game.js's
+// update()) instead of its own maxHealth if it gets there.
+function turnIntoPurpleZombie(enemy) {
+  enemy.isPurpleZombie = true;
+  enemy.health = 1;
 }
 
 // How close a zombie needs to get to a living enemy to detonate.
@@ -1961,6 +1986,14 @@ function renderEnemies(ctx, time) {
         // with enemy.color swapped out for the duration of this one call.
         const originalColor = enemy.color;
         enemy.color = '#4caf50';
+        drawEnemyShape(ctx, enemy);
+        enemy.color = originalColor;
+      } else if (enemy.isPurpleZombie) {
+        // Same color-swap trick as the green Decay-Path zombie above, just
+        // purple and with no mushroom-cap decoration — that decoration is
+        // specific to that other, unrelated zombie state.
+        const originalColor = enemy.color;
+        enemy.color = '#ab47bc';
         drawEnemyShape(ctx, enemy);
         enemy.color = originalColor;
       } else {

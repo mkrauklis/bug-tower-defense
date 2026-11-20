@@ -678,6 +678,92 @@ const TOWER_TYPES = {
       null, // Path 3 — not yet designed
     ],
   },
+  // Prodigies (direct request, reworked from an earlier standalone-tower
+  // design to an UPGRADE instead): one ultimate, 4th-tier form per base
+  // type (Sunflower/Rose/Mushroom — Coneflower doesn't get one, it's a
+  // different kind of tower entirely). Once a tower of one of these 3
+  // types reaches tier 4 on its own chosen path, it can be upgraded one
+  // more time into this — see getProdigyOption()/activateRegion()'s
+  // 'prodigy-upgrade' branch in game.js, which replaces the tower in
+  // place (same spot on the field, no separate purchase-and-place step)
+  // rather than requiring a brand-new tower. No upgrade paths of their
+  // own — they're already the reward for maxing one out, not a tower to
+  // max out further — same "every tower visibly has 3 slots" convention
+  // as every other tower, just all 3 slots null here. Capped at 1 of each
+  // on the field at a time, independently per type (see getProdigyOption()
+  // in game.js).
+  sunlitConductor: {
+    name: 'The Sunlit Conductor',
+    cost: 30000, // the price of the Prodigy UPGRADE itself — see getProdigyOption() in game.js
+    baseStats: {
+      damage: 65,
+      size: 32,
+      color: '#ffd700',
+      range: 200,
+      // Direct request: Prodigies attack 2x faster than the literal "once
+      // a second" spec reading — 65 damage every 0.5s = 130 dps.
+      attackInterval: 0.5,
+    },
+    baseAttackType: 'ray', // an instant, continuous-reading beam — see createTower()'s own comment
+    upgradePaths: [null, null, null],
+  },
+  mangler: {
+    name: 'The Mangler',
+    cost: 45000,
+    baseStats: {
+      damage: 40,
+      size: 30,
+      color: '#ad1457',
+      range: 200,
+      // Direct request: Prodigies attack 2x faster — 40 damage every 0.5s
+      // = 80 dps continuous, same convention as Sunlit Conductor.
+      attackInterval: 0.5,
+    },
+    // Every 5s: grabs one random non-boss enemy in range, holds it 1s,
+    // 50 bonus damage — additive on top of the continuous 80 dps above,
+    // not a replacement. The grab's own 5s cadence is untouched by the
+    // 2x attack-speed change — "attack" refers to the base continuous
+    // attack above, not this separate periodic ability. See
+    // updateTowerGrab() in game.js.
+    grabInterval: 5,
+    grabDamage: 50,
+    grabDuration: 1,
+    upgradePaths: [null, null, null],
+  },
+  fungalMess: {
+    name: 'The Fungal Mess',
+    cost: 60000,
+    baseStats: {
+      damage: 50,
+      size: 30,
+      color: '#4a148c',
+      range: 200,
+      // Mushroom's own natural cadence (every 1s, "every hit" per the
+      // spec) would otherwise match TOWER_TYPES.mushroom's own
+      // attackInterval directly — halved on top of that per the later
+      // direct request that all 3 Prodigies attack 2x faster.
+      attackInterval: 0.5,
+    },
+    // 15% chance a killing blow reanimates the victim as a purple
+    // zombie instead of it dying outright — see turnIntoPurpleZombie()
+    // in enemies.js and resolveProjectile()'s own reanimateChance roll
+    // in game.js (the same shape as Decay Path's zombifyChance roll,
+    // deliberately a separate chance/flag so the two never collide).
+    reanimateChance: 0.15,
+    upgradePaths: [null, null, null],
+  },
+};
+
+// Keyed by Prodigy typeKey -> the base tower type it's the ultimate
+// form of. The one place this mapping lives — getProdigyOption() in
+// game.js reads through it (both directions — see its own
+// getProdigyTypeKeyFor() helper), so a future Prodigy only needs an
+// entry here (plus its own TOWER_TYPES entry with a `cost`) to get the
+// generic tier-4-upgrade/singleton-cap treatment for free.
+const PRODIGY_BASE_TYPE = {
+  sunlitConductor: 'sunflower',
+  mangler: 'rose',
+  fungalMess: 'mushroom',
 };
 
 function createTower(typeKey) {
@@ -689,7 +775,12 @@ function createTower(typeKey) {
     chosenPath: null,
     upgradesPurchased: 0, // count of upgrades bought within the chosen path
     stats: { ...type.baseStats },
-    attackType: 'projectile',
+    // 'projectile' unless a type states its own baseAttackType (Prodigies
+    // only, so far — e.g. the Sunlit Conductor's continuous ray — since
+    // every other tower starts as a thrown projectile and only switches
+    // via an upgrade effect; Prodigies have no upgrades of their own to
+    // do that switch with, so they need to be able to state it up front).
+    attackType: type.baseAttackType || 'projectile',
     glow: null,
     burn: null,
     flame: null, // 'small' | 'large' — a visual-only flame overlay
@@ -824,6 +915,25 @@ function createTower(typeKey) {
     hasTallPlant: false, // Plantation tier only — purely visual (drawConeflower())
     hasExtraStems: false, // Quality Path's High Standard tier and up — purely visual (drawConeflower())
     hasRedMist: false, // Quality Path's Perfect Condition tier only — purely visual (drawConeflower())
+    // The Mangler (Rose's Prodigy) only: every grabInterval seconds,
+    // grabs one random non-boss enemy in range for grabDamage bonus
+    // damage, holding it immobilized for grabDuration — on top of (not
+    // instead of) the tower's own normal continuous attack. See
+    // updateTowerGrab() in game.js. 0 for every tower without a
+    // grabInterval of its own, so the `if (tower.grabInterval > 0)` gate
+    // in updateTowerAttack skips everyone else entirely. grabCooldown
+    // starts at the full interval, same "don't fire instantly" convention
+    // every other periodic effect in this file already uses.
+    grabInterval: type.grabInterval || 0,
+    grabDamage: type.grabDamage || 0,
+    grabDuration: type.grabDuration || 0,
+    grabCooldown: type.grabInterval || 0,
+    // The Fungal Mess (Mushroom's Prodigy) only: chance, on a killing
+    // blow, that the victim reanimates as a purple zombie instead of
+    // dying outright — a completely separate state from Decay Path's
+    // isZombie (see turnIntoPurpleZombie() in enemies.js for exactly how
+    // and why). 0 for every tower without one.
+    reanimateChance: type.reanimateChance || 0,
   };
 }
 
@@ -1177,6 +1287,12 @@ function renderTower(ctx, tower, x, y, time) {
       tower.numPlants,
       tower.hasTallPlant
     );
+  } else if (tower.type === 'sunlitConductor') {
+    drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
+  } else if (tower.type === 'mangler') {
+    drawMangler(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
+  } else if (tower.type === 'fungalMess') {
+    drawFungalMess(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
   } else {
     // Fallback for any future tower type without custom art yet.
     ctx.fillStyle = tower.stats.color;
@@ -2095,4 +2211,98 @@ function drawConeflower(ctx, x, y, size, color, glow, time, flashAmount, hasExtr
   if (hasRedMist) drawConeflowerRedMist(ctx, x, y, size, time);
 
   ctx.restore();
+}
+
+// --- Prodigies ---------------------------------------------------------
+
+// A large, slowly spinning sun disc with radiating rays, drawn BEHIND the
+// sunflower it belongs to (called before drawSunflower below) — the one
+// feature the spec calls for beyond "giant sunflower."
+function drawRotatingSun(ctx, x, y, radius, time) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(time * 0.5);
+  ctx.fillStyle = 'rgba(255, 215, 0, 0.35)';
+  const rayCount = 12;
+  for (let i = 0; i < rayCount; i += 1) {
+    ctx.save();
+    ctx.rotate((i / rayCount) * Math.PI * 2);
+    ctx.beginPath();
+    ctx.moveTo(0, -radius * 0.5);
+    ctx.lineTo(radius * 0.1, -radius * 1.15);
+    ctx.lineTo(-radius * 0.1, -radius * 1.15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(255, 235, 150, 0.45)';
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Sunflower's Prodigy ($30,000, direct request): just the shared
+// drawSunflower() body — already exactly "a sunflower," nothing about
+// its own shape needs to change — with the rotating sun behind it as the
+// one new visual element.
+function drawSunlitConductor(ctx, x, y, size, color, glow, time, flashAmount) {
+  drawRotatingSun(ctx, x, y, size * 1.6, time);
+  drawSunflower(ctx, x, y, size, color, glow, time, flashAmount);
+}
+
+// A handful of long, independently swaying vines, each ending in a
+// small bud — purely decorative here (The Mangler's real grab mechanic
+// is a plain damage/immobilize roll, not a per-vine simulation), but
+// visually read as "the thing that's doing the grabbing" per the spec.
+function drawManglerVines(ctx, x, y, size, time) {
+  const vineCount = 4;
+  for (let i = 0; i < vineCount; i += 1) {
+    const baseAngle = (i / vineCount) * Math.PI * 2;
+    const sway = Math.sin(time * 1.8 + i * 1.7) * 0.6;
+    const len = size * 1.3;
+    const startAngle = baseAngle;
+    const endAngle = baseAngle + sway;
+    const startX = x + Math.cos(startAngle) * size * 0.3;
+    const startY = y + Math.sin(startAngle) * size * 0.3 * 0.6;
+    const endX = x + Math.cos(endAngle) * len;
+    const endY = y + Math.sin(endAngle) * len * 0.6;
+    const ctrlAngle = endAngle + Math.PI / 2;
+    const ctrlX = (startX + endX) / 2 + Math.cos(ctrlAngle) * size * 0.3;
+    const ctrlY = (startY + endY) / 2 + Math.sin(ctrlAngle) * size * 0.3 * 0.6;
+
+    ctx.strokeStyle = '#2e7d32';
+    ctx.lineWidth = Math.max(2, size * 0.1);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+    ctx.stroke();
+
+    ctx.fillStyle = '#c2185b';
+    ctx.beginPath();
+    ctx.arc(endX, endY, size * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Rose's Prodigy ($45,000, direct request): the shared drawRose() body
+// with tallStem forced on ("an extra-long stem" per the spec) plus the
+// swinging vines above — drawn first/behind, same "rooted appendages
+// render under the bloom" convention the regular vine-growing Thorn
+// Path already follows.
+function drawMangler(ctx, x, y, size, color, glow, time, flashAmount) {
+  drawManglerVines(ctx, x, y, size, time);
+  drawRose(ctx, x, y, size, color, glow, time, flashAmount, true, false, 0, false);
+}
+
+// Mushroom's Prodigy ($60,000, direct request): a genuine cluster — two
+// smaller, differently-shaded caps drawn first/behind and offset to each
+// side, then the main cap on top with a drifting purple spore cloud and
+// particles — "a mess," not one tidy mushroom.
+function drawFungalMess(ctx, x, y, size, color, glow, time, flashAmount) {
+  drawMushroom(ctx, x - size * 0.45, y + size * 0.12, size * 0.55, shadeColor(color, 15), null, time, 0, 1, false, null, 1, false, 0, false);
+  drawMushroom(ctx, x + size * 0.45, y + size * 0.18, size * 0.5, shadeColor(color, -15), null, time, 0, 1, false, null, 1, false, 0, false);
+  drawMushroom(ctx, x, y, size, color, glow, time, flashAmount, 1, false, 'rgba(171, 71, 188, 0.5)', 1, false, 0, true);
 }
