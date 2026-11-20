@@ -2297,12 +2297,50 @@ function drawMangler(ctx, x, y, size, color, glow, time, flashAmount) {
   drawRose(ctx, x, y, size, color, glow, time, flashAmount, true, false, 0, false);
 }
 
-// Mushroom's Prodigy ($60,000, direct request): a genuine cluster — two
-// smaller, differently-shaded caps drawn first/behind and offset to each
-// side, then the main cap on top with a drifting purple spore cloud and
-// particles — "a mess," not one tidy mushroom.
+// A ring of soft, slowly rotating purple fog blobs circling the whole
+// tower at a wide radius — the follow-up request's "purple fog/mist
+// circling around it," distinct from drawMushroomGas's rising puff
+// (anchored above the cap, drifts straight up) and sporeParticles'
+// drifting flecks (tight orbit near the cap only): this one visibly
+// sweeps around the tower's full body, flattened into an ellipse so it
+// reads as mist swirling at ground level rather than steam off the cap.
+function drawFungalMessMist(ctx, x, y, size, time) {
+  const mistCount = 4;
+  const radius = size * 1.1;
+  for (let i = 0; i < mistCount; i += 1) {
+    const angle = time * 0.5 + (i / mistCount) * Math.PI * 2;
+    const mx = x + Math.cos(angle) * radius;
+    const my = y + Math.sin(angle) * radius * 0.5;
+    const pulse = 0.5 + 0.5 * Math.sin(time * 2 + i);
+    ctx.fillStyle = `rgba(171, 71, 182, ${0.18 + pulse * 0.12})`;
+    ctx.beginPath();
+    ctx.arc(mx, my, size * (0.28 + pulse * 0.08), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Mushroom's Prodigy ($60,000, direct request; visual revised per a
+// follow-up spec — "a giant purple mushroom with a bunch of tiny
+// mushrooms growing out of its body, and a purple fog/mist circling
+// around it"): one big central mushroom (the same drawMushroom() body
+// every tier of the base tower already uses, at full size) with several
+// small sprouts clustered tight around its own base/stem — close enough
+// to read as growing FROM it, not as separate same-size neighbors the
+// way an earlier version of this tower drew its cluster — plus the
+// circling mist above, drawn first/behind everything.
 function drawFungalMess(ctx, x, y, size, color, glow, time, flashAmount) {
-  drawMushroom(ctx, x - size * 0.45, y + size * 0.12, size * 0.55, shadeColor(color, 15), null, time, 0, 1, false, null, 1, false, 0, false);
-  drawMushroom(ctx, x + size * 0.45, y + size * 0.18, size * 0.5, shadeColor(color, -15), null, time, 0, 1, false, null, 1, false, 0, false);
-  drawMushroom(ctx, x, y, size, color, glow, time, flashAmount, 1, false, 'rgba(171, 71, 188, 0.5)', 1, false, 0, true);
+  drawFungalMessMist(ctx, x, y, size, time);
+  drawMushroom(ctx, x, y, size, color, glow, time, flashAmount, 1, false, null, 1, false, 0, true);
+
+  // The tiny sprouts are drawn LAST, on top of the main mushroom, at a
+  // radius that pokes out just past its stem base — so they read as
+  // growing out of its body instead of being hidden behind it.
+  const sproutCount = 5;
+  for (let i = 0; i < sproutCount; i += 1) {
+    const angle = (i / sproutCount) * Math.PI * 2 + 0.4;
+    const dist = size * 0.62;
+    const sx = x + Math.cos(angle) * dist;
+    const sy = y + size * 0.65 + Math.sin(angle) * dist * 0.3;
+    drawMushroom(ctx, sx, sy, size * 0.22, shadeColor(color, i % 2 === 0 ? 20 : -10), null, time, 0, 1, false, null, 1, false, 0, false);
+  }
 }
