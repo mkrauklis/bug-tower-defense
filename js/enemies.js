@@ -373,10 +373,74 @@ const OCEAN_ROSTER = {
   orderTier3: ['stingray', 'tuna', 'marlin'],
 };
 
+// Tundra (direct request): a snowy Hard-tier roster, given as one ordered,
+// weakest-to-strongest list of 12 (3 regular tiers of 3 plus 3 bosses at
+// positions 4/8/12) — the exact same shape Whirlpool's own 12-entry list
+// used, so it maps directly onto this file's existing
+// order/bossTypes[1]/orderTier2/bossTypes[2]/orderTier3/bossTypes[3]
+// structure with zero engine changes, only data.
+//
+// No health/speed numbers were given — calibrated directly against
+// Whirlpool's own CURRENT numbers (not some earlier pre-retune baseline —
+// this is brand-new content added after the 3rd balance pass, same
+// position Whirlpool itself was in when IT was first added, so there's no
+// historical number to retune relative to): tier1 ~14-24hp, tier2 ~130-
+// 205hp, tier3 ~340-520hp, boss1(round25) 320hp, boss2(round50) 620hp —
+// each a bit ABOVE Whirlpool's own equivalent tier, per the request's
+// "matching or exceeding Whirlpool's intensity." Giant Arctic Wolf
+// Spider (boss3/round75, explicitly "the toughest thing in this roster,
+// same pattern as Whirlpool's Great White") goes well past even that —
+// 1800hp, above Great White's own 1400 — a genuine new high-water mark,
+// not just another step up the curve. Bounty follows this file's usual
+// ~40%-of-health convention for regular enemies and the cleaner 50%-of-
+// health convention Whirlpool's own bosses use.
+//
+// Speed is the "weakest to strongest" list's OTHER axis, same spirit as
+// every other roster: smaller/faster fliers up front (deer flies and
+// bumblebees are notoriously quick/annoying), heavier/slower things
+// (beetles, the woolly bear's fuzzy caterpillar-like bulk) trending
+// slower despite more health, same non-monotonic-with-health pattern
+// Whirlpool's own tuna/marlin already established.
+//
+// Tundra's own difficulty TIER (MAP_DIFFICULTY_MULTIPLIER, this file) is
+// set to match Whirlpool's 1.8x Hard multiplier exactly rather than
+// exceed it — see that constant's own comment for why a second, even-
+// higher map multiplier felt redundant once these numbers already push
+// the roster itself past Whirlpool's own.
+const TUNDRA_ROSTER = {
+  enemyTypes: {
+    arcticBumblebee: { name: 'Arctic Bumblebee', speedMultiplier: 0.85, health: 14, color: '#2b2420', radius: 7, bounty: 6 },
+    deerFly: { name: 'Deer Fly', speedMultiplier: 1.0, health: 18, color: '#5c5048', radius: 6, bounty: 8 },
+    arcticMoth: { name: 'Arctic Moth', speedMultiplier: 0.55, health: 24, color: '#d8dde2', radius: 9, bounty: 10 },
+    arcticRinglet: { name: 'Arctic Ringlet', speedMultiplier: 0.7, health: 130, color: '#6b5a42', radius: 7, bounty: 55 },
+    snowScorpionFly: { name: 'Snow Scorpion Fly', speedMultiplier: 0.75, health: 165, color: '#8a7a5c', radius: 7, bounty: 70 },
+    arcticBluet: { name: 'Arctic Bluet', speedMultiplier: 0.85, health: 205, color: '#3a7ab8', radius: 6, bounty: 85 },
+    polarBumblebee: { name: 'Polar Bumblebee', speedMultiplier: 0.8, health: 340, color: '#f0f4f7', radius: 9, bounty: 140 },
+    snowGroundBeetle: { name: 'Snow Ground Beetle', speedMultiplier: 0.55, health: 420, color: '#23282b', radius: 9, bounty: 170 },
+    wolfSpider: { name: 'Wolf Spider', speedMultiplier: 0.75, health: 520, color: '#5a4a3a', radius: 10, bounty: 210 },
+  },
+  bossTypes: {
+    1: { name: 'Arctic Fritillary', speedMultiplier: 0.5, health: 320, color: '#e8923a', radius: 16, bounty: 160 },
+    2: { name: 'Arctic Woolly Bear Moth', speedMultiplier: 0.4, health: 620, color: '#4a3826', radius: 19, bounty: 310 },
+    // The map's true final boss, same "noticeably tougher, not just
+    // incrementally so" billing Great White got on Whirlpool.
+    3: { name: 'Giant Arctic Wolf Spider', speedMultiplier: 0.45, health: 1800, color: '#3a2e24', radius: 23, bounty: 900 },
+  },
+  order: ['arcticBumblebee', 'deerFly', 'arcticMoth'],
+  orderTier2: ['arcticRinglet', 'snowScorpionFly', 'arcticBluet'],
+  orderTier3: ['polarBumblebee', 'snowGroundBeetle', 'wolfSpider'],
+};
+
 // Keyed by TERRAIN id (map.js's TERRAIN_THEMES keys — 'forest'/'marsh'/
 // 'desert'), not the map's own id ('deepForest'/'marshland'/'savanah') —
 // getActiveRoster() below looks this up via getActiveMap().terrain.
-const MAP_ROSTERS = { forest: FOREST_ROSTER, marsh: MARSH_ROSTER, desert: SAVANAH_ROSTER, ocean: OCEAN_ROSTER };
+const MAP_ROSTERS = {
+  forest: FOREST_ROSTER,
+  marsh: MARSH_ROSTER,
+  desert: SAVANAH_ROSTER,
+  ocean: OCEAN_ROSTER,
+  tundra: TUNDRA_ROSTER,
+};
 
 // Falls back to the Forest roster if the active map's terrain isn't a
 // known key (shouldn't happen — every terrain id in map.js's
@@ -692,6 +756,16 @@ const MAP_DIFFICULTY_MULTIPLIER = {
   marsh: 1.3, // Medium
   desert: 1.3, // Medium
   ocean: 1.8, // Hard
+  // Tundra (direct request): explicitly Hard-tier too. Given the choice of
+  // matching Whirlpool's own 1.8x or going slightly above it, matched it
+  // exactly — the roster's own individually-tuned numbers (see
+  // TUNDRA_ROSTER's own comment) already push its intensity to feel
+  // comparable to or past Whirlpool's at equivalent rounds, so a second,
+  // even-higher map multiplier on top felt like double-counting "Hard"
+  // rather than adding anything distinct. Keeping Hard-tier maps at one
+  // consistent multiplier also means the roster's own numbers are the
+  // one place a future Hard map's relative brutality actually lives.
+  tundra: 1.8, // Hard
 };
 
 function getRoundScaling(round) {
@@ -860,6 +934,19 @@ const ENEMY_FACING_OFFSET = {
   piranha: Math.PI,
   arowana: Math.PI,
   redtailCatfish: Math.PI,
+  // Tundra: whichever of these has a real eye/tail/head feature draws it
+  // on the -x side, same convention as everything above. Arctic Moth,
+  // Arctic Ringlet, and the Woolly Bear Moth boss (see BOSS_FACING_OFFSET)
+  // are all roughly radially symmetric (no eye, stinger, or other one-
+  // sided feature), so they're left out entirely, same as Starfish/Urchin
+  // above.
+  arcticBumblebee: Math.PI,
+  deerFly: Math.PI,
+  snowScorpionFly: Math.PI,
+  arcticBluet: Math.PI,
+  polarBumblebee: Math.PI,
+  snowGroundBeetle: Math.PI,
+  wolfSpider: Math.PI,
 };
 // Keyed by enemyKey (e.g. 'forest-boss-tier-1'), same as
 // ENEMY_FACING_OFFSET, since different boss tiers can have different
@@ -878,6 +965,9 @@ const BOSS_FACING_OFFSET = {
   // body family computes each segment's own heading straight from the
   // trail, same as every snake (none of which have an entry here either).
   'desert-boss-tier-3': Math.PI, // Emperor Scorpion (retrofit) — reuses drawEmperorScorpion, same pincers-forward convention
+  'tundra-boss-tier-1': 0, // Arctic Fritillary — radially symmetric wing markings, no one-sided feature
+  'tundra-boss-tier-2': 0, // Arctic Woolly Bear Moth — radially symmetric banding, no one-sided feature
+  'tundra-boss-tier-3': Math.PI, // Giant Arctic Wolf Spider — same spider-body convention as the regular Wolf Spider
 };
 
 function getInitialPathHeading(path) {
@@ -2682,6 +2772,271 @@ function drawEmperorScorpion(ctx, e) {
   drawScorpionBody(ctx, e, { pincerScale: 1.4 });
 }
 
+// --- Tundra: arctic insects/arachnids -------------------------------------
+
+// Shared wing shape for every flying insect below (bees/moths/ringlet/
+// bluet/fritillary) — a pair of pale, semi-translucent teardrop shapes
+// behind the body, rotated outward. `spread` widens the angle between
+// them (bees fold close, moths/the fritillary spread wide); `elongated`
+// stretches them lengthwise instead of broad (a damselfly's own long,
+// narrow wings, held close together rather than bee/moth's wide fold).
+function drawInsectWings(ctx, e, { spread = 0.5, elongated = false, tint = 'rgba(255, 255, 255, 0.55)' } = {}) {
+  ctx.fillStyle = tint;
+  [-1, 1].forEach((side) => {
+    ctx.save();
+    ctx.translate(e.x - e.radius * 0.1, e.y);
+    ctx.rotate(side * spread);
+    ctx.beginPath();
+    ctx.ellipse(
+      0,
+      -e.radius * 0.1,
+      e.radius * (elongated ? 1.1 : 0.75),
+      e.radius * (elongated ? 0.3 : 0.45),
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+// Fuzzy, round-bodied, with pale frost-white bands standing in for a
+// regular bee's usual yellow — "snow-dusted coloring," the one trait the
+// spec called out by name for this one.
+function drawArcticBumblebee(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.35 });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.9, e.radius * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#f5f5f0';
+  [-0.3, 0.05, 0.4].forEach((dx) => {
+    ctx.beginPath();
+    ctx.ellipse(e.x + dx * e.radius, e.y, e.radius * 0.14, e.radius * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.85, e.y, e.radius * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Smaller and duller than every other flier here, with oversized reddish
+// eyes (real deer flies' own distinctive feature) — the roster's own
+// weakest, least distinctive-looking entry, by design.
+function drawDeerFly(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.25, tint: 'rgba(200, 200, 200, 0.4)' });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.65, e.radius * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#8a1a1a';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.5, e.y, e.radius * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Pale wing patterns (a scatter of darker spots against a light wing) —
+// the spec's own called-out trait for this one.
+function drawArcticMoth(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.75, tint: 'rgba(216, 221, 226, 0.75)' });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.5, e.radius * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, -30);
+  [[-0.55, -0.3], [0.55, -0.3], [-0.55, 0.3], [0.55, 0.3]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Boss: distinct black-dot wing markings over its own orange (color)
+// wings — "distinct wing markings," the spec's own called-out trait.
+function drawArcticFritillary(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.9, tint: e.color });
+  ctx.fillStyle = '#1a1410';
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.22, e.radius * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+  [-1, 1].forEach((side) => {
+    [0.3, 0.6, 0.9].forEach((t) => {
+      ctx.beginPath();
+      ctx.arc(e.x + side * e.radius * t * 0.9, e.y - e.radius * 0.1, e.radius * 0.09, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  });
+}
+
+// Small, with round wings each carrying a simple ring-shaped eyespot —
+// "small/round-winged," the spec's own called-out trait.
+function drawArcticRinglet(ctx, e) {
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.arc(e.x + side * e.radius * 0.55, e.y, e.radius * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.35, e.radius * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, 30);
+  ctx.lineWidth = 1;
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.arc(e.x + side * e.radius * 0.55, e.y, e.radius * 0.22, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+}
+
+// Its signature curled tail (a scorpion-like stinger-shaped abdomen tip,
+// the real insect's own namesake feature) — unrelated to the Armored
+// Beetle/Emperor Scorpion armor mechanic, purely visual here.
+function drawSnowScorpionFly(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.3, tint: 'rgba(230, 230, 230, 0.5)' });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.7, e.radius * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = Math.max(1.3, e.radius * 0.15);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.6, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.15, e.y - e.radius * 0.15, e.x + e.radius * 1.0, e.y - e.radius * 0.55);
+  ctx.stroke();
+}
+
+// A damselfly-like look: a thin, elongated body (a stroked line, not a
+// filled oval) with long narrow wings held close together, not spread —
+// "damselfly-like," the spec's own called-out trait.
+function drawArcticBluet(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.12, elongated: true, tint: 'rgba(230, 240, 250, 0.6)' });
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = Math.max(2, e.radius * 0.3);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.1, e.y);
+  ctx.lineTo(e.x + e.radius * 1.1, e.y);
+  ctx.stroke();
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 1.1, e.y, e.radius * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Boss: fuzzy, caterpillar-banded body (dark/light/dark bands plus a
+// scatter of short bristle-dashes for texture) — "fuzzy/caterpillar-
+// patterned," the spec's own called-out trait for this one.
+function drawArcticWoollyBearMoth(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.8, tint: 'rgba(74, 56, 38, 0.4)' });
+  ['#2b2018', '#6b4a2e', '#2b2018'].forEach((band, i) => {
+    ctx.fillStyle = band;
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y - e.radius * 0.5 + i * e.radius * 0.5, e.radius * 0.55, e.radius * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.strokeStyle = shadeColor(e.color, 20);
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 10; i += 1) {
+    const angle = (i / 10) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(e.x + Math.cos(angle) * e.radius * 0.5, e.y + Math.sin(angle) * e.radius * 0.5);
+    ctx.lineTo(e.x + Math.cos(angle) * e.radius * 0.75, e.y + Math.sin(angle) * e.radius * 0.75);
+    ctx.stroke();
+  }
+}
+
+// Shares Arctic Bumblebee's exact body plan — "bigger/tougher bee" reads
+// entirely through this roster's own bigger radius/health, same as every
+// other "same silhouette, different scale" pair elsewhere in this file —
+// plus one added frost-glow outline so it doesn't read as a plain
+// palette-swap at a glance.
+function drawPolarBumblebee(ctx, e) {
+  drawArcticBumblebee(ctx, e);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.05, e.radius * 0.78, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+// Dark and visibly plated — reuses the shared beetle body plan
+// (drawBeetleBody) plus the Armored Beetle line's own plate pattern
+// (drawBeetlePlates) purely for the "armored-looking" visual the spec
+// calls for; unlike the real Armored Beetle line this has no
+// armorThreshold of its own, a deliberate look-not-mechanic choice (the
+// request only asked for a dark, armored LOOK, not a second gated-armor
+// forcing function on a third map).
+function drawSnowGroundBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  drawBeetlePlates(ctx, e, 3, false);
+}
+
+// Shared 8-legged body for both wolf spiders below — four leg-pairs
+// radiating diagonally from the body, an oval abdomen plus a smaller
+// round head/cephalothorax. `hairy` adds short bristle-dashes around the
+// abdomen's own edge for the Giant version's own "hairier" billing.
+function drawSpiderBody(ctx, e, { hairy = false } = {}) {
+  ctx.strokeStyle = shadeColor(e.color, -20);
+  ctx.lineWidth = Math.max(1.2, e.radius * 0.12);
+  ctx.lineCap = 'round';
+  [-0.9, -0.5, 0.5, 0.9].forEach((t) => {
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y);
+      ctx.lineTo(e.x + side * e.radius * 1.2, e.y + t * e.radius * 0.9);
+      ctx.stroke();
+    });
+  });
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.1, e.y, e.radius * 0.55, e.radius * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.4, e.y, e.radius * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (hairy) {
+    ctx.strokeStyle = shadeColor(e.color, 30);
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i += 1) {
+      const angle = (i / 6) * Math.PI * 2;
+      const bx = e.x + e.radius * 0.1 + Math.cos(angle) * e.radius * 0.5;
+      const by = e.y + Math.sin(angle) * e.radius * 0.36;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + Math.cos(angle) * e.radius * 0.15, by + Math.sin(angle) * e.radius * 0.15);
+      ctx.stroke();
+    }
+  }
+}
+
+// Larger/hairier/more menacing than the regular Wolf Spider below — same
+// shared body plan, just `hairy: true` plus a pair of small red eyes
+// (menace, the one feature a plain scale-up alone wouldn't convey).
+function drawGiantArcticWolfSpider(ctx, e) {
+  drawSpiderBody(ctx, e, { hairy: true });
+  ctx.fillStyle = '#c0392b';
+  [-0.15, 0.15].forEach((dy) => {
+    ctx.beginPath();
+    ctx.arc(e.x - e.radius * 0.6, e.y + dy * e.radius * 0.3, e.radius * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawWolfSpider(ctx, e) {
+  drawSpiderBody(ctx, e, { hairy: true });
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.6, e.y, e.radius * 0.07, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 const ENEMY_DRAW_FUNCTIONS = {
   ant: drawAnt,
   fireAnt: drawFireAnt,
@@ -2721,6 +3076,15 @@ const ENEMY_DRAW_FUNCTIONS = {
   piranha: drawPiranha,
   arowana: drawArowana,
   redtailCatfish: drawRedtailCatfish,
+  arcticBumblebee: drawArcticBumblebee,
+  deerFly: drawDeerFly,
+  arcticMoth: drawArcticMoth,
+  arcticRinglet: drawArcticRinglet,
+  snowScorpionFly: drawSnowScorpionFly,
+  arcticBluet: drawArcticBluet,
+  polarBumblebee: drawPolarBumblebee,
+  snowGroundBeetle: drawSnowGroundBeetle,
+  wolfSpider: drawWolfSpider,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -2739,6 +3103,9 @@ const BOSS_DRAW_FUNCTIONS = {
   'ocean-boss-tier-1': drawReefShark,
   'ocean-boss-tier-2': drawHammerhead,
   'ocean-boss-tier-3': drawGreatWhite,
+  'tundra-boss-tier-1': drawArcticFritillary,
+  'tundra-boss-tier-2': drawArcticWoollyBearMoth,
+  'tundra-boss-tier-3': drawGiantArcticWolfSpider,
 };
 
 function drawFallbackCircle(ctx, e) {

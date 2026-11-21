@@ -1050,6 +1050,208 @@ function renderOceanDecor(ctx, decor, time = 0) {
 const WHIRLPOOL_PATH_COLORS = { outline: '#0a1f2e', fill: '#3d7a6e' };
 
 // ---------------------------------------------------------------------------
+// Terrain: Tundra (direct request) — a snowy Hard-tier map. Two separate
+// spawns following the convention established for Savanah's ORIGINAL two-
+// path fix (commit 2189bc6, before Savanah's own later follow-up split
+// them into fully separate goals): the two routes never merge, overlap,
+// or run alongside each other anywhere, each has its own turns, and they
+// only meet at one shared goal at the very end — here, a frozen den/ice
+// cave rather than Savanah's stepped-stone temple. Also deliberately the
+// first terrain with a BRIGHT background (every other map's is dark) —
+// snow reads naturally as pale/bright, and it doubles as real visual
+// variety against five increasingly dark-toned maps in a row.
+// ---------------------------------------------------------------------------
+
+// A simple 3-tier snowman — biggest ball at the base, shrinking upward,
+// with coal-dot eyes/buttons, a small orange carrot-triangle nose, and two
+// thin stick arms. Purely decorative, same role every other terrain's own
+// "signature" decor piece (Deep Forest's trees, Savanah's cacti) plays.
+function drawSnowman(ctx, x, y, size) {
+  ctx.fillStyle = '#f0f6fa';
+  ctx.strokeStyle = shadeColor('#f0f6fa', -18);
+  ctx.lineWidth = 1.5;
+  [[0, size], [0, size * 0.62], [0, size * 0.32]].forEach(([dx, ballY], i) => {
+    const r = size * (0.5 - i * 0.14);
+    ctx.beginPath();
+    ctx.arc(x + dx, y - ballY + r, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  const headY = y - size * 0.32 + size * 0.22;
+  ctx.strokeStyle = '#4a3326';
+  ctx.lineWidth = Math.max(1.5, size * 0.07);
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(x, y - size * 0.62 + size * 0.18);
+    ctx.lineTo(x + side * size * 0.5, y - size * 0.62 + size * 0.05);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = '#2b2420';
+  [-0.13, 0.13].forEach((dx) => {
+    ctx.beginPath();
+    ctx.arc(x + dx * size, headY - size * 0.04, size * 0.04, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  [0.1, 0.3].forEach((t) => {
+    ctx.beginPath();
+    ctx.arc(x, y - size * 0.62 + size * t, size * 0.035, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = '#e8822e';
+  ctx.beginPath();
+  ctx.moveTo(x, headY);
+  ctx.lineTo(x + size * 0.22, headY + size * 0.04);
+  ctx.lineTo(x, headY + size * 0.08);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// A small cluster of jagged, semi-translucent ice shards jutting up at
+// slightly different heights/angles — reads as "sharp" rather than the
+// soft, rounded snowman/boulders around it.
+function drawIceSpike(ctx, x, y, size) {
+  [[-0.3, 1, -0.08], [0, 1.3, 0], [0.3, 0.85, 0.1]].forEach(([dx, scale, tilt]) => {
+    const h = size * scale;
+    ctx.save();
+    ctx.translate(x + dx * size, y);
+    ctx.rotate(tilt);
+    ctx.fillStyle = 'rgba(190, 225, 240, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.16, 0);
+    ctx.lineTo(0, -h);
+    ctx.lineTo(size * 0.16, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, -h);
+    ctx.lineTo(0, 0);
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+// Loose boulders dusted with snow — the same layered-ellipse-cluster
+// construction as Savanah's drawSandstoneFormation, just a cold grey-blue
+// body with a bright white snow-cap highlight instead of a warm tan one.
+const SNOW_BOULDER_COLOR = '#7a8a96';
+
+function drawSnowBoulder(ctx, x, y, r) {
+  ctx.fillStyle = SNOW_BOULDER_COLOR;
+  [[-0.4, 0.1, 1], [0.3, 0.2, 0.8], [0, -0.3, 0.65]].forEach(([dx, dy, scale]) => {
+    ctx.beginPath();
+    ctx.ellipse(x + dx * r, y + dy * r, r * 0.55 * scale, r * 0.4 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = '#f0f6fa';
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.1, y - r * 0.42, r * 0.32, r * 0.16, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Marks both paths' shared goal: a rounded snow-mound with a dark arched
+// cave mouth carved into it and a couple of icicles hanging from the top
+// of the arch — the same "the goal gets its own drawn landmark" role
+// Savanah's drawTemple()/Whirlpool's drawVortexHole() play.
+function drawIceCave(ctx, x, y, size) {
+  ctx.fillStyle = '#dce9f0';
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.25, size, size * 0.62, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#17222b';
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.32, size * 0.42, size * 0.4, 0, Math.PI, 0, false);
+  ctx.fill();
+
+  ctx.strokeStyle = '#eef6fa';
+  ctx.lineWidth = Math.max(1.5, size * 0.07);
+  [-0.42, 0.42].forEach((dx) => {
+    ctx.beginPath();
+    ctx.moveTo(x + dx * size, y - size * 0.05);
+    ctx.lineTo(x + dx * size * 0.75, y + size * 0.3);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = 'rgba(210, 235, 245, 0.8)';
+  [-0.2, 0, 0.2].forEach((dx) => {
+    ctx.beginPath();
+    ctx.moveTo(x + dx * size, y - size * 0.08);
+    ctx.lineTo(x + dx * size - size * 0.04, y + size * 0.12);
+    ctx.lineTo(x + dx * size + size * 0.04, y + size * 0.12);
+    ctx.closePath();
+    ctx.fill();
+  });
+}
+
+// Path A: spawns top-left, heads east then south, entering the cave from
+// directly above (final leg VERTICAL, column x=480). Path B: spawns top-
+// right, heads west then south, entering the cave from the east (final
+// leg HORIZONTAL, row y=320) — a different direction from Path A's own
+// final approach, the same fix Savanah's original path pair needed
+// (see git history) applied from the start here instead of after the
+// fact. The two routes occupy entirely separate x/y bands everywhere
+// before that shared final point, so they never touch, cross, or run
+// alongside each other.
+const TUNDRA_PATH_A = [
+  { x: -20, y: 220 },
+  { x: 300, y: 220 },
+  { x: 300, y: 420 },
+  { x: 480, y: 420 },
+  { x: 480, y: 320 },
+];
+const TUNDRA_PATH_B = [
+  { x: 980, y: 120 },
+  { x: 650, y: 120 },
+  { x: 650, y: 320 },
+  { x: 480, y: 320 },
+];
+
+// Hand-placed clear of both paths above (checked against every segment of
+// each, same convention as every other terrain's decor).
+const TUNDRA_SNOWMEN = [
+  { x: 130, y: 500, size: 30 }, { x: 800, y: 480, size: 28 },
+  { x: 860, y: 220, size: 26 }, { x: 150, y: 90, size: 28 },
+];
+
+const TUNDRA_ICE_SPIKES = [
+  { x: 60, y: 350, size: 24 }, { x: 420, y: 60, size: 22 }, { x: 700, y: 50, size: 26 },
+  { x: 900, y: 380, size: 24 }, { x: 900, y: 580, size: 22 }, { x: 380, y: 590, size: 26 },
+  { x: 600, y: 420, size: 22 }, { x: 150, y: 300, size: 24 },
+];
+
+const TUNDRA_BOULDERS = [
+  { x: 60, y: 600, r: 32 }, { x: 870, y: 50, r: 30 }, { x: 900, y: 500, r: 34 },
+  { x: 600, y: 580, r: 28 }, { x: 150, y: 150, r: 32 }, { x: 350, y: 500, r: 28 },
+];
+
+const TUNDRA_CAVE = { x: 480, y: 320, size: 72 };
+
+const TUNDRA_DECOR = {
+  snowmen: TUNDRA_SNOWMEN,
+  iceSpikes: TUNDRA_ICE_SPIKES,
+  boulders: TUNDRA_BOULDERS,
+  cave: TUNDRA_CAVE,
+};
+
+function renderTundraDecor(ctx, decor) {
+  decor.boulders.forEach((rock) => drawSnowBoulder(ctx, rock.x, rock.y, rock.r));
+  decor.iceSpikes.forEach((spike) => drawIceSpike(ctx, spike.x, spike.y, spike.size));
+  decor.snowmen.forEach((snowman) => drawSnowman(ctx, snowman.x, snowman.y, snowman.size));
+  drawIceCave(ctx, decor.cave.x, decor.cave.y, decor.cave.size);
+}
+
+// A worn, dark slate-blue pair — reads clearly as packed-ice tracks
+// against the pale snow background, the inverse contrast of every other
+// terrain (a dark path on light ground, instead of a light path on dark
+// ground).
+const TUNDRA_PATH_COLORS = { outline: '#2e3d47', fill: '#7fa3b8' };
+
+// ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/renderMapIcon()
 // below both dispatch through this rather than special-casing map ids.
@@ -1084,6 +1286,9 @@ const TERRAIN_THEMES = {
     renderBackground: renderWhirlpoolBackground,
     renderWaterEffects: renderWhirlpoolCaustics,
   },
+  // Deliberately bright (every other theme above is dark) — a flat fill is
+  // all this one needs, same as forest/marsh/desert.
+  tundra: { background: '#d6e8f0', renderDecor: renderTundraDecor },
 };
 
 // Fills the world background for the active theme — a flat
@@ -1161,9 +1366,25 @@ const MAP_TYPES = {
     terrain: 'ocean',
     decor: WHIRLPOOL_DECOR,
   },
+  // Direct request: a snowy Hard-tier map (MAP_DIFFICULTY_MULTIPLIER,
+  // enemies.js) — two separate spawns converging on one shared goal (the
+  // ice cave), the shape Savanah's own two paths originally had before
+  // Savanah's later follow-up split it into fully separate goals; see
+  // TUNDRA_PATH_A/B's own comment above for why this map keeps that
+  // original shared-goal shape instead.
+  tundra: {
+    id: 'tundra',
+    name: 'Tundra',
+    builtin: true,
+    paths: [TUNDRA_PATH_A, TUNDRA_PATH_B],
+    pathWidth: 56,
+    pathColors: TUNDRA_PATH_COLORS,
+    terrain: 'tundra',
+    decor: TUNDRA_DECOR,
+  },
 };
 
-const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool'];
+const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra'];
 
 // ---------------------------------------------------------------------------
 // Active-map state. MAP_PATHS/MAP_PATH_WIDTH are what every other file
