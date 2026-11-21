@@ -155,6 +155,23 @@ const MARSH_ROSTER = {
     appleSnail: { name: 'Apple Snail', speedMultiplier: 0.43, health: 125, color: '#d4a017', radius: 9, bounty: 25 },
     slug: { name: 'Slug', speedMultiplier: 0.54, health: 188, color: '#bf7e4a', radius: 10, bounty: 38 },
     assassinSnail: { name: 'Assassin Snail', speedMultiplier: 0.65, health: 213, color: '#6d4c23', radius: 9, bounty: 43 },
+    // Fish (direct request): Marshland's first tier-3 roster — the same
+    // "an empty orderTier3 slot was already there waiting" fit Deep
+    // Forest's snakes and Savanah's scorpions found, zero engine changes.
+    // No numbers given; escalate clearly past this roster's own tier2
+    // ceiling (Assassin Snail's 213), weakest-to-strongest. A 4th fish,
+    // Electric Eel, was part of the same request but is a boss instead
+    // (see bossTypes[3] below) — not one of these three.
+    piranha: { name: 'Piranha', speedMultiplier: 0.95, health: 260, color: '#4a6b5a', radius: 8, bounty: 110 },
+    arowana: { name: 'Arowana', speedMultiplier: 0.75, health: 340, color: '#b8923a', radius: 9, bounty: 150 },
+    redtailCatfish: {
+      name: 'Redtail Catfish',
+      speedMultiplier: 0.5,
+      health: 460,
+      color: '#3a2e24',
+      radius: 11,
+      bounty: 200,
+    },
   },
   // Boss health doubled (direct request) — see Deep Forest's bossTypes
   // comment above for the same scope note, including the later
@@ -162,10 +179,19 @@ const MARSH_ROSTER = {
   bossTypes: {
     1: { name: 'Frog Boss', speedMultiplier: 0.5, health: 260, color: '#33691e', radius: 20, bounty: 33 }, // was 65, then 130, then this; bounty unchanged
     2: { name: 'Military Helmet Snail', speedMultiplier: 0.3, health: 600, color: '#8d6e4a', radius: 24, bounty: 75 }, // was 150, then 300, then this
+    // Electric Eel (direct request): built as a boss from the start, not
+    // a regular enemy — Marshland's first real 3rd boss tier, same shape
+    // as Whirlpool's own 3-tier roster. "Slow but tanky" boss profile:
+    // slower than every regular fish above AND slower than this roster's
+    // own tier1/2 bosses, with health escalating past Military Helmet
+    // Snail the same ~1.9x ratio Savanah's own tier1->tier2 boss jump
+    // (300->580) used, for a consistent "how much does a 3rd tier boss
+    // escalate" feel across maps.
+    3: { name: 'Electric Eel', speedMultiplier: 0.22, health: 1150, color: '#1a3a4a', radius: 18, bounty: 575 },
   },
   order: ['tadpole', 'froglet', 'frogLarva'],
   orderTier2: ['appleSnail', 'slug', 'assassinSnail'],
-  orderTier3: [],
+  orderTier3: ['piranha', 'arowana', 'redtailCatfish'],
 };
 
 // Savanah: a desert roster, same tier1/boss25/tier2/boss50 shape as the
@@ -227,28 +253,18 @@ const SAVANAH_ROSTER = {
     // just not quite as extreme a jump (this is "a new mid-tier line," not
     // explicitly asked to dwarf everything before it the way the snakes'
     // own final tier was). Bounty follows the usual ~HP/2 convention.
-    // Emperor Scorpion is the one judgment call (same shape as Armored
-    // Snake's own): a light armorThreshold for its obvious exoskeleton
-    // theme and "strongest/most imposing" billing, calibrated as a preview
-    // of the mechanic rather than a repeat of the Armored Beetle line —
-    // threshold 6 blocks only the very weakest tier-1 hits, clearly under
-    // Carapace Beetle's own threshold 8, and it unlocks at round 66, 9
-    // rounds before Carapace Beetle's round-75 debut.
     // Health below is tier3's own ×1.15 re-tune (speed/bounty/armor
     // unchanged — same "already intentional, no reason to touch" call as
     // Deep Forest's snakes).
+    //
+    // Emperor Scorpion WAS a 4th entry here (the roster's own judgment-
+    // call armored type, threshold 6) but was retrofitted into this
+    // roster's own bossTypes[3] instead (direct request) — see that
+    // entry's own comment. Removing it here demotes this tier back to a
+    // clean 3-enemy lineup, same shape as every other map's own tier3.
     stripedScorpion: { name: 'Striped Scorpion', speedMultiplier: 0.8, health: 184, color: '#b8946a', radius: 8, bounty: 80 },
     duneScorpion: { name: 'Dune Scorpion', speedMultiplier: 0.6, health: 253, color: '#c9a876', radius: 9, bounty: 110 },
     redScorpion: { name: 'Red Scorpion', speedMultiplier: 0.7, health: 368, color: '#a13a2a', radius: 9, bounty: 160 },
-    emperorScorpion: {
-      name: 'Emperor Scorpion',
-      speedMultiplier: 0.45,
-      health: 518,
-      color: '#2a2420',
-      radius: 13,
-      bounty: 225,
-      armorThreshold: 6,
-    },
   },
   // Boss health doubled (direct request) — see Deep Forest's bossTypes
   // comment (enemies.js, FOREST_ROSTER) for the same scope note, including
@@ -265,13 +281,40 @@ const SAVANAH_ROSTER = {
       tunnelDuration: 2,
     },
     2: { name: 'Blue Death Beetle', speedMultiplier: 0.7, health: 580, color: '#2c4f7c', radius: 22, bounty: 73 }, // was 145, then 290, then this; bounty unchanged
+    // Emperor Scorpion retrofit (direct request): pulled out of the
+    // regular tier3 roster above and rebuilt as this roster's first real
+    // 3rd boss tier instead — "slow but tanky," same profile every other
+    // boss here uses, not just a bump from its old regular-enemy numbers.
+    // Speed dropped well below its old regular 0.45 (and below tier1/2's
+    // own 0.6/0.7) to read as unmistakably boss-slow. Health escalates
+    // past Blue Death Beetle by the same ~1.9x ratio tier1->tier2 already
+    // used here, landing solidly in this roster's own boss ballpark
+    // rather than just above its previous regular-tier number. Keeps its
+    // signature armorThreshold (6, unchanged) — generateWave()/
+    // getSpawnEntryForEnemyKey() were updated to read a boss's own
+    // armorThreshold instead of hardcoding 0, specifically so this move
+    // doesn't silently strip the one trait Emperor Scorpion was built
+    // around. Reuses drawEmperorScorpion's existing art (see
+    // BOSS_DRAW_FUNCTIONS/BOSS_FACING_OFFSET) — same creature, just a
+    // boss now, no new art needed.
+    3: {
+      name: 'Emperor Scorpion',
+      speedMultiplier: 0.35,
+      health: 1120,
+      color: '#2a2420',
+      radius: 20,
+      bounty: 560,
+      armorThreshold: 6,
+    },
   },
   order: ['sandLion', 'sandworm', 'desertAnt'],
   orderTier2: ['giantLubberGrasshopper', 'desertPrayingMantis', 'kissingBug'],
   // Scorpions unlock weakest-to-strongest on the same every-5-rounds-
   // after-round-50 cadence (round 51/56/61/66) every other map's own
-  // orderTier3 already uses.
-  orderTier3: ['stripedScorpion', 'duneScorpion', 'redScorpion', 'emperorScorpion'],
+  // orderTier3 already uses. Emperor Scorpion (formerly round 66 here)
+  // was retrofitted into bossTypes[3] above — see its own comment — so
+  // this is now a clean 3-enemy tier3, same shape as every other map's.
+  orderTier3: ['stripedScorpion', 'duneScorpion', 'redScorpion'],
 };
 
 // Whirlpool (direct request): an ocean-floor roster, and the first map with
@@ -671,7 +714,13 @@ function generateWave(round) {
         bounty: Math.round(boss.bounty * scaling.healthMultiplier),
         tunnelInterval: boss.tunnelInterval || 0,
         tunnelDuration: boss.tunnelDuration || 0,
-        armorThreshold: 0,
+        // Defaults to 0 for every existing boss (none set their own
+        // armorThreshold) — added so a boss CAN carry the armor-gate trait
+        // through from its own bossTypes entry, needed for Savanah's
+        // Emperor Scorpion retrofit (see SAVANAH_ROSTER's own comment):
+        // moving a regular enemy into a boss slot shouldn't silently strip
+        // a trait it was specifically designed around.
+        armorThreshold: boss.armorThreshold || 0,
       },
     ];
   }
@@ -793,11 +842,16 @@ const ENEMY_FACING_OFFSET = {
   tuna: Math.PI,
   marlin: Math.PI,
   // Scorpions: pincers forward (-x), same convention as every other
-  // Savanah type above.
+  // Savanah type above. Emperor Scorpion moved to bossTypes (see
+  // BOSS_FACING_OFFSET) and is no longer a regular-enemy key.
   stripedScorpion: Math.PI,
   duneScorpion: Math.PI,
   redScorpion: Math.PI,
-  emperorScorpion: Math.PI,
+  // Marshland fish: head/front toward -x, same convention as the fish
+  // above and every other type in this table.
+  piranha: Math.PI,
+  arowana: Math.PI,
+  redtailCatfish: Math.PI,
 };
 // Keyed by enemyKey (e.g. 'forest-boss-tier-1'), same as
 // ENEMY_FACING_OFFSET, since different boss tiers can have different
@@ -812,6 +866,8 @@ const BOSS_FACING_OFFSET = {
   'ocean-boss-tier-1': Math.PI, // Reef Shark
   'ocean-boss-tier-2': Math.PI, // Hammerhead Shark
   'ocean-boss-tier-3': Math.PI, // Great White
+  'marsh-boss-tier-3': Math.PI, // Electric Eel — same fish-body convention as the rest of this roster
+  'desert-boss-tier-3': Math.PI, // Emperor Scorpion (retrofit) — reuses drawEmperorScorpion, same pincers-forward convention
 };
 
 function getInitialPathHeading(path) {
@@ -981,7 +1037,7 @@ function getSpawnEntryForEnemyKey(key) {
       bounty: boss.bounty,
       tunnelInterval: boss.tunnelInterval || 0,
       tunnelDuration: boss.tunnelDuration || 0,
-      armorThreshold: 0,
+      armorThreshold: boss.armorThreshold || 0,
     };
   }
 
@@ -1747,6 +1803,133 @@ function drawMilitaryHelmetSnail(ctx, e) {
     ctx.ellipse(e.x + e.radius * 0.3, e.y, e.radius * 1.05 * r, e.radius * 0.95 * r, 0, 0, Math.PI * 2);
     ctx.stroke();
   });
+}
+
+// --- Marshland: fish -------------------------------------------------------
+// Piranha/Arowana/Redtail Catfish (direct request): Marshland's first
+// tier-3 roster, same fit Deep Forest's snakes and Savanah's scorpions
+// found in their own empty orderTier3 slot. Electric Eel from the same
+// request is drawn separately below, alongside the other bosses, since
+// it's a boss rather than a regular roster entry (see MARSH_ROSTER's own
+// bossTypes[3] comment).
+
+// Small, round-bodied, sharp-toothed — the roster's fastest/lowest-health
+// fish, reading as an aggressive swarm threat rather than a tank.
+function drawPiranha(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.95, e.radius * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.7, e.y);
+  ctx.lineTo(e.x + e.radius * 1.3, e.y - e.radius * 0.45);
+  ctx.lineTo(e.x + e.radius * 1.3, e.y + e.radius * 0.45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 3; i += 1) {
+    const tx = e.x - e.radius * 0.75 + i * e.radius * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(tx, e.y - e.radius * 0.1);
+    ctx.lineTo(tx + e.radius * 0.07, e.y + e.radius * 0.05);
+    ctx.lineTo(tx + e.radius * 0.14, e.y - e.radius * 0.1);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = '#c0392b';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.8, e.y + e.radius * 0.1, e.radius * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A long, graceful body with one long dorsal fin running most of its
+// length — the real fish's own signature feature, distinguishing it from
+// Piranha's compact round body and Redtail Catfish's whiskered one.
+function drawArowana(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.3, e.radius * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, -20);
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.9, e.y);
+  ctx.lineTo(e.x + e.radius * 1.7, e.y - e.radius * 0.4);
+  ctx.lineTo(e.x + e.radius * 1.7, e.y + e.radius * 0.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, 25);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.9, e.y - e.radius * 0.35);
+  ctx.quadraticCurveTo(e.x, e.y - e.radius * 0.65, e.x + e.radius * 0.9, e.y - e.radius * 0.3);
+  ctx.lineTo(e.x + e.radius * 0.7, e.y - e.radius * 0.12);
+  ctx.quadraticCurveTo(e.x, e.y - e.radius * 0.35, e.x - e.radius * 0.7, e.y - e.radius * 0.12);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 1.1, e.y - e.radius * 0.05, e.radius * 0.07, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A long, dark, whiskered bottom-dweller with a distinctive red-tipped
+// tail — the roster's slowest/tankiest fish, visually a bulkier
+// silhouette than the other two rather than a palette swap.
+function drawRedtailCatfish(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.2, e.radius * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#c0392b';
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.9, e.y);
+  ctx.lineTo(e.x + e.radius * 1.6, e.y - e.radius * 0.5);
+  ctx.lineTo(e.x + e.radius * 1.6, e.y + e.radius * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -20);
+  ctx.lineWidth = Math.max(1, e.radius * 0.08);
+  [-0.2, 0.2].forEach((dy) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 1.1, e.y + dy * e.radius * 0.5);
+    ctx.quadraticCurveTo(
+      e.x - e.radius * 1.6,
+      e.y + dy * e.radius * 1.1,
+      e.x - e.radius * 2.0,
+      e.y + dy * e.radius * 1.3
+    );
+    ctx.stroke();
+  });
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.95, e.y - e.radius * 0.1, e.radius * 0.07, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Boss: Electric Eel — a long, sinuous, undulating body (a wavy ribbon
+// rather than any of the regular fish's rigid ovals) with a pale yellow
+// glowing belly-stripe to read as "electric" at a glance.
+function drawElectricEel(ctx, e) {
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = e.radius * 0.85;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 1.8, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.9, e.y - e.radius * 0.9, e.x, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.9, e.y + e.radius * 0.9, e.x - e.radius * 1.8, e.y);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#f4d03f';
+  ctx.lineWidth = Math.max(1.5, e.radius * 0.18);
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 1.75, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.9, e.y - e.radius * 0.9, e.x, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.9, e.y + e.radius * 0.9, e.x - e.radius * 1.75, e.y);
+  ctx.stroke();
+
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 1.75, e.y - e.radius * 0.1, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // --- Savanah: desert ------------------------------------------------------
@@ -2550,7 +2733,11 @@ const ENEMY_DRAW_FUNCTIONS = {
   stripedScorpion: drawStripedScorpion,
   duneScorpion: drawDuneScorpion,
   redScorpion: drawRedScorpion,
-  emperorScorpion: drawEmperorScorpion,
+  // emperorScorpion was here, but it's now a boss (desert-boss-tier-3,
+  // see BOSS_DRAW_FUNCTIONS below) — no longer a regular-enemy key.
+  piranha: drawPiranha,
+  arowana: drawArowana,
+  redtailCatfish: drawRedtailCatfish,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -2558,8 +2745,10 @@ const BOSS_DRAW_FUNCTIONS = {
   'forest-boss-tier-2': drawLonghornBeetle,
   'marsh-boss-tier-1': drawFrogBoss,
   'marsh-boss-tier-2': drawMilitaryHelmetSnail,
+  'marsh-boss-tier-3': drawElectricEel,
   'desert-boss-tier-1': drawDesertTermite,
   'desert-boss-tier-2': drawBlueDeathBeetle,
+  'desert-boss-tier-3': drawEmperorScorpion, // retrofit — reuses the same art, just a boss now
   'ocean-boss-tier-1': drawReefShark,
   'ocean-boss-tier-2': drawHammerhead,
   'ocean-boss-tier-3': drawGreatWhite,

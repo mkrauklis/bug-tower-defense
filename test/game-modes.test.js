@@ -99,8 +99,9 @@ test('getAllSpawnableEnemyKeys switches to Marshland\'s roster once that\'s the 
   assert.deepEqual(game.getAllSpawnableEnemyKeys(), [
     'tadpole', 'froglet', 'frogLarva',
     'appleSnail', 'slug', 'assassinSnail',
+    'piranha', 'arowana', 'redtailCatfish',
     ...ARMORED_BEETLE_KEYS,
-    'marsh-boss-tier-1', 'marsh-boss-tier-2',
+    'marsh-boss-tier-1', 'marsh-boss-tier-2', 'marsh-boss-tier-3',
   ]);
 });
 

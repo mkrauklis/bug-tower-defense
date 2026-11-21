@@ -77,8 +77,16 @@ test('snakes never unlock on Marshland — they\'re Deep Forest\'s own roster, n
   // Round 66 — well past Marshland's own tier-2 unlock (round 36) and
   // Deep Forest's full snake unlock, but still well before round 75's
   // shared armored-beetle unlock, so the comparison below doesn't also
-  // need to account for those.
-  assert.deepEqual(game.getUnlockedEnemyTypes(66), game.MARSH_ROSTER.order.concat(game.MARSH_ROSTER.orderTier2));
+  // need to account for those. Marshland now has its own tier3 (fish —
+  // see marshland-fish.test.js), fully unlocked by round 66, so the
+  // expected list includes those too — the point of this test is just
+  // that none of Deep Forest's snake KEYS show up on Marshland, not that
+  // Marshland has no tier3 of its own.
+  const expected = game.MARSH_ROSTER.order.concat(game.MARSH_ROSTER.orderTier2, game.MARSH_ROSTER.orderTier3);
+  assert.deepEqual(game.getUnlockedEnemyTypes(66), expected);
+  ['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda'].forEach((key) => {
+    assert.equal(expected.includes(key), false);
+  });
 });
 
 test('getSpawnEntryForEnemyKey resolves every snake to its real, unscaled stats', () => {

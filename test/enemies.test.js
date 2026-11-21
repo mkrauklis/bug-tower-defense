@@ -263,7 +263,10 @@ test('every regular (non-boss) enemy type\'s health/speed reflects the 3rd balan
   game.setActiveMap(game.MAP_TYPES.marshland);
   assert.deepEqual(
     Object.fromEntries(Object.entries(game.getActiveRoster().enemyTypes).map(([key, type]) => [key, type.health])),
-    { tadpole: 14, froglet: 28, frogLarva: 64, appleSnail: 125, slug: 188, assassinSnail: 213 }
+    {
+      tadpole: 14, froglet: 28, frogLarva: 64, appleSnail: 125, slug: 188, assassinSnail: 213,
+      piranha: 260, arowana: 340, redtailCatfish: 460,
+    }
   );
 
   game.setActiveMap(game.MAP_TYPES.savanah);
@@ -271,7 +274,7 @@ test('every regular (non-boss) enemy type\'s health/speed reflects the 3rd balan
     Object.fromEntries(Object.entries(game.getActiveRoster().enemyTypes).map(([key, type]) => [key, type.health])),
     {
       sandLion: 17, sandworm: 42, desertAnt: 70, giantLubberGrasshopper: 150, desertPrayingMantis: 125, kissingBug: 188,
-      stripedScorpion: 184, duneScorpion: 253, redScorpion: 368, emperorScorpion: 518,
+      stripedScorpion: 184, duneScorpion: 253, redScorpion: 368,
     }
   );
 
