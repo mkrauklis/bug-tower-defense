@@ -35,11 +35,25 @@ let panelX = WORLD_WIDTH;
 let panelY = 0;
 let panelWidth = PANEL_WIDTH_SIDE;
 let panelHeight = PANEL_HEIGHT;
+// The pixel space every render/layout function in this file is written
+// in — independent of canvas.width/canvas.height themselves, which on a
+// narrow phone are now scaled up by devicePixelRatio (see applyLayout()'s
+// own comment below) so on-canvas buttons keep their real intended
+// physical size instead of shrinking along with the whole canvas. Every
+// existing reference to canvas.width/canvas.height for LAYOUT math (menu
+// centering, map-select grid columns, tooltip clamping, etc.) was swapped
+// to these two instead — canvas.width/height are now purely "how big is
+// the backing store," not "how big is the game," and the two stopped
+// being interchangeable the moment stacked mode started scaling them
+// independently.
+let logicalWidth = WORLD_WIDTH + PANEL_WIDTH_SIDE;
+let logicalHeight = Math.max(WORLD_HEIGHT, PANEL_HEIGHT);
 
 // Resizes the canvas and repositions the panel for the current viewport.
-// Narrow screens get the world and panel stacked (both full WORLD_WIDTH, so
-// touch targets stay the same real size as the already-shipped mobile
-// support for the world itself) instead of shrunk side by side.
+// Narrow screens get the world and panel stacked (both full WORLD_WIDTH in
+// logical units, so every button keeps the same LOGICAL size as the
+// already-shipped mobile support for the world itself) instead of shrunk
+// side by side.
 function applyLayout() {
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : WORLD_WIDTH + PANEL_WIDTH_SIDE;
   layoutMode = viewportWidth < NARROW_BREAKPOINT ? 'stacked' : 'side';
@@ -49,15 +63,54 @@ function applyLayout() {
     panelY = WORLD_HEIGHT;
     panelWidth = WORLD_WIDTH;
     panelHeight = PANEL_HEIGHT;
-    canvas.width = WORLD_WIDTH;
-    canvas.height = WORLD_HEIGHT + PANEL_HEIGHT;
+    logicalWidth = WORLD_WIDTH;
+    logicalHeight = WORLD_HEIGHT + PANEL_HEIGHT;
   } else {
     panelX = WORLD_WIDTH;
     panelY = 0;
     panelWidth = PANEL_WIDTH_SIDE;
     panelHeight = PANEL_HEIGHT;
-    canvas.width = WORLD_WIDTH + PANEL_WIDTH_SIDE;
-    canvas.height = Math.max(WORLD_HEIGHT, PANEL_HEIGHT);
+    logicalWidth = WORLD_WIDTH + PANEL_WIDTH_SIDE;
+    logicalHeight = Math.max(WORLD_HEIGHT, PANEL_HEIGHT);
+  }
+
+  // Mobile bug fix (user report: touch controls/UI feel broken/awkward on
+  // a phone). Root cause: style.css's canvas rule (max-width:100%;
+  // height:auto) shrinks this logically-960px-wide canvas down to fit a
+  // real phone's much narrower CSS viewport (~375-430px is typical) —
+  // around a 0.4x shrink — and that shrinks every on-canvas button by the
+  // exact same ratio, since logical pixels ARE the canvas's backing-store
+  // pixels today. A 44px Sandbox tile (SANDBOX_TILE_SIZE) reads as ~18px
+  // on an actual phone screen, well under any usable tap-target size —
+  // this is a real, physical-size bug, not just "things look small."
+  //
+  // Fix: in stacked mode only, stop letting the browser's own CSS auto-
+  // shrink the canvas's display size — pin canvas.style.width/height to
+  // the real viewport width directly in JS instead, and make the backing
+  // store that many devicePixelRatio-scaled pixels. Every render function
+  // below still draws in plain logicalWidth/logicalHeight units via the
+  // ctx.setTransform() scale factor applied here, so nothing about their
+  // own drawing code needed to change — only the handful of places that
+  // read canvas.width/canvas.height directly for LAYOUT math (not drawing)
+  // were swapped to logicalWidth/logicalHeight below, since those two
+  // stopped being the same number the moment this scaling was introduced.
+  // Side (desktop) layout is intentionally untouched — this wasn't
+  // reported as broken there, and desktop viewports are normally wide
+  // enough that the canvas was never being shrunk in the first place.
+  if (layoutMode === 'stacked' && typeof window !== 'undefined') {
+    const dpr = window.devicePixelRatio || 1;
+    const scale = Math.min(1, viewportWidth / logicalWidth);
+    canvas.style.width = `${Math.round(logicalWidth * scale)}px`;
+    canvas.style.height = `${Math.round(logicalHeight * scale)}px`;
+    canvas.width = Math.round(logicalWidth * scale * dpr);
+    canvas.height = Math.round(logicalHeight * scale * dpr);
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  } else {
+    canvas.style.width = '';
+    canvas.style.height = '';
+    canvas.width = logicalWidth;
+    canvas.height = logicalHeight;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 }
 
@@ -1126,7 +1179,7 @@ function render() {
   canvas.style.cursor = selectedShopItem ? 'crosshair' : 'default';
 
   ctx.fillStyle = '#10131a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
   // map.js only reads .width/.height off what's passed here — this keeps
   // the world's own rendering fixed at WORLD_WIDTH x WORLD_HEIGHT regardless
@@ -1773,18 +1826,18 @@ const MENU_MODE_ORDER = ['medium', 'horde', 'sandbox'];
 function drawMenuTitle(ctx, title, subtitle, skipBackground) {
   if (!skipBackground) {
     ctx.fillStyle = '#10131a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
   }
 
   ctx.fillStyle = '#f0f0f0';
   ctx.font = 'bold 30px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(title, canvas.width / 2, 50);
+  ctx.fillText(title, logicalWidth / 2, 50);
 
   ctx.fillStyle = '#aaa';
   ctx.font = '13px sans-serif';
-  ctx.fillText(subtitle, canvas.width / 2, 92);
+  ctx.fillText(subtitle, logicalWidth / 2, 92);
 }
 
 function drawMenuTooltip(ctx) {
@@ -1792,7 +1845,7 @@ function drawMenuTooltip(ctx) {
   if (!tooltipRegion) return;
   const lines = getTooltipLines(tooltipRegion);
   if (lines.length) {
-    uiDrawTooltip(ctx, tooltipRegion.x + tooltipRegion.w / 2, tooltipRegion.y, lines, canvas.width, canvas.height);
+    uiDrawTooltip(ctx, tooltipRegion.x + tooltipRegion.w / 2, tooltipRegion.y, lines, logicalWidth, logicalHeight);
   }
 }
 
@@ -1926,9 +1979,9 @@ function updateMenuTrophyEnemies(deltaSeconds) {
 function renderMenuBackdrop(ctx) {
   const map = MAP_TYPES.deepForest;
   const theme = TERRAIN_THEMES.forest;
-  const scale = Math.max(canvas.width / MAP_WORLD_WIDTH, canvas.height / MAP_WORLD_HEIGHT);
-  const offsetX = (canvas.width - MAP_WORLD_WIDTH * scale) / 2;
-  const offsetY = (canvas.height - MAP_WORLD_HEIGHT * scale) / 2;
+  const scale = Math.max(logicalWidth / MAP_WORLD_WIDTH, logicalHeight / MAP_WORLD_HEIGHT);
+  const offsetX = (logicalWidth - MAP_WORLD_WIDTH * scale) / 2;
+  const offsetY = (logicalHeight - MAP_WORLD_HEIGHT * scale) / 2;
 
   if (!menuTrophyEnemies) buildMenuTrophyEnemies();
 
@@ -1963,7 +2016,7 @@ function renderMenuBackdrop(ctx) {
   ctx.restore();
 
   ctx.fillStyle = 'rgba(8, 10, 14, 0.6)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 }
 
 // Top-level menu. Used to also offer a Map Editor option here — removed
@@ -1980,11 +2033,11 @@ function renderMenu(ctx) {
   renderMenuBackdrop(ctx);
   drawMenuTitle(ctx, 'Bug Tower Defense', 'Choose how to begin', true);
 
-  const buttonWidth = Math.min(420, canvas.width - 40);
+  const buttonWidth = Math.min(420, logicalWidth - 40);
   const buttonHeight = 72;
   const gap = 16;
   const startY = 140;
-  const x = canvas.width / 2 - buttonWidth / 2;
+  const x = logicalWidth / 2 - buttonWidth / 2;
 
   [
     { id: 'start:play', label: 'Play', description: 'Pick a map, then a mode, and start defending.' },
@@ -2025,9 +2078,9 @@ function renderMapSelect(ctx) {
   drawMenuTitle(ctx, 'Choose a Map', 'Click a map to continue');
 
   const maps = listAllMaps();
-  const columns = Math.max(1, Math.floor((canvas.width - 40) / (MAP_TILE_SIZE + MAP_TILE_GAP)));
+  const columns = Math.max(1, Math.floor((logicalWidth - 40) / (MAP_TILE_SIZE + MAP_TILE_GAP)));
   const gridWidth = columns * MAP_TILE_SIZE + (columns - 1) * MAP_TILE_GAP;
-  const startX = canvas.width / 2 - gridWidth / 2;
+  const startX = logicalWidth / 2 - gridWidth / 2;
   const startY = 130;
 
   maps.forEach((map, i) => {
@@ -2065,14 +2118,14 @@ function renderMapSelect(ctx) {
   const backWidth = 120;
   const backY = startY + (Math.ceil(maps.length / columns) || 1) * (MAP_TILE_SIZE + MAP_TILE_GAP) + 10;
   uiDrawButton(ctx, {
-    x: canvas.width / 2 - backWidth / 2,
+    x: logicalWidth / 2 - backWidth / 2,
     y: backY,
     w: backWidth,
     h: 32,
     label: '← Back',
     hovered: Boolean(hoverRegion) && hoverRegion.id === 'mapselect:back',
   });
-  uiRegisterRegion('mapselect:back', canvas.width / 2 - backWidth / 2, backY, backWidth, 32, {});
+  uiRegisterRegion('mapselect:back', logicalWidth / 2 - backWidth / 2, backY, backWidth, 32, {});
 
   drawMenuTooltip(ctx);
 }
@@ -2084,10 +2137,10 @@ function renderModeSelect(ctx) {
   uiBeginFrame();
   drawMenuTitle(ctx, 'Choose a Mode', selectedMap ? `Playing: ${selectedMap.name}` : 'Choose a mode to begin');
 
-  const buttonWidth = Math.min(420, canvas.width - 40);
+  const buttonWidth = Math.min(420, logicalWidth - 40);
   const minButtonHeight = 72;
   const gap = 16;
-  const x = canvas.width / 2 - buttonWidth / 2;
+  const x = logicalWidth / 2 - buttonWidth / 2;
   let y = 140;
 
   MENU_MODE_ORDER.forEach((key) => {
@@ -2128,14 +2181,14 @@ function renderModeSelect(ctx) {
   const backWidth = 120;
   const backY = y + 6;
   uiDrawButton(ctx, {
-    x: canvas.width / 2 - backWidth / 2,
+    x: logicalWidth / 2 - backWidth / 2,
     y: backY,
     w: backWidth,
     h: 32,
     label: '← Maps',
     hovered: Boolean(hoverRegion) && hoverRegion.id === 'mode:back',
   });
-  uiRegisterRegion('mode:back', canvas.width / 2 - backWidth / 2, backY, backWidth, 32, {});
+  uiRegisterRegion('mode:back', logicalWidth / 2 - backWidth / 2, backY, backWidth, 32, {});
 
   drawMenuTooltip(ctx);
 }
@@ -2148,9 +2201,9 @@ function renderGameOver(ctx) {
   uiBeginFrame();
   drawMenuTitle(ctx, 'Game Over', `${gameOverStats.modeName} — reached round ${gameOverStats.round}`);
 
-  const buttonWidth = Math.min(300, canvas.width - 40);
+  const buttonWidth = Math.min(300, logicalWidth - 40);
   const y = 220;
-  const x = canvas.width / 2 - buttonWidth / 2;
+  const x = logicalWidth / 2 - buttonWidth / 2;
 
   uiDrawButton(ctx, {
     x,
@@ -2229,8 +2282,8 @@ function renderUI(ctx) {
         tooltipRegion.x + tooltipRegion.w / 2,
         tooltipRegion.y,
         lines,
-        canvas.width,
-        canvas.height
+        logicalWidth,
+        logicalHeight
       );
     }
   }
@@ -2471,8 +2524,8 @@ function activateRegion(region) {
 function getCanvasPoint(event) {
   const rect = canvas.getBoundingClientRect();
   return {
-    x: (event.clientX - rect.left) * (canvas.width / rect.width),
-    y: (event.clientY - rect.top) * (canvas.height / rect.height),
+    x: (event.clientX - rect.left) * (logicalWidth / rect.width),
+    y: (event.clientY - rect.top) * (logicalHeight / rect.height),
   };
 }
 

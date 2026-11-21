@@ -226,6 +226,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getProdigyOption, getProdigyTypeKeyFor,
       PRODIGY_BASE_TYPE, updateTowerGrab, turnIntoPurpleZombie,
       updateTowerGasCloud, GAS_CLOUD_TICK_INTERVAL,
+      applyLayout, getCanvas: () => canvas,
+      getLayoutMode: () => layoutMode,
+      getLogicalWidth: () => logicalWidth,
+      getLogicalHeight: () => logicalHeight,
+      getWindow: () => window,
     };
     `,
     context
