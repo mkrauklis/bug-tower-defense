@@ -1171,6 +1171,7 @@ function render() {
     const buildable =
       canAfford(getShopItemCost(selectedShopItem)) &&
       !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
+      !isPointInMagmaPool(mouseX, mouseY) &&
       !isTowerPlacementBlocked(mouseX, mouseY, selectedShopItem.typeKey);
     ctx.fillStyle = buildable ? 'rgba(76, 175, 80, 0.4)' : 'rgba(229, 57, 53, 0.4)';
     ctx.beginPath();
@@ -2526,6 +2527,7 @@ function handleCanvasTap(x, y) {
     const cost = getShopItemCost(selectedShopItem);
     if (!canAfford(cost)) return;
     if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
+    if (isPointInMagmaPool(x, y)) return;
     if (isTowerPlacementBlocked(x, y, selectedShopItem.typeKey)) return;
 
     const tower = createTower(selectedShopItem.typeKey);

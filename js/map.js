@@ -1284,6 +1284,197 @@ function renderTundraDecor(ctx, decor) {
 const TUNDRA_PATH_COLORS = { outline: '#2e3d47', fill: '#7fa3b8' };
 
 // ---------------------------------------------------------------------------
+// Volcanic (direct request): a Hard-tier map with an obsidian floor and a
+// single glowing magma path. The one genuinely new mechanic here is
+// `decor.magmaPools` — open-ground lava hazards that are NOT part of the
+// enemy path but are still off-limits for tower placement (see
+// isPointInMagmaPool() below and its two call sites in game.js). Every
+// other decor array on every map before this one has been pure rendering
+// data with zero gameplay effect; magma pools are the first decor type
+// that's also consulted by the placement-validity check.
+//
+// A single path (like Deep Forest/Marshland), not two like Savanah/
+// Tundra — nothing in the request asked for a second path, and a single
+// long winding route gives towers plenty of exposure per enemy, avoiding
+// the exact mistake Tundra's own (since-nerfed) short paths made feeling
+// "impossible" (see TUNDRA_ROSTER's own comment in enemies.js). At ~1980px
+// this path is roughly 2.5x Tundra's original length and comfortably
+// longer than Whirlpool's own spiral is short of — long enough that
+// VOLCANIC_ROSTER (enemies.js) could safely be calibrated at Tundra's own
+// post-nerf, below-Whirlpool baseline without repeating that mistake.
+const VOLCANIC_WAYPOINTS = [
+  { x: -20, y: 80 }, // off-canvas spawn
+  { x: 200, y: 80 },
+  { x: 200, y: 560 },
+  { x: 480, y: 560 },
+  { x: 480, y: 160 },
+  { x: 760, y: 160 },
+  { x: 760, y: 480 }, // ends at the lava vent goal, on-canvas
+];
+
+// A dark, cracked-obsidian outline around a bright, hot-orange magma
+// fill — the literal "magma path" the request asked for, the inverse of
+// every other terrain's muted path (this one is the single brightest
+// thing on the whole map, which is the point: it should read as
+// dangerously hot against the near-black ground around it).
+const VOLCANIC_PATH_COLORS = { outline: '#2b150c', fill: '#e8540f' };
+
+// Hand-placed clear of VOLCANIC_WAYPOINTS above (checked segment-by-segment
+// against every leg, same convention as every other terrain's decor — see
+// e.g. TUNDRA_SNOWMEN's own comment). Purely decorative; see
+// VOLCANIC_MAGMA_POOLS further down for the one decor array here that
+// ALSO has a gameplay effect.
+const VOLCANIC_OBSIDIAN_ROCKS = [
+  { x: 60, y: 300, r: 30 }, { x: 850, y: 60, r: 28 }, { x: 900, y: 580, r: 32 },
+  { x: 60, y: 550, r: 28 }, { x: 900, y: 120, r: 26 }, { x: 550, y: 50, r: 24 },
+];
+
+const VOLCANIC_ASH_VENTS = [
+  { x: 300, y: 480, r: 16 }, { x: 700, y: 550, r: 18 },
+  { x: 420, y: 100, r: 16 }, { x: 870, y: 420, r: 16 },
+];
+
+// The actual no-build hazard (direct request: "magma pools where towers
+// cant be placed for the enemies"). Scattered across open interior
+// pockets, each one checked clear of every path segment by at least its
+// own radius plus a real margin (not just the bare path-width check
+// isPointOnPath uses for the path itself) so a pool never reads as
+// touching the magma path visually. isPointInMagmaPool() below is the
+// actual placement-blocking check; this array is the data it reads.
+const VOLCANIC_MAGMA_POOLS = [
+  { x: 340, y: 350, r: 42 },
+  { x: 620, y: 300, r: 40 },
+  { x: 120, y: 460, r: 36 },
+  { x: 650, y: 420, r: 38 },
+  { x: 850, y: 300, r: 34 },
+];
+
+// Marks Volcanic's single goal (direct follow-up of drawLavaVent further
+// down) — same "own named field" convention Tundra's TUNDRA_CAVE_A/B and
+// Savanah's two temples use for the exact point every enemy walks into.
+const VOLCANIC_GOAL_VENT = { x: 760, y: 480, size: 70 };
+
+const VOLCANIC_DECOR = {
+  obsidianRocks: VOLCANIC_OBSIDIAN_ROCKS,
+  ashVents: VOLCANIC_ASH_VENTS,
+  magmaPools: VOLCANIC_MAGMA_POOLS,
+  goal: VOLCANIC_GOAL_VENT,
+};
+
+// Same layered-ellipse-cluster body Tundra's drawSnowBoulder/Savanah's
+// drawSandstoneFormation use, just a near-black obsidian body with a
+// sharp, narrow glassy-sheen streak instead of either's soft matte
+// highlight — obsidian's own real distinguishing trait is that glossy,
+// almost mirror-like sheen.
+const OBSIDIAN_ROCK_COLOR = '#1c1410';
+
+function drawObsidianRock(ctx, x, y, r) {
+  ctx.fillStyle = OBSIDIAN_ROCK_COLOR;
+  [[-0.4, 0.1, 1], [0.3, 0.2, 0.8], [0, -0.3, 0.65]].forEach(([dx, dy, scale]) => {
+    ctx.beginPath();
+    ctx.ellipse(x + dx * r, y + dy * r, r * 0.55 * scale, r * 0.4 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = 'rgba(180, 160, 190, 0.5)';
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.15, y - r * 0.4, r * 0.18, r * 0.06, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A small cracked vent in the obsidian with a faint, slowly rising wisp of
+// ash-grey smoke — purely decorative (unlike drawMagmaPool below, this
+// doesn't block tower placement), the same "sells the theme without being
+// a hazard" role Tundra's ice spikes/Savanah's cacti play. `time` drifts
+// the smoke sideways a little and rises it continuously, the same
+// Whirlpool-pioneered "decor can animate" convention (see renderMap()'s
+// own comment on the `time` parameter).
+function drawAshVent(ctx, x, y, r, time = 0) {
+  ctx.fillStyle = '#2a1f1a';
+  ctx.beginPath();
+  ctx.ellipse(x, y, r, r * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#4a2e1c';
+  ctx.beginPath();
+  ctx.ellipse(x, y, r * 0.55, r * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const drift = Math.sin(time * 0.6 + x) * r * 0.2;
+  ctx.fillStyle = 'rgba(160, 155, 150, 0.35)';
+  [0, 1, 2].forEach((i) => {
+    const t = i / 3;
+    ctx.beginPath();
+    ctx.arc(x + drift * t, y - r * (0.6 + t * 1.4), r * (0.35 - t * 0.08), 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// The no-build hazard's own paint (isPointInMagmaPool below is the actual
+// gameplay block — this is only the visual). A pulsing glow — same
+// Math.sin(time * …) technique Whirlpool's drawVortexHole uses for its
+// own goal marker — so it reads as genuinely active, roiling lava rather
+// than a flat orange decal sitting on the ground.
+function drawMagmaPool(ctx, x, y, r, time = 0) {
+  ctx.fillStyle = '#2a0f06';
+  ctx.beginPath();
+  ctx.ellipse(x, y, r * 1.08, r * 0.78, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 2 + x * 0.05);
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+  gradient.addColorStop(0, `rgba(255, ${210 + Math.round(pulse * 30)}, 120, 0.9)`);
+  gradient.addColorStop(0.55, `rgba(232, 84, 15, ${0.85 + pulse * 0.1})`);
+  gradient.addColorStop(1, 'rgba(120, 30, 10, 0.9)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(x, y, r * (0.9 + pulse * 0.08), r * (0.65 + pulse * 0.06), 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = `rgba(20, 10, 8, ${0.5 + pulse * 0.2})`;
+  ctx.lineWidth = Math.max(1, r * 0.06);
+  [0, 1, 2].forEach((i) => {
+    const angle = (i / 3) * Math.PI * 2 + time * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(x + Math.cos(angle) * r * 0.2, y + Math.sin(angle) * r * 0.15);
+    ctx.lineTo(x + Math.cos(angle) * r * 0.7, y + Math.sin(angle) * r * 0.5);
+    ctx.stroke();
+  });
+}
+
+// Marks Volcanic's single goal — the fissure every enemy walks into — the
+// same "the goal gets its own drawn landmark" role Tundra's drawIceCave()/
+// Savanah's drawTemple()/Whirlpool's drawVortexHole() play: a jagged dark
+// crater rim around a bright, pulsing lava throat.
+function drawLavaVent(ctx, x, y, size, time = 0) {
+  ctx.fillStyle = '#1a0f0a';
+  ctx.beginPath();
+  ctx.ellipse(x, y, size, size * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#3a2418';
+  ctx.lineWidth = Math.max(2, size * 0.12);
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.92, size * 0.58, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.8);
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 0.7);
+  gradient.addColorStop(0, 'rgba(255, 230, 150, 0.95)');
+  gradient.addColorStop(0.5, `rgba(235, 90, 20, ${0.85 + pulse * 0.1})`);
+  gradient.addColorStop(1, 'rgba(90, 20, 8, 0.9)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * (0.58 + pulse * 0.06), size * (0.4 + pulse * 0.04), 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function renderVolcanicDecor(ctx, decor, time = 0) {
+  decor.obsidianRocks.forEach((rock) => drawObsidianRock(ctx, rock.x, rock.y, rock.r));
+  decor.ashVents.forEach((vent) => drawAshVent(ctx, vent.x, vent.y, vent.r, time));
+  decor.magmaPools.forEach((pool) => drawMagmaPool(ctx, pool.x, pool.y, pool.r, time));
+  drawLavaVent(ctx, decor.goal.x, decor.goal.y, decor.goal.size, time);
+}
+
+// ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/
 // renderMapPreview() below both dispatch through this rather than
@@ -1322,6 +1513,11 @@ const TERRAIN_THEMES = {
   // Deliberately bright (every other theme above is dark) — a flat fill is
   // all this one needs, same as forest/marsh/desert.
   tundra: { background: '#d6e8f0', renderDecor: renderTundraDecor },
+  // Near-black obsidian — a flat fill is enough here too (the magma path
+  // and magma pools are themselves the bright, hot elements; the ground
+  // around them is deliberately dark, same "obsidian floor" the request
+  // asked for).
+  volcano: { background: '#0f0906', renderDecor: renderVolcanicDecor },
 };
 
 // Fills the world background for the active theme — a flat
@@ -1413,9 +1609,22 @@ const MAP_TYPES = {
     terrain: 'tundra',
     decor: TUNDRA_DECOR,
   },
+  // Direct request: a Hard-tier map with an obsidian floor and a magma
+  // path, plus magma pools that block tower placement — see
+  // VOLCANIC_WAYPOINTS' own comment above for the full design rationale.
+  volcanic: {
+    id: 'volcanic',
+    name: 'Volcanic',
+    builtin: true,
+    paths: [VOLCANIC_WAYPOINTS],
+    pathWidth: 56,
+    pathColors: VOLCANIC_PATH_COLORS,
+    terrain: 'volcano',
+    decor: VOLCANIC_DECOR,
+  },
 };
 
-const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra'];
+const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic'];
 
 // ---------------------------------------------------------------------------
 // Active-map state. MAP_PATHS/MAP_PATH_WIDTH are what every other file
@@ -1464,6 +1673,20 @@ function isPointOnPath(x, y, margin = 0) {
     }
     return false;
   });
+}
+
+// Whether a point sits inside any of the ACTIVE map's magma pools — an
+// open-ground hazard (Volcanic, direct request: "magma pools where
+// towers cant be placed for the enemies") that's off-limits for tower
+// placement despite not being part of the enemy path at all, unlike the
+// isPointOnPath() check above. Reads activeMap.decor.magmaPools live on
+// every call rather than capturing it once, the same convention
+// isPointOnPath/MAP_PATHS use — and defaults to an empty array so every
+// map before Volcanic (none of which define decor.magmaPools at all)
+// just always returns false here, with zero special-casing needed.
+function isPointInMagmaPool(x, y) {
+  const pools = activeMap.decor.magmaPools || [];
+  return pools.some((pool) => Math.hypot(pool.x - x, pool.y - y) < pool.r);
 }
 
 // `time` (the game's own animation clock, game.js's animationTime) is a

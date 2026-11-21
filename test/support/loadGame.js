@@ -46,7 +46,7 @@ function loadGameContext() {
       findNearestEnemyInRange, damageEnemy, applyBurn, applySlow, getEnemiesInRadius,
       ARMORED_BEETLE_TIERS, getUnlockedArmoredBeetleKeys, getArmoredBeetleTier,
       getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey,
-      MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath,
+      MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath, isPointInMagmaPool,
       // A getter, not a plain binding — MAP_PATHS (like activeEnemies
       // below) is reassigned by setActiveMap(), so a plain destructured
       // export here would snapshot it at module-load time and go stale
@@ -172,7 +172,6 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       damageEnemy, applyBurn, applySlow, findNearestEnemyInRange, getEnemiesInRadius,
       updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies, getLastLeakedEnemies,
       getStrongestAuraFor,
-      updateTowerIncome,
       spawnFloatingText, updateFloatingTexts,
       getFloatingTexts: () => floatingTexts,
       getProjectiles: () => projectiles,
@@ -180,6 +179,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       update,
       uiBeginFrame, uiRegisterRegion, uiHitTest, uiWrapText,
       getCanvasPoint, isWorldPoint, activateRegion, getTooltipLines, handleCanvasTap,
+      isPointInMagmaPool,
       renderUI, getSellRefund,
       // Top-level \`let\`/\`const\` bindings from a vm-run classic script
       // aren't reachable off globalThis (same as a browser <script> tag),

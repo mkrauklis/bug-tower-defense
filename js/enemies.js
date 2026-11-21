@@ -440,6 +440,49 @@ const TUNDRA_ROSTER = {
   orderTier3: ['polarBumblebee', 'snowGroundBeetle', 'wolfSpider'],
 };
 
+// Volcanic (direct request): a Hard-tier roster given as exactly 8 named
+// creatures — 3 regular tier1 insects, a boss, 3 regular tier2 reptiles,
+// and a second boss — NOT the usual 3-regular-tiers-plus-3-bosses shape
+// every other built-in roster above uses. `orderTier3` is deliberately an
+// empty array rather than omitted: getUnlockedEnemyTypes() (below) reads
+// `roster.orderTier3.length` unconditionally once round > 50, so an
+// actually-missing field would throw — FOREST_ROSTER already established
+// the "fewer boss tiers than 3 is fine" half of this (see its own
+// bossTypes, only 2 entries); this is the same tolerance on the regular-
+// tier side. getBossForRound()'s own existing highest-designed-tier
+// fallback means round 75 (nominally "boss tier 3") just reuses Marine
+// Iguana (bossTypes[2]) again rather than needing a tier 3 designed here.
+//
+// Health/speed calibrated at TUNDRA_ROSTER's own POST-NERF baseline (see
+// that roster's comment above for why it was nerfed — tuned below
+// Whirlpool's equivalents, not above), not Whirlpool's own numbers
+// directly: this is brand new, never-played content, and Volcanic's
+// single path (VOLCANIC_WAYPOINTS, map.js) — while meaningfully longer
+// than Tundra's own paths — is still shorter than Whirlpool's long inward
+// spiral, so erring toward the already-proven-safe baseline rather than
+// Whirlpool's own (longer-path-calibrated) numbers avoids shipping a
+// second "impossible" Hard map on day one.
+const VOLCANIC_ROSTER = {
+  enemyTypes: {
+    lavaCricket: { name: 'Lava Cricket', speedMultiplier: 0.7, health: 13, color: '#4a1510', radius: 6, bounty: 6 },
+    volcanicAshBeetle: { name: 'Volcanic Ash Beetle', speedMultiplier: 0.55, health: 19, color: '#5c5650', radius: 8, bounty: 8 },
+    wekiuBug: { name: 'Wēkiu Bug', speedMultiplier: 0.65, health: 15, color: '#1c1a18', radius: 5, bounty: 7 },
+    landIguana: { name: 'Land Iguana', speedMultiplier: 0.5, health: 100, color: '#6b7a4a', radius: 11, bounty: 42 },
+    pinkIguana: { name: 'Pink Iguana', speedMultiplier: 0.55, health: 125, color: '#d98fa3', radius: 11, bounty: 52 },
+    lavaIguana: { name: 'Lava Iguana', speedMultiplier: 0.6, health: 150, color: '#3a2420', radius: 11, bounty: 62 },
+  },
+  bossTypes: {
+    1: { name: 'Haleakalā Mecyclothorax Beetle', speedMultiplier: 0.45, health: 220, color: '#2e2a26', radius: 17, bounty: 110 },
+    // The map's true "last designed" boss (see this roster's own top
+    // comment on getBossForRound()'s fallback) — biggest, slowest, and
+    // tankiest thing here, same billing every other map's final boss gets.
+    2: { name: 'Marine Iguana', speedMultiplier: 0.4, health: 420, color: '#23282a', radius: 21, bounty: 210 },
+  },
+  order: ['lavaCricket', 'volcanicAshBeetle', 'wekiuBug'],
+  orderTier2: ['landIguana', 'pinkIguana', 'lavaIguana'],
+  orderTier3: [],
+};
+
 // Keyed by TERRAIN id (map.js's TERRAIN_THEMES keys — 'forest'/'marsh'/
 // 'desert'), not the map's own id ('deepForest'/'marshland'/'savanah') —
 // getActiveRoster() below looks this up via getActiveMap().terrain.
@@ -449,6 +492,7 @@ const MAP_ROSTERS = {
   desert: SAVANAH_ROSTER,
   ocean: OCEAN_ROSTER,
   tundra: TUNDRA_ROSTER,
+  volcano: VOLCANIC_ROSTER,
 };
 
 // Falls back to the Forest roster if the active map's terrain isn't a
@@ -565,6 +609,15 @@ const ARMORED_BEETLE_THEME_BY_TERRAIN = {
     carapaceBeetle: { name: 'Frost Isopod', color: '#8aa0ac' },
     ironshellBeetle: { name: 'Glacial Pillbug', color: '#5a7a8c' },
     titanBeetle: { name: 'Permafrost Colossus', color: '#3a4a52' },
+  },
+  // Name/color only, same as desert above — keeps the literal beetle
+  // shape rather than a full art reskin (lava-hot colors on a beetle
+  // silhouette already reads as "belongs on Volcanic" without needing
+  // new shapes).
+  volcano: {
+    carapaceBeetle: { name: 'Obsidian Carapace Beetle', color: '#3a2e28' },
+    ironshellBeetle: { name: 'Magma Ironshell Beetle', color: '#8a3a1a' },
+    titanBeetle: { name: 'Molten Titan Beetle', color: '#c85a1e' },
   },
 };
 
@@ -793,6 +846,13 @@ const MAP_DIFFICULTY_MULTIPLIER = {
   // does; this one multiplier is what keeps it at "Hard" without
   // double-counting that gap on top.
   tundra: 1.8, // Hard
+  // Volcanic (direct request): also explicitly Hard-tier, matched to the
+  // same 1.8x every other Hard map uses rather than inventing a new tier
+  // — VOLCANIC_ROSTER's own numbers (above) are what carries this map's
+  // relative brutality, same "roster's own numbers are the one place a
+  // future Hard map's relative brutality actually lives" convention
+  // this constant's own comment on tundra already established.
+  volcano: 1.8, // Hard
 };
 
 function getRoundScaling(round) {
@@ -3108,6 +3168,188 @@ function drawWolfSpider(ctx, e) {
   ctx.fill();
 }
 
+// --- Volcanic's own roster art -------------------------------------------
+
+// Big folded hind "jump" legs (same silhouette-first-then-body ordering
+// Giant Lubber Grasshopper's own legs use) plus a pair of long thread-like
+// antennae — real crickets' own signature trait a beetle's stubbier,
+// antennae-less look doesn't have.
+function drawLavaCricket(ctx, e) {
+  ctx.strokeStyle = shadeColor(e.color, 35);
+  ctx.lineWidth = Math.max(1.2, e.radius * 0.16);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y + side * e.radius * 0.25);
+    ctx.lineTo(e.x - e.radius * 0.5, e.y + side * e.radius * 0.5);
+    ctx.lineTo(e.x - e.radius * 1.2, e.y + side * e.radius * 1.0);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.7, e.radius * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.65, e.y, e.radius * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, 50);
+  ctx.lineWidth = 1;
+  [-0.15, 0.15].forEach((dy) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x + e.radius * 0.9, e.y + dy * e.radius * 0.5);
+    ctx.lineTo(e.x + e.radius * 1.6, e.y + dy * e.radius * 1.6);
+    ctx.stroke();
+  });
+}
+
+// drawBeetleBody's own base shell plus a dusting of lighter ash-grey
+// speckles scattered across it — the "dusted with volcanic ash" look the
+// name itself calls for, the same "shared base body + a few extra
+// species-specific marks" pattern Tiger Beetle's own racing-stripe
+// treatment of that same base body uses.
+function drawVolcanicAshBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  ctx.fillStyle = 'rgba(200, 195, 188, 0.75)';
+  [[-0.3, -0.3], [0.1, -0.15], [-0.1, 0.25], [0.35, 0.1], [-0.4, 0.05]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Tiny and wingless (the real insect's own signature trait — it never
+// flies, unlike every other bug on this tier) — just a small rounded body
+// and a few short legs, no head bump or wings at all: the roster's own
+// smallest and plainest-looking entry by design, same "weakest reads as
+// the least distinctive" convention Deer Fly's own comment calls out.
+function drawWekiuBug(ctx, e) {
+  ctx.strokeStyle = shadeColor(e.color, 40);
+  ctx.lineWidth = Math.max(1, e.radius * 0.14);
+  ctx.lineCap = 'round';
+  [-0.4, 0, 0.4].forEach((t) => {
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x + t * e.radius, e.y);
+      ctx.lineTo(e.x + t * e.radius, e.y + side * e.radius * 0.6);
+      ctx.stroke();
+    });
+  });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.55, e.radius * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Boss (round 25): drawBeetleBody's own base shell, 3 ridged plate
+// segments (the same ridged-plate detail Titan Beetle's own tier uses for
+// "boss-tier, not just another regular beetle"), plus a pair of forward
+// mandibles — real ground beetles' own hunting trait, and the one visual
+// cue that reads as "boss" rather than just "bigger Volcanic Ash Beetle."
+function drawHaleakalaMecyclothoraxBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  drawBeetlePlates(ctx, e, 3, true);
+
+  ctx.strokeStyle = shadeColor(e.color, -40);
+  ctx.lineWidth = Math.max(1.5, e.radius * 0.14);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 1.2, e.y + side * e.radius * 0.1);
+    ctx.quadraticCurveTo(
+      e.x - e.radius * 1.55, e.y + side * e.radius * 0.3,
+      e.x - e.radius * 1.7, e.y + side * e.radius * 0.05
+    );
+    ctx.stroke();
+  });
+}
+
+// Shared "land lizard in side profile" body for Volcanic's whole iguana
+// family (landIguana/pinkIguana/lavaIguana/the Marine Iguana boss) — a
+// long low torso, a tapering tail, 3 pairs of short bent legs, and a
+// blunt head with one visible eye, the same "one shared body, color/
+// trait options vary the species" convention drawSpiderBody/
+// drawScorpionBody use for their own families. `crested` draws a row of
+// small dorsal spikes down the back (Lava Iguana's own rough ridge,
+// Marine Iguana's real spiky dorsal crest); `snoutColor` tints just the
+// snout tip (Marine Iguana's real white salt-crusted nose — it excretes
+// excess salt through its nose, the one trait that visibly sets it apart
+// from the other 3 at a glance).
+function drawIguanaBody(ctx, e, { crested = false, snoutColor = null } = {}) {
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = Math.max(1.5, e.radius * 0.16);
+  ctx.lineCap = 'round';
+  [-0.55, -0.15, 0.25].forEach((t) => {
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x + t * e.radius, e.y + side * e.radius * 0.35);
+      ctx.lineTo(e.x + t * e.radius - e.radius * 0.1, e.y + side * e.radius * 0.85);
+      ctx.stroke();
+    });
+  });
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.7, e.y - e.radius * 0.18);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.6, e.y, e.x - e.radius * 0.7, e.y + e.radius * 0.18);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.15, e.y, e.radius * 0.85, e.radius * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 1.0, e.y, e.radius * 0.35, e.radius * 0.26, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (snoutColor) {
+    ctx.fillStyle = snoutColor;
+    ctx.beginPath();
+    ctx.ellipse(e.x + e.radius * 1.25, e.y, e.radius * 0.14, e.radius * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 1.05, e.y - e.radius * 0.1, e.radius * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (crested) {
+    ctx.fillStyle = shadeColor(e.color, -20);
+    [-0.5, -0.2, 0.1, 0.4].forEach((t) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x + t * e.radius, e.y - e.radius * 0.38);
+      ctx.lineTo(e.x + t * e.radius - e.radius * 0.06, e.y - e.radius * 0.6);
+      ctx.lineTo(e.x + t * e.radius + e.radius * 0.06, e.y - e.radius * 0.6);
+      ctx.closePath();
+      ctx.fill();
+    });
+  }
+}
+
+function drawLandIguana(ctx, e) {
+  drawIguanaBody(ctx, e);
+}
+
+function drawPinkIguana(ctx, e) {
+  drawIguanaBody(ctx, e);
+}
+
+// Real lava lizards have a faint rough dorsal ridge — reuses the shared
+// body's own `crested` option rather than a separate one-off detail.
+function drawLavaIguana(ctx, e) {
+  drawIguanaBody(ctx, e, { crested: true });
+}
+
+// Boss: the biggest of the 4, a real spiky dorsal crest, and the real
+// species' own white salt-crusted snout — see drawIguanaBody's own
+// comment for why both options are reused rather than new one-off code.
+function drawMarineIguana(ctx, e) {
+  drawIguanaBody(ctx, e, { crested: true, snoutColor: '#e8e4da' });
+}
+
 const ENEMY_DRAW_FUNCTIONS = {
   ant: drawAnt,
   fireAnt: drawFireAnt,
@@ -3156,6 +3398,12 @@ const ENEMY_DRAW_FUNCTIONS = {
   polarBumblebee: drawPolarBumblebee,
   snowGroundBeetle: drawSnowGroundBeetle,
   wolfSpider: drawWolfSpider,
+  lavaCricket: drawLavaCricket,
+  volcanicAshBeetle: drawVolcanicAshBeetle,
+  wekiuBug: drawWekiuBug,
+  landIguana: drawLandIguana,
+  pinkIguana: drawPinkIguana,
+  lavaIguana: drawLavaIguana,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -3177,6 +3425,8 @@ const BOSS_DRAW_FUNCTIONS = {
   'tundra-boss-tier-1': drawArcticFritillary,
   'tundra-boss-tier-2': drawArcticWoollyBearMoth,
   'tundra-boss-tier-3': drawGiantArcticWolfSpider,
+  'volcano-boss-tier-1': drawHaleakalaMecyclothoraxBeetle,
+  'volcano-boss-tier-2': drawMarineIguana,
 };
 
 function drawFallbackCircle(ctx, e) {

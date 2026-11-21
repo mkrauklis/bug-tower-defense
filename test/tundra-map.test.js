@@ -131,8 +131,13 @@ test('Giant Arctic Wolf Spider is the true final boss — noticeably tougher tha
   // tuned BELOW Whirlpool's equivalents on purpose (its shorter paths
   // already give towers less exposure time per enemy), so this no longer
   // asserts parity with/excess over Great White's own 1400 — just that
-  // it's still a true, meaningfully tougher final boss.
-  assert.ok(finalBoss.health < game.OCEAN_ROSTER.bossTypes[3].health);
+  // it's still a true, meaningfully tougher final boss. Fixed a latent
+  // bug here too while touching this line: `game.OCEAN_ROSTER` was never
+  // actually exported by test/support/loadGame.js (only MAP_ROSTERS/
+  // FOREST_ROSTER/MARSH_ROSTER are) — it's always been undefined, so this
+  // assertion could never have actually run before now. MAP_ROSTERS.ocean
+  // is the real, working way to reach it.
+  assert.ok(finalBoss.health < game.MAP_ROSTERS.ocean.bossTypes[3].health);
 });
 
 test('Tundra\'s regular enemies escalate tier to tier (each tier\'s weakest clears the previous tier\'s ceiling)', () => {
