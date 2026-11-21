@@ -168,7 +168,7 @@ const GAME_MODES = {
   sandbox: {
     name: 'Sandbox',
     description:
-      'No waves or rounds. Freely spawn any enemy type you’ve defeated before, to test builds. ' +
+      'No waves or rounds. Freely spawn any enemy type, no matter what you’ve defeated before, to test builds. ' +
       'Unlimited money — place, upgrade, and sell towers freely.',
     healthMultiplier: 1,
     speedMultiplier: 1,
@@ -1659,12 +1659,14 @@ function renderWaveSection(ctx, x, width, startY) {
 }
 
 // Sandbox's replacement for the Wave section — no rounds, so instead this
-// is a palette of every enemy type (regular and boss alike, same unlock
-// rule for both), one small tile each, reusing the exact drawEnemyShape()
-// art enemies.js already has rather than separate icons. A type the
-// player hasn't defeated yet in a real (non-Sandbox) game shows dimmed
-// with a lock glyph and isn't clickable — same locked-tile convention the
-// upgrade-path tiers already use.
+// is a palette of every enemy type (regular and boss alike), one small
+// tile each, reusing the exact drawEnemyShape() art enemies.js already has
+// rather than separate icons. Every tile is always spawnable in Sandbox —
+// there used to be a "must have defeated this enemy in a real game first"
+// lock here (mirroring the upgrade-path tiers' locked-tile look), but that
+// was removed on direct request ("spawn in any enemy i want in sandbox no
+// matter what"). defeatedEnemyKeys itself is untouched — it still gates
+// the separate menu-backdrop trophy gallery, just not this palette.
 const SANDBOX_TILE_SIZE = 44;
 const SANDBOX_TILE_GAP = 6;
 
@@ -1680,11 +1682,7 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
 
   ctx.fillStyle = '#aaa';
   ctx.font = '11px sans-serif';
-  const hintLines = uiWrapText(
-    ctx,
-    'No rounds here — click a defeated enemy to spawn one. Locked ones need a kill in Medium or Horde Mode first.',
-    width
-  );
+  const hintLines = uiWrapText(ctx, 'No rounds here — click any enemy to spawn one.', width);
   y = uiDrawTextLines(ctx, hintLines, x, y, 13, '#aaa', '11px sans-serif') + 8;
 
   let tileX = x;
@@ -1697,21 +1695,19 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
 
     const entry = getSpawnEntryForEnemyKey(key);
     if (!entry) return;
-    const defeated = defeatedEnemyKeys.has(key);
     const regionId = `spawn:${key}`;
     const hovered = hoverRegion && hoverRegion.id === regionId;
 
     uiRoundRect(ctx, tileX, rowY, SANDBOX_TILE_SIZE, SANDBOX_TILE_SIZE, 6);
-    ctx.fillStyle = hovered && defeated ? '#262b35' : '#1c2028';
+    ctx.fillStyle = hovered ? '#262b35' : '#1c2028';
     ctx.fill();
-    ctx.strokeStyle = defeated ? '#454c5c' : '#3a2020';
+    ctx.strokeStyle = '#454c5c';
     ctx.lineWidth = 1;
     ctx.stroke();
 
     ctx.save();
     uiRoundRect(ctx, tileX, rowY, SANDBOX_TILE_SIZE, SANDBOX_TILE_SIZE, 6);
     ctx.clip();
-    if (!defeated) ctx.globalAlpha = 0.35;
     const iconCenterX = tileX + SANDBOX_TILE_SIZE / 2;
     const iconCenterY = rowY + SANDBOX_TILE_SIZE / 2;
     // Scales the preview down so a boss's much larger radius still fits
@@ -1730,19 +1726,8 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
     });
     ctx.restore();
 
-    if (!defeated) {
-      ctx.fillStyle = '#eee';
-      ctx.font = '14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('\u{1F512}', iconCenterX, iconCenterY);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-    }
-
     uiRegisterRegion(regionId, tileX, rowY, SANDBOX_TILE_SIZE, SANDBOX_TILE_SIZE, {
       key,
-      defeated,
       name: entry.name,
     });
     tileX += SANDBOX_TILE_SIZE + SANDBOX_TILE_GAP;
@@ -1801,8 +1786,9 @@ function drawMenuTooltip(ctx) {
 
 // ---------------------------------------------------------------------------
 // Main-menu "trophy trail": every distinct enemy type the player has ever
-// defeated (the same defeatedEnemyKeys set Sandbox's unlock gate already
-// uses), walking a loop along Deep Forest's real path, behind the menu
+// defeated (the same defeatedEnemyKeys set that used to also gate
+// Sandbox's spawn palette, before that lock was removed), walking a loop
+// along Deep Forest's real path, behind the menu
 // buttons — pure ambient decoration, not clickable, no gameplay effect.
 // Always Deep Forest specifically (not "whatever map was last played") so
 // the backdrop reads as a stable "forest" regardless of where the player's
@@ -2327,9 +2313,7 @@ function getTooltipLines(region) {
   if (region.id === 'menu-return') return ['Back to the main menu.'];
 
   if (region.id.startsWith('spawn:')) {
-    return region.data.defeated
-      ? [region.data.name, 'Click to spawn one.']
-      : [region.data.name, 'Defeat this enemy in Medium or Horde Mode to unlock it here.'];
+    return [region.data.name, 'Click to spawn one.'];
   }
 
   if (region.id.startsWith('mode:')) {
@@ -2462,7 +2446,6 @@ function activateRegion(region) {
   }
 
   if (region.id.startsWith('spawn:')) {
-    if (!region.data.defeated) return;
     const entry = getSpawnEntryForEnemyKey(region.data.key);
     if (entry) spawnSingleEnemy(entry);
     return;

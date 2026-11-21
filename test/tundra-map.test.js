@@ -127,8 +127,12 @@ test('Giant Arctic Wolf Spider is the true final boss — noticeably tougher tha
   assert.ok(finalBoss.health > roster.bossTypes[1].health);
   Object.values(roster.enemyTypes).forEach((type) => assert.ok(finalBoss.health > type.health));
 
-  // Explicitly set to match or exceed Whirlpool's own Great White (1400).
-  assert.ok(finalBoss.health >= game.OCEAN_ROSTER.bossTypes[3].health);
+  // Revised after a "this is impossible" report: Tundra's roster is now
+  // tuned BELOW Whirlpool's equivalents on purpose (its shorter paths
+  // already give towers less exposure time per enemy), so this no longer
+  // asserts parity with/excess over Great White's own 1400 — just that
+  // it's still a true, meaningfully tougher final boss.
+  assert.ok(finalBoss.health < game.OCEAN_ROSTER.bossTypes[3].health);
 });
 
 test('Tundra\'s regular enemies escalate tier to tier (each tier\'s weakest clears the previous tier\'s ceiling)', () => {

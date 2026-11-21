@@ -380,51 +380,60 @@ const OCEAN_ROSTER = {
 // order/bossTypes[1]/orderTier2/bossTypes[2]/orderTier3/bossTypes[3]
 // structure with zero engine changes, only data.
 //
-// No health/speed numbers were given — calibrated directly against
-// Whirlpool's own CURRENT numbers (not some earlier pre-retune baseline —
-// this is brand-new content added after the 3rd balance pass, same
-// position Whirlpool itself was in when IT was first added, so there's no
-// historical number to retune relative to): tier1 ~14-24hp, tier2 ~130-
-// 205hp, tier3 ~340-520hp, boss1(round25) 320hp, boss2(round50) 620hp —
-// each a bit ABOVE Whirlpool's own equivalent tier, per the request's
-// "matching or exceeding Whirlpool's intensity." Giant Arctic Wolf
-// Spider (boss3/round75, explicitly "the toughest thing in this roster,
-// same pattern as Whirlpool's Great White") goes well past even that —
-// 1800hp, above Great White's own 1400 — a genuine new high-water mark,
-// not just another step up the curve. Bounty follows this file's usual
-// ~40%-of-health convention for regular enemies and the cleaner 50%-of-
-// health convention Whirlpool's own bosses use.
+// REVISED on direct report ("make tundra easier its impossible right
+// now"). The roster originally shipped with health deliberately ABOVE
+// Whirlpool's own equivalent tiers (see git history for the old numbers
+// and the "matching or exceeding Whirlpool's intensity" rationale that
+// produced them) — on top of Tundra's two paths (TUNDRA_PATH_A/TUNDRA_PATH_B,
+// map.js) each being noticeably SHORTER than Whirlpool's long inward
+// spiral, meaning towers get far less total time/exposure against any
+// one enemy before it reaches a goal here than they would on Whirlpool.
+// Higher health AND less tower-exposure time compounded into something
+// well past "Hard," not just a notch above it. Fixed by bringing every
+// health number down BELOW its Whirlpool equivalent instead of above it
+// (tier1 ~12-20hp, tier2 ~95-150hp, tier3 ~250-380hp, bosses 220/420/1200
+// vs. Whirlpool's 250/480/1400) — Tundra's shorter paths alone are now
+// what keeps it feeling like Hard tier, rather than stacking a tougher
+// roster on top of that. The early fliers' speed was also trimmed a
+// notch (arcticBumblebee/deerFly/arcticRinglet/snowScorpionFly/
+// arcticBluet/polarBumblebee/wolfSpider all eased down) since the short
+// paths were giving the player especially little reaction time on an
+// early-game economy before any real towers are up. The flat
+// MAP_DIFFICULTY_MULTIPLIER (1.8x, below) is untouched — it's still the
+// uniform "Hard tier" lever every Hard map shares; this was specifically
+// the roster's OWN numbers overshooting that tier, not the tier itself.
 //
-// Speed is the "weakest to strongest" list's OTHER axis, same spirit as
-// every other roster: smaller/faster fliers up front (deer flies and
-// bumblebees are notoriously quick/annoying), heavier/slower things
-// (beetles, the woolly bear's fuzzy caterpillar-like bulk) trending
-// slower despite more health, same non-monotonic-with-health pattern
-// Whirlpool's own tuna/marlin already established.
+// Speed is still the "weakest to strongest" list's OTHER axis, same
+// spirit as every other roster: smaller/faster fliers up front (deer
+// flies and bumblebees are notoriously quick/annoying), heavier/slower
+// things (beetles, the woolly bear's fuzzy caterpillar-like bulk)
+// trending slower despite more health, same non-monotonic-with-health
+// pattern Whirlpool's own tuna/marlin already established — just eased
+// down in absolute terms across the board per the above.
 //
-// Tundra's own difficulty TIER (MAP_DIFFICULTY_MULTIPLIER, this file) is
-// set to match Whirlpool's 1.8x Hard multiplier exactly rather than
-// exceed it — see that constant's own comment for why a second, even-
-// higher map multiplier felt redundant once these numbers already push
-// the roster itself past Whirlpool's own.
+// Tundra's own difficulty TIER (MAP_DIFFICULTY_MULTIPLIER, this file)
+// stays matched to Whirlpool's 1.8x Hard multiplier exactly — see that
+// constant's own comment.
 const TUNDRA_ROSTER = {
   enemyTypes: {
-    arcticBumblebee: { name: 'Arctic Bumblebee', speedMultiplier: 0.85, health: 14, color: '#2b2420', radius: 7, bounty: 6 },
-    deerFly: { name: 'Deer Fly', speedMultiplier: 1.0, health: 18, color: '#5c5048', radius: 6, bounty: 8 },
-    arcticMoth: { name: 'Arctic Moth', speedMultiplier: 0.55, health: 24, color: '#d8dde2', radius: 9, bounty: 10 },
-    arcticRinglet: { name: 'Arctic Ringlet', speedMultiplier: 0.7, health: 130, color: '#6b5a42', radius: 7, bounty: 55 },
-    snowScorpionFly: { name: 'Snow Scorpion Fly', speedMultiplier: 0.75, health: 165, color: '#8a7a5c', radius: 7, bounty: 70 },
-    arcticBluet: { name: 'Arctic Bluet', speedMultiplier: 0.85, health: 205, color: '#3a7ab8', radius: 6, bounty: 85 },
-    polarBumblebee: { name: 'Polar Bumblebee', speedMultiplier: 0.8, health: 340, color: '#f0f4f7', radius: 9, bounty: 140 },
-    snowGroundBeetle: { name: 'Snow Ground Beetle', speedMultiplier: 0.55, health: 420, color: '#23282b', radius: 9, bounty: 170 },
-    wolfSpider: { name: 'Wolf Spider', speedMultiplier: 0.75, health: 520, color: '#5a4a3a', radius: 10, bounty: 210 },
+    arcticBumblebee: { name: 'Arctic Bumblebee', speedMultiplier: 0.65, health: 12, color: '#2b2420', radius: 7, bounty: 6 },
+    deerFly: { name: 'Deer Fly', speedMultiplier: 0.8, health: 16, color: '#5c5048', radius: 6, bounty: 8 },
+    arcticMoth: { name: 'Arctic Moth', speedMultiplier: 0.55, health: 20, color: '#d8dde2', radius: 9, bounty: 10 },
+    arcticRinglet: { name: 'Arctic Ringlet', speedMultiplier: 0.6, health: 95, color: '#6b5a42', radius: 7, bounty: 40 },
+    snowScorpionFly: { name: 'Snow Scorpion Fly', speedMultiplier: 0.65, health: 120, color: '#8a7a5c', radius: 7, bounty: 50 },
+    arcticBluet: { name: 'Arctic Bluet', speedMultiplier: 0.7, health: 150, color: '#3a7ab8', radius: 6, bounty: 60 },
+    polarBumblebee: { name: 'Polar Bumblebee', speedMultiplier: 0.65, health: 250, color: '#f0f4f7', radius: 9, bounty: 100 },
+    snowGroundBeetle: { name: 'Snow Ground Beetle', speedMultiplier: 0.55, health: 300, color: '#23282b', radius: 9, bounty: 120 },
+    wolfSpider: { name: 'Wolf Spider', speedMultiplier: 0.6, health: 380, color: '#5a4a3a', radius: 10, bounty: 150 },
   },
   bossTypes: {
-    1: { name: 'Arctic Fritillary', speedMultiplier: 0.5, health: 320, color: '#e8923a', radius: 16, bounty: 160 },
-    2: { name: 'Arctic Woolly Bear Moth', speedMultiplier: 0.4, health: 620, color: '#4a3826', radius: 19, bounty: 310 },
+    1: { name: 'Arctic Fritillary', speedMultiplier: 0.45, health: 220, color: '#e8923a', radius: 16, bounty: 110 },
+    2: { name: 'Arctic Woolly Bear Moth', speedMultiplier: 0.38, health: 420, color: '#4a3826', radius: 19, bounty: 210 },
     // The map's true final boss, same "noticeably tougher, not just
-    // incrementally so" billing Great White got on Whirlpool.
-    3: { name: 'Giant Arctic Wolf Spider', speedMultiplier: 0.45, health: 1800, color: '#3a2e24', radius: 23, bounty: 900 },
+    // incrementally so" billing Great White got on Whirlpool — but now
+    // below Great White's own 1400, not above it (see this roster's own
+    // top comment for why).
+    3: { name: 'Giant Arctic Wolf Spider', speedMultiplier: 0.42, health: 1200, color: '#3a2e24', radius: 23, bounty: 600 },
   },
   order: ['arcticBumblebee', 'deerFly', 'arcticMoth'],
   orderTier2: ['arcticRinglet', 'snowScorpionFly', 'arcticBluet'],
@@ -775,15 +784,14 @@ const MAP_DIFFICULTY_MULTIPLIER = {
   marsh: 1.3, // Medium
   desert: 1.3, // Medium
   ocean: 1.8, // Hard
-  // Tundra (direct request): explicitly Hard-tier too. Given the choice of
-  // matching Whirlpool's own 1.8x or going slightly above it, matched it
-  // exactly — the roster's own individually-tuned numbers (see
-  // TUNDRA_ROSTER's own comment) already push its intensity to feel
-  // comparable to or past Whirlpool's at equivalent rounds, so a second,
-  // even-higher map multiplier on top felt like double-counting "Hard"
-  // rather than adding anything distinct. Keeping Hard-tier maps at one
-  // consistent multiplier also means the roster's own numbers are the
-  // one place a future Hard map's relative brutality actually lives.
+  // Tundra (direct request): explicitly Hard-tier too, matched to
+  // Whirlpool's own 1.8x exactly rather than going above it — the
+  // roster's own numbers (see TUNDRA_ROSTER's own comment, revised after
+  // a "this is impossible" report) are now tuned BELOW Whirlpool's
+  // equivalents specifically because Tundra's shorter paths already give
+  // towers less exposure time per enemy than Whirlpool's long spiral
+  // does; this one multiplier is what keeps it at "Hard" without
+  // double-counting that gap on top.
   tundra: 1.8, // Hard
 };
 
