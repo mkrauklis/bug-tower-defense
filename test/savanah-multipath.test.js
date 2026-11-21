@@ -2,16 +2,20 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 
-// Savanah is the first map with more than one path — two separate spawns
-// that both lead into one shared temple goal. The underlying engine was
-// generalized from one flat MAP_PATH_WAYPOINTS array to MAP_PATHS (an
-// array of paths); every enemy independently rolls which path it spawns
-// onto (enemy.pathIndex) via the game's own seeded random(), and sticks
-// with that path for its whole life. These tests cover the multi-path
-// machinery itself — Deep Forest/Marshland's own single-path tests
-// elsewhere are the regression coverage that nothing changed for them.
+// Savanah is the first map with more than one path — two separate spawns,
+// each ending at its own independent temple goal (direct follow-up
+// request: originally both paths converged on one shared temple; the
+// user later confirmed they want them fully separate, including separate
+// endpoints, not just non-merging geometry — see SAVANAH_PATH_A/B's own
+// comment in map.js). The underlying engine was generalized from one flat
+// MAP_PATH_WAYPOINTS array to MAP_PATHS (an array of paths); every enemy
+// independently rolls which path it spawns onto (enemy.pathIndex) via the
+// game's own seeded random(), and sticks with that path for its whole
+// life. These tests cover the multi-path machinery itself — Deep Forest/
+// Marshland's own single-path tests elsewhere are the regression coverage
+// that nothing changed for them.
 
-test('Savanah has exactly two paths, both ending at the same shared goal (the temple)', () => {
+test('Savanah has exactly two paths, each ending at its own separate goal (not a shared one)', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.savanah);
   const paths = game.getMapPaths();
@@ -20,7 +24,20 @@ test('Savanah has exactly two paths, both ending at the same shared goal (the te
   const [pathA, pathB] = paths;
   const endA = pathA[pathA.length - 1];
   const endB = pathB[pathB.length - 1];
-  assert.deepEqual(endA, endB); // both routes converge on the identical point
+  assert.notDeepEqual(endA, endB); // two independent goals, not a shared convergence point
+  // Both goals are still real, on-canvas destinations, each with its own
+  // temple drawn there (see map.js's SAVANAH_DECOR) — not just "different
+  // from each other."
+  assert.ok(endA.x >= 0 && endA.x <= 960 && endA.y >= 0 && endA.y <= 640);
+  assert.ok(endB.x >= 0 && endB.x <= 960 && endB.y >= 0 && endB.y <= 640);
+});
+
+test('Savanah\'s two temple goals sit far enough apart to read as visually distinct, not overlapping', () => {
+  const game = loadFullGameContext();
+  game.setActiveMap(game.MAP_TYPES.savanah);
+  const [templeA, templeB] = game.MAP_TYPES.savanah.decor.temples;
+  const dist = Math.hypot(templeA.x - templeB.x, templeA.y - templeB.y);
+  assert.ok(dist > templeA.size); // comfortably further apart than either temple's own width
 });
 
 test('Deep Forest and Marshland still have exactly one path each (no behavior change)', () => {

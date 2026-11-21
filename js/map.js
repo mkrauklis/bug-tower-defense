@@ -474,10 +474,11 @@ function drawSandstoneFormation(ctx, x, y, r) {
   ctx.fill();
 }
 
-// Marks the single shared goal both of Savanah's paths converge on — a
-// small stepped-stone temple (receding tiers plus a dark doorway at the
-// base) rather than just an unmarked dead end, so the "two paths, one
-// goal" structure actually reads visually, not just mechanically.
+// Marks one of Savanah's two independent goals (each path now ends at
+// its own — see SAVANAH_DECOR's own comment) — a small stepped-stone
+// temple (receding tiers plus a dark doorway at the base) rather than
+// just an unmarked dead end, so each path's own goal actually reads
+// visually, not just mechanically.
 function drawTemple(ctx, x, y, size) {
   [1, 0.72, 0.46].forEach((scale, i) => {
     const w = size * scale;
@@ -496,24 +497,29 @@ function drawTemple(ctx, x, y, size) {
   ctx.fillRect(x - doorW / 2, y + size * 0.3 - doorH, doorW, doorH);
 }
 
-// Path A: spawns top-left, heads east then south, entering the temple
-// from directly above (its last leg is VERTICAL, running down column
-// x=480). Path B: spawns bottom-right, heads west then north then west
-// again, entering the temple from the east (its last leg is HORIZONTAL,
-// running along row y=320). Both end at the identical final waypoint
-// (480, 320) — that shared endpoint *is* the temple's location, which is
-// what makes the two routes visually converge on one goal — but the two
-// paths are otherwise fully separate and never touch, cross, or run
-// alongside each other anywhere before that point.
+// Path A: spawns top-left, heads east then south, entering its own
+// temple from directly above (its last leg is VERTICAL, running down
+// column x=480). Path B: spawns bottom-right, heads west then north
+// again, entering its own, separate temple from the south.
 //
-// Direct request: an earlier version had Path B's last leg also vertical
-// along the same x=480 column (approaching from below instead of from
-// the east), which made the two paths' final legs collinear — together
-// they rendered as one continuous straight line through the temple
-// rather than two routes visibly converging on it. Giving Path B's final
-// approach a different (horizontal, not vertical) direction fixes that:
-// the two paths now meet at a visible corner/junction at the temple
-// instead of looking like a single merged line.
+// Direct follow-up request: the user confirmed they want the two paths
+// FULLY separate now, including separate endpoints — not just non-
+// merging geometry that still converges on one shared temple (the
+// state this map was in right after the earlier fix, commit 2189bc6,
+// which only fixed the two final legs from being collinear). Path A's
+// own route/temple is unchanged from that fix. Path B used to continue
+// west all the way to Path A's temple at (480, 320); its last leg now
+// turns north short of that point instead, ending at its own temple
+// further up the same x=820 column — same first two turns/legs as
+// before (the 980,540 -> 820,540 -> 820,320 approach that
+// savanah-multipath.test.js's Root Path coverage test already depends
+// on), just a different, independent destination rather than a shared
+// one. Both goals still drain the same single player-health pool as
+// normal — getUnlockedEnemyTypes()/updateEnemies() already detect "an
+// enemy reached its own path's own final waypoint" generically (see
+// enemies.js's own waypointIndex/MAP_PATHS[enemy.pathIndex] check),
+// so nothing about damage-on-reaching-the-goal needed to change, only
+// where each path's own final waypoint actually sits.
 const SAVANAH_PATH_A = [
   { x: -20, y: 100 },
   { x: 200, y: 100 },
@@ -525,7 +531,7 @@ const SAVANAH_PATH_B = [
   { x: 980, y: 540 },
   { x: 820, y: 540 },
   { x: 820, y: 320 },
-  { x: 480, y: 320 },
+  { x: 820, y: 160 },
 ];
 
 // Hand-placed clear of both paths above (checked against every segment of
@@ -535,6 +541,11 @@ const SAVANAH_PATH_B = [
 // when Path B's route moved — both used to sit in open ground near the
 // old south-approach corner and ended up too close to the new east-
 // approach corner at (820, 320)-(820, 540).
+// Sandstone 3 and 7 (850,140 / 870,200) were repositioned again (to
+// 930,120 / 940,230) when Path B's two-separate-goals follow-up gave it
+// its own temple at (820, 160) — both used to sit in open ground near
+// where that corner used to just pass through, and ended up overlapping
+// the new temple.
 const SAVANAH_CACTI = [
   { x: 70, y: 25, size: 28 }, { x: 420, y: 50, size: 26 }, { x: 650, y: 50, size: 32 },
   { x: 830, y: 90, size: 28 }, { x: 900, y: 230, size: 30 }, { x: 900, y: 330, size: 26 },
@@ -543,27 +554,30 @@ const SAVANAH_CACTI = [
 ];
 
 const SAVANAH_SANDSTONE = [
-  { x: 300, y: 345, r: 32 }, { x: 620, y: 460, r: 36 }, { x: 850, y: 140, r: 34 },
+  { x: 300, y: 345, r: 32 }, { x: 620, y: 460, r: 36 }, { x: 930, y: 120, r: 34 },
   { x: 60, y: 350, r: 32 }, { x: 380, y: 560, r: 36 }, { x: 900, y: 610, r: 28 },
-  { x: 870, y: 200, r: 32 },
+  { x: 940, y: 230, r: 32 },
 ];
 
-// The temple's position doubles as both paths' shared final waypoint
-// (see SAVANAH_PATH_A/B above) — stored here too, as a single-entry decor
-// field, purely so renderDesertDecor can draw it alongside everything
-// else without reaching into the map's own waypoint data.
-const SAVANAH_TEMPLE = { x: 480, y: 320, size: 70 };
+// Each path now ends at its own independent temple (direct follow-up
+// request — see SAVANAH_PATH_A/B's own comment for why) rather than one
+// shared goal both paths converged on. Kept as separate named fields
+// (not one array) so each stays visibly paired with the path it belongs
+// to in this file, the same spirit as SAVANAH_PATH_A/SAVANAH_PATH_B
+// themselves being two named consts instead of one array-of-paths.
+const SAVANAH_TEMPLE_A = { x: 480, y: 320, size: 70 };
+const SAVANAH_TEMPLE_B = { x: 820, y: 160, size: 70 };
 
 const SAVANAH_DECOR = {
   cacti: SAVANAH_CACTI,
   sandstone: SAVANAH_SANDSTONE,
-  temple: SAVANAH_TEMPLE,
+  temples: [SAVANAH_TEMPLE_A, SAVANAH_TEMPLE_B],
 };
 
 function renderDesertDecor(ctx, decor) {
   decor.sandstone.forEach((rock) => drawSandstoneFormation(ctx, rock.x, rock.y, rock.r));
   decor.cacti.forEach((cactus) => drawCactus(ctx, cactus.x, cactus.y, cactus.size));
-  drawTemple(ctx, decor.temple.x, decor.temple.y, decor.temple.size);
+  decor.temples.forEach((temple) => drawTemple(ctx, temple.x, temple.y, temple.size));
 }
 
 const SAVANAH_PATH_COLORS = { outline: '#3d2c18', fill: '#a67c3f' };
