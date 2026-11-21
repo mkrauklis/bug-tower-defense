@@ -781,6 +781,86 @@ const TOWER_TYPES = {
       },
     ],
   },
+  // Arctic Willow (direct request, from a real reference photo sent
+  // directly — a willow catkin, not a round flower head like every other
+  // base tower): a brand-new 6th base tower, $80 to place, 3 damage/sec
+  // baseline ("3 damage every second," the same literal "every second"
+  // phrasing Mushroom's own base stats already use). Only one upgrade
+  // path given so far (named "Frosted Path" after its own first tier,
+  // Frosted — not named as a whole by the user, same "pick a name
+  // matching the convention" treatment Rose's own unnamed Thorn Path
+  // got) — the other two are left null, same "arrives across separate
+  // follow-ups" pattern Corpse Flower's own 3 paths used.
+  //
+  // Frosted Path is a crowd-control/slow path, not a pure damage path —
+  // every tier's own "deals more damage" is read as a modest
+  // damageMultiplier (same compounding convention Sunflower/Rose's own
+  // paths already use, since no literal numbers were given, unlike Corpse
+  // Flower's own absolute-replace attackDamage), while the REAL payoff is
+  // the stacking slow effect. slow is a whole-object replace each tier
+  // (same convention as acid/gasCloud above) — tower.slow rides along on
+  // every ordinary hit via the generalized projectile.slow pipeline (see
+  // spawnProjectile()/resolveProjectile() in game.js), not a separate
+  // attack. Duration stays a flat 3s ("a couple seconds") at every tier —
+  // only the slow's own intensity changes tier to tier, since the user
+  // only ever said "slow down more," never a longer time. icicleCount
+  // (tiers 1/3) is an absolute replacement (2 -> 5), same convention
+  // Corpse Flower's own attackDamage/Mushroom's zombifyChance already
+  // use. The tower only grows taller at tiers 1/3/4 — Frostbite (tier 2)
+  // explicitly only changes color/slow/damage in the user's own wording,
+  // no height mentioned — see drawArcticWillow()'s own heightMultiplier
+  // formula for exactly how that's read off the tier number with no extra
+  // field needed (same formula shape Corpse Flower's own drawCorpseFlower
+  // already uses for its own skipped-tier height growth).
+  arcticWillow: {
+    name: 'Arctic Willow',
+    baseStats: {
+      damage: 3,
+      size: 20,
+      color: '#eef3f6', // pale frosty white, matching the reference photo's fuzzy catkin
+      range: 170, // unspecified by the brief — matches every other base tower's own baseline
+      attackInterval: 1, // "3 damage every second" baseline, as literally specified
+    },
+    upgradePaths: [
+      {
+        name: 'Frosted Path',
+        upgrades: [
+          {
+            name: 'Frosted',
+            description:
+              'Enemies hit by Arctic Willow slow down for a few seconds; the plant gains a couple of icicles on ' +
+              'its body, grows a bit taller, and deals a little more damage.',
+            cost: 50,
+            effects: { slow: { multiplier: 0.7, duration: 3 }, damageMultiplier: 1.3, icicleCount: 2 },
+          },
+          {
+            name: 'Frostbite',
+            description: 'Enemies hit slow down even more; Arctic Willow deals more damage and turns light blue.',
+            cost: 250,
+            effects: { slow: { multiplier: 0.5, duration: 3 }, damageMultiplier: 1.4, color: '#81d4fa' },
+          },
+          {
+            name: 'Permafrost',
+            description:
+              'Enemies hit slow down further still; Arctic Willow deals more damage, gains more icicles, grows ' +
+              'taller, and sprouts a ring of ice spikes pointing outward.',
+            cost: 650,
+            effects: { slow: { multiplier: 0.35, duration: 3 }, damageMultiplier: 1.5, icicleCount: 5, hasIceSpikes: true },
+          },
+          {
+            name: 'Frosterizer',
+            description:
+              'Enemies hit slow down a brutal 90%; Arctic Willow deals more damage, grows taller again, and gains ' +
+              'an icicle ring that circles around it.',
+            cost: 1500,
+            effects: { slow: { multiplier: 0.1, duration: 3 }, damageMultiplier: 1.6, hasIcicleRing: true },
+          },
+        ],
+      },
+      null,
+      null,
+    ],
+  },
   // Prodigies (direct request, reworked from an earlier standalone-tower
   // design to an UPGRADE instead): one ultimate, 4th-tier form per base
   // type (Sunflower/Rose/Mushroom). Once a tower of one of these 3
@@ -1077,6 +1157,18 @@ function createTower(typeKey) {
     // periodic effect in this file already does.
     acid: null,
     acidCooldown: 0,
+    // Arctic Willow's Frosted Path only. slow is a whole-object
+    // {multiplier, duration} replace each tier, null until the path's
+    // first tier — rides along on the tower's own ordinary attack via the
+    // generalized projectile.slow field (see spawnProjectile()/
+    // resolveProjectile() in game.js), not a separate shot or its own
+    // cooldown, unlike gasCloud/acid above. icicleCount (tiers 1/3) and
+    // hasIceSpikes (tier 3)/hasIcicleRing (tier 4) are purely visual,
+    // drawn by drawArcticWillow()/drawIcicleRing() in this file.
+    slow: null,
+    icicleCount: 0,
+    hasIceSpikes: false,
+    hasIcicleRing: false,
     // The Mangler (Rose's Prodigy) only: every grabInterval seconds,
     // grabs one random non-boss enemy in range for grabDamage bonus
     // damage, holding it immobilized for grabDuration — on top of (not
@@ -1289,6 +1381,19 @@ function purchaseUpgrade(tower, pathIndex) {
     tower.acid = effects.acid;
     tower.acidCooldown = ACID_SHOT_INTERVAL; // don't fire instantly on purchase
   }
+  // Arctic Willow's Frosted Path: a whole-object replace (same convention
+  // as gasCloud/acid above) — no cooldown of its own to reset, since it
+  // isn't a separate periodic shot; it just rides along on the tower's
+  // ordinary attack from here on (see spawnProjectile() in game.js).
+  if (effects.slow) tower.slow = effects.slow;
+  // icicleCount REPLACES the previous value (each tier states its own new
+  // count outright — "a couple," then "more"), same convention
+  // zombifyChance/attackDamage above already use. hasIceSpikes/
+  // hasIcicleRing are purely visual, same boolean-flag convention as
+  // hasSpikes/hasSkull above.
+  if (effects.icicleCount !== undefined) tower.icicleCount = effects.icicleCount;
+  if (effects.hasIceSpikes) tower.hasIceSpikes = true;
+  if (effects.hasIcicleRing) tower.hasIcicleRing = true;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -1492,6 +1597,26 @@ function renderTower(ctx, tower, x, y, time) {
       // Growth Path's own tiered art (satellite blooms/continuous height)
       // — same chosenPath + upgradesPurchased gating, just path index 2.
       tower.chosenPath === 2 ? tower.upgradesPurchased : 0
+    );
+  } else if (tower.type === 'arcticWillow') {
+    // Frosterizer's icicle ring is drawn first/behind the tower itself —
+    // same "ambient circling effect renders under the tower's own body"
+    // convention Corpse Flower's own gasCloud/gas ring already use.
+    if (tower.hasIcicleRing) drawIcicleRing(ctx, x, y, size, time);
+    drawArcticWillow(
+      ctx,
+      x,
+      y,
+      size,
+      tower.stats.color,
+      tower.glow,
+      time,
+      flashAmount,
+      tower.icicleCount,
+      tower.hasIceSpikes,
+      // Frosted Path's own tiered height growth — same chosenPath +
+      // upgradesPurchased gating every other tower's own tiered art uses.
+      tower.chosenPath === 0 ? tower.upgradesPurchased : 0
     );
   } else if (tower.type === 'sunlitConductor') {
     drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
@@ -2543,6 +2668,177 @@ function drawCorpseFlower(
   drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes, acidTier);
 
   ctx.restore();
+}
+
+// --- Arctic Willow ---------------------------------------------------------
+
+// Arctic Willow's base tower art, from a real reference photo sent
+// directly: a willow catkin's own actual shape — a tall fuzzy white
+// spike dotted with small curled red/pink marks — not a round flower
+// head like every other base tower in the game. WILLOW_CATKIN_MARK_COUNT
+// fixes how many of those curled marks are drawn; the fuzz itself is a
+// ring of short radiating strokes rather than individually hand-placed,
+// so it reads as texture rather than a countable feature.
+const WILLOW_CATKIN_MARK_COUNT = 10;
+
+// The catkin itself, plus Frosted Path's own 3 visual add-ons: icicles
+// hanging loosely off the body (icicleCount, tiers 1/3 — a plain
+// absolute count, not a formula, since the user's own wording jumps from
+// "a couple" straight to "more" with no implied rate), and a ring of ice
+// spikes pointing straight outward past its edges (hasIceSpikes, tier
+// 3) — deliberately a different read from the icicles above (loose vs.
+// a neat radiating ring), matching the user's own "icicles on its body"
+// vs. "ice spikes pointing outward" distinction.
+function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes) {
+  const catkinHeight = size * 1.5;
+  const catkinWidth = size * 0.55;
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y - catkinHeight * 0.5, catkinWidth * 0.5, catkinHeight * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // A soft fuzzy texture: short strokes just past the body's own outline,
+  // all over its surface, reading as the real catkin's own fine white
+  // fuzz rather than a flat smooth surface.
+  ctx.strokeStyle = shadeColor(color, -8);
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 24; i += 1) {
+    const t = i / 24;
+    const angle = t * Math.PI * 2;
+    const spread = Math.abs(Math.sin(t * Math.PI * 3));
+    const cx = x + Math.cos(angle) * catkinWidth * 0.5 * spread;
+    const cy = y - catkinHeight * (0.05 + t * 0.9);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * 3, cy + Math.sin(angle) * 1.5);
+    ctx.stroke();
+  }
+
+  // The small curled red/pink marks scattered across the body — the real
+  // catkin's own visible stigmas, read directly off the reference photo.
+  ctx.strokeStyle = '#c2185b';
+  ctx.lineWidth = Math.max(1, size * 0.04);
+  for (let i = 0; i < WILLOW_CATKIN_MARK_COUNT; i += 1) {
+    const t = (i + 0.5) / WILLOW_CATKIN_MARK_COUNT;
+    const side = i % 2 === 0 ? -1 : 1;
+    const mx = x + side * catkinWidth * 0.32;
+    const my = y - catkinHeight * (0.08 + t * 0.85);
+    ctx.beginPath();
+    ctx.arc(mx, my, size * 0.05, 0.3, Math.PI * 1.4);
+    ctx.stroke();
+  }
+
+  if (icicleCount > 0) {
+    ctx.fillStyle = '#b3e5fc';
+    for (let i = 0; i < icicleCount; i += 1) {
+      const t = (i + 0.5) / icicleCount;
+      const side = i % 2 === 0 ? -1 : 1;
+      const ix = x + side * catkinWidth * 0.5;
+      const iy = y - catkinHeight * (0.15 + t * 0.7);
+      ctx.beginPath();
+      ctx.moveTo(ix, iy - size * 0.05);
+      ctx.lineTo(ix + side * size * 0.18, iy);
+      ctx.lineTo(ix, iy + size * 0.05);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  if (hasIceSpikes) {
+    ctx.fillStyle = '#e1f5fe';
+    const spikeCount = 6;
+    for (let i = 0; i < spikeCount; i += 1) {
+      const angle = (i / spikeCount) * Math.PI * 2;
+      const baseX = x + Math.cos(angle) * catkinWidth * 0.5;
+      const baseY = y - catkinHeight * 0.5 + Math.sin(angle) * catkinHeight * 0.5;
+      ctx.save();
+      ctx.translate(baseX, baseY);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(0, -size * 0.1);
+      ctx.lineTo(size * 0.35, 0);
+      ctx.lineTo(0, size * 0.1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+// Arctic Willow's full tower: a short woody stem with a couple of green
+// leaves at its base (the same stem+leaves skeleton drawSunflower/
+// drawRose/drawMushroom already use), topped with the catkin above.
+// frostTier drives the height growth formula — Frosted Path grows the
+// plant taller at tiers 1/3/4 only (Frostbite, tier 2, explicitly only
+// changes color/slow/damage in the user's own wording, so the formula
+// below deliberately gives tier 2 the same height as tier 1, same
+// "skipped tier" shape drawCorpseFlower's own heightMultiplier already
+// uses for Hazard/Acidic Mixture Path).
+function drawArcticWillow(ctx, x, y, size, color, glow, time, flashAmount, icicleCount, hasIceSpikes, frostTier) {
+  const heightMultiplier = frostTier >= 4 ? 1.5 : frostTier >= 3 ? 1.3 : frostTier >= 1 ? 1.15 : 1;
+  const stemHeight = size * 1.1 * heightMultiplier;
+  const groundY = y + stemHeight;
+  const sway = Math.sin(time * 1.2 + x * 0.011) * 0.05;
+
+  ctx.save();
+  ctx.translate(x, groundY);
+  ctx.rotate(sway);
+  ctx.translate(-x, -groundY);
+
+  ctx.fillStyle = '#6d4c35';
+  ctx.strokeStyle = '#4e3524';
+  ctx.lineWidth = 1;
+  ctx.fillRect(x - size * 0.07, y, size * 0.14, stemHeight);
+  ctx.strokeRect(x - size * 0.07, y, size * 0.14, stemHeight);
+
+  ctx.fillStyle = '#4a7c3a';
+  ctx.beginPath();
+  ctx.ellipse(x - size * 0.3, y + stemHeight * 0.5, size * 0.26, size * 0.11, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x + size * 0.3, y + stemHeight * 0.7, size * 0.26, size * 0.11, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.translate(x, y);
+  ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
+  ctx.translate(-x, -y);
+
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 20;
+  }
+
+  drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes);
+
+  ctx.restore();
+}
+
+// Frosterizer (tier 4) only: a ring of small icicles slowly orbiting the
+// whole tower at a fixed radius — "an icicle ring that circles around
+// it," read literally as a ring, same orbiting-backdrop convention
+// drawFungalMessMist/drawGasRing already use for their own circling
+// effects.
+function drawIcicleRing(ctx, x, y, size, time) {
+  const icicleCount = 7;
+  const radius = size * 1.3;
+  for (let i = 0; i < icicleCount; i += 1) {
+    const angle = time * 0.8 + (i / icicleCount) * Math.PI * 2;
+    const ix = x + Math.cos(angle) * radius;
+    const iy = y + Math.sin(angle) * radius * 0.55;
+    ctx.save();
+    ctx.translate(ix, iy);
+    ctx.rotate(angle + Math.PI / 2);
+    ctx.fillStyle = '#b3e5fc';
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.22);
+    ctx.lineTo(size * 0.08, 0);
+    ctx.lineTo(0, size * 0.1);
+    ctx.lineTo(-size * 0.08, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 // --- Prodigies ---------------------------------------------------------

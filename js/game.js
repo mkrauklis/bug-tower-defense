@@ -227,6 +227,7 @@ const SHOP_ITEMS = [
   { typeKey: 'rose', name: 'Rose', cost: 90 }, // was 45
   { typeKey: 'mushroom', name: 'Mushroom', cost: 150 }, // was 75
   { typeKey: 'corpseFlower', name: 'Corpse Flower', cost: 750 }, // direct request — a brand-new 5th base tower
+  { typeKey: 'arcticWillow', name: 'Arctic Willow', cost: 80 }, // direct request — a brand-new 6th base tower
 ];
 
 function getShopItemCost(item) {
@@ -497,9 +498,23 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
     target,
     damage: tower.stats.damage * damageMultiplier,
     burn: tower.burn,
+    // Arctic Willow's Frosted Path (direct request: "makes enemies when
+    // hit slow down"): generalizes the same projectile.slow/applySlow()
+    // pipeline Corpse Flower's own dedicated acid projectile already uses
+    // (see spawnAcidProjectile() below and resolveProjectile()'s own
+    // `if (projectile.slow)` branch, unchanged) to the ordinary base
+    // attack every tower already fires — tower.slow is null for every
+    // tower without it, so this is a no-op for everyone else.
+    slow: tower.slow || null,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
     shape:
-      tower.attackType === 'fireball' ? 'fireball' : tower.type === 'mushroom' || tower.type === 'fungalMess' ? 'spore' : 'petal',
+      tower.attackType === 'fireball'
+        ? 'fireball'
+        : tower.type === 'mushroom' || tower.type === 'fungalMess'
+          ? 'spore'
+          : tower.type === 'arcticWillow'
+            ? 'icicle'
+            : 'petal',
     // Mushroom's Zombify: carried per-projectile (not read from the tower
     // at resolve time) since the tower that fired it is the one and only
     // source of truth for "was this a spore, and at what chance/damage" —
@@ -694,6 +709,26 @@ function renderProjectiles(ctx) {
       ctx.arc(projectile.x, projectile.y, 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
+      return;
+    }
+
+    if (projectile.shape === 'icicle') {
+      // Arctic Willow's own base attack: a small elongated ice shard,
+      // point-first along its direction of travel — the same basic
+      // silhouette as the thorn shape above, just slimmer and pale icy
+      // blue/white instead of brown, matching the catkin's own color.
+      ctx.save();
+      ctx.translate(projectile.x, projectile.y);
+      ctx.rotate(Math.atan2(projectile.vy, projectile.vx));
+      ctx.fillStyle = projectile.color;
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(-2, -2.5);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-2, 2.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
       return;
     }
 
