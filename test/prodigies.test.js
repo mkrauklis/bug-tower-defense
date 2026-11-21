@@ -4,9 +4,13 @@ const { loadFullGameContext } = require('./support/loadGame');
 
 // Prodigies (direct request, reworked mid-build from an earlier standalone-
 // tower design into an UPGRADE instead): a 4th, ultimate tier per base
-// type (Sunflower/Rose/Mushroom — explicitly NOT Corpse Flower, and NOT
-// the since-removed Coneflower either). Once a tower reaches tier 4 on
-// its own chosen path, it can be upgraded ONE MORE TIME
+// type (Sunflower/Rose/Mushroom/Corpse Flower — NOT the since-removed
+// Coneflower). Corpse Flower's own Prodigy, Amorphophallus titanum,
+// arrived in its own later follow-up (see corpse-flower-prodigy.test.js
+// for its own mechanics) — until then it was the one base type with no
+// Prodigy at all, which is what the now-removed "Corpse Flower never
+// gets a Prodigy option" test just below used to cover. Once a tower
+// reaches tier 4 on its own chosen path, it can be upgraded ONE MORE TIME
 // into its Prodigy form, which replaces it in place on the field (same
 // spot, no separate shop purchase/placement) rather than requiring a
 // brand-new tower. Each Prodigy is capped at 1 on the field at a time,
@@ -92,10 +96,14 @@ test('the option names the right Prodigy per base type, at its own real cost', (
   assert.deepEqual(mushroomOption, { typeKey: 'fungalMess', name: 'The Fungal Mess', cost: 60000 });
 });
 
-test('Corpse Flower never gets a Prodigy option, even fully maxed — it doesn\'t have one', () => {
+test('Corpse Flower\'s maxed option is its own Prodigy, Amorphophallus titanum, at $100,000', () => {
   const game = loadFullGameContext();
   const tower = maxedTower(game, 'corpseFlower');
-  assert.equal(game.getProdigyOption(tower), null);
+  assert.deepEqual(game.getProdigyOption(tower), {
+    typeKey: 'amorphophallusTitanum',
+    name: 'Amorphophallus titanum',
+    cost: 100000,
+  });
 });
 
 test('a Prodigy is capped at 1 on the field at a time — a second maxed tower of the same type gets no option', () => {

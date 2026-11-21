@@ -859,6 +859,53 @@ const TOWER_TYPES = {
     reanimateChance: 0.15,
     upgradePaths: [null, null, null],
   },
+  // Corpse Flower's own Prodigy (direct request, from a real reference
+  // photo sent directly — "a giant corpse flower... it will look like
+  // this"): Corpse Flower never got one in the original Prodigy rollout
+  // (see getProdigyOption()'s own comment in game.js, and the now-
+  // outdated "Corpse Flower never gets a Prodigy option" test this change
+  // also updates) — this is that missing 4th Prodigy. $100,000 — the
+  // costliest tower in the game, roughly double The Fungal Mess's
+  // $60,000, matching the user's own literal number rather than following
+  // the other 3 Prodigies' $30k/$45k/$60k ladder.
+  //
+  // Three things the spec called for, each its own mechanic:
+  // 1. A giant corpse flower that "looks like" the reference photo — a
+  //    real Titan Arum (tall pale spadix spike + a wide ruffled maroon
+  //    spathe skirt), NOT a scaled-up Rafflesia head (drawCorpseFlowerHead
+  //    is a flat 5-petal pinwheel, a completely different real flower) —
+  //    see drawAmorphophallusTitanum() below for the from-scratch art.
+  // 2. "A gas ring around it" — read literally as a RING, not a filled
+  //    disc like Hazard Path's own gasCloud: only damages an enemy whose
+  //    distance from the tower falls between innerRadius and outerRadius.
+  //    See updateTowerGasRing() in game.js.
+  // 3. "It blooms and shoots acid at the bugs" (plural) — a periodic
+  //    attack, independent of the base attack above, that visibly opens
+  //    the flower (tower.bloomProgress drives drawAmorphophallusTitanum's
+  //    own opening animation) and fires one acid projectile (the same
+  //    slow-on-hit mechanic as Corpse Flower's own Acidic Mixture Path)
+  //    at each of several different nearby bugs at once. See
+  //    updateTowerBloom()/spawnBloomAcidProjectile() in game.js.
+  amorphophallusTitanum: {
+    name: 'Amorphophallus titanum',
+    cost: 100000,
+    baseStats: {
+      damage: 200,
+      size: 40, // the largest Prodigy — "giant" is explicit in the spec
+      color: '#5c1a3d', // deep maroon/burgundy, matching the reference photo's spathe
+      range: 220,
+      attackInterval: 0.4, // 200 damage every 0.4s = 500 dps base — the highest base dps of any tower, matching its $100,000 price
+    },
+    // See updateTowerGasRing() in game.js — ticks on the same
+    // GAS_CLOUD_TICK_INTERVAL cadence as Hazard Path's gasCloud, but only
+    // hits an enemy standing between the two radii, never inside or past.
+    gasRing: { innerRadius: 50, outerRadius: 95, damagePerTick: 8, color: 'rgba(216, 27, 96, 0.4)' },
+    // See updateTowerBloom() in game.js. targetCount is how many
+    // different enemies (closest first) one bloom fires acid at — "the
+    // bugs," plural, read literally as several per bloom rather than one.
+    bloom: { interval: 4, damage: 40, targetCount: 3, slowMultiplier: 0.5, slowDuration: 4, color: '#8e24aa' },
+    upgradePaths: [null, null, null],
+  },
 };
 
 // Keyed by Prodigy typeKey -> the base tower type it's the ultimate
@@ -871,6 +918,7 @@ const PRODIGY_BASE_TYPE = {
   sunlitConductor: 'sunflower',
   mangler: 'rose',
   fungalMess: 'mushroom',
+  amorphophallusTitanum: 'corpseFlower',
 };
 
 // Corpse Flower's Hazard Path gas cloud (and any future tower's own gas-
@@ -1048,6 +1096,27 @@ function createTower(typeKey) {
     // isZombie (see turnIntoPurpleZombie() in enemies.js for exactly how
     // and why). 0 for every tower without one.
     reanimateChance: type.reanimateChance || 0,
+    // Amorphophallus titanum (Corpse Flower's Prodigy) only. gasRing is a
+    // whole-object {innerRadius, outerRadius, damagePerTick, color}, null
+    // for every other tower — a persistent ring-shaped (not filled-disc)
+    // AoE damage zone centered on the tower, same "set once at creation,
+    // no upgrade path to grant it later" convention grabInterval/
+    // reanimateChance above already use for Prodigy-only fields. See
+    // updateTowerGasRing() in game.js. gasRingCooldown starts at the
+    // fixed GAS_CLOUD_TICK_INTERVAL, same "don't fire instantly" shape
+    // tower.gasCloudCooldown above already follows.
+    gasRing: type.gasRing || null,
+    gasRingCooldown: type.gasRing ? GAS_CLOUD_TICK_INTERVAL : 0,
+    // Amorphophallus titanum's bloom attack only: whole-object {interval,
+    // damage, targetCount, slowMultiplier, slowDuration, color}, null for
+    // every other tower. bloomCooldown starts at the bloom's own interval
+    // (don't fire instantly); bloomProgress is a separate countdown (0
+    // when idle) that drives the flower's own "just bloomed" opening
+    // visual in drawAmorphophallusTitanum() — distinct from attackFlash,
+    // since this is a much slower, longer pulse than the base attack's.
+    bloom: type.bloom || null,
+    bloomCooldown: type.bloom ? type.bloom.interval : 0,
+    bloomProgress: 0,
   };
 }
 
@@ -1430,6 +1499,15 @@ function renderTower(ctx, tower, x, y, time) {
     drawMangler(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
   } else if (tower.type === 'fungalMess') {
     drawFungalMess(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
+  } else if (tower.type === 'amorphophallusTitanum') {
+    // The gas ring is drawn first/behind the flower itself — same
+    // "ambient effect renders under the tower's own body" convention
+    // Corpse Flower's own gasCloud (and the other Prodigies' own
+    // backdrops) already use.
+    if (tower.gasRing) {
+      drawGasRing(ctx, x, y, tower.gasRing.innerRadius, tower.gasRing.outerRadius, tower.gasRing.color, time);
+    }
+    drawAmorphophallusTitanum(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount, tower.bloomProgress);
   } else {
     // Fallback for any future tower type without custom art yet.
     ctx.fillStyle = tower.stats.color;
@@ -2597,4 +2675,170 @@ function drawFungalMess(ctx, x, y, size, color, glow, time, flashAmount) {
     const sy = y + size * 0.65 + Math.sin(angle) * dist * 0.3;
     drawMushroom(ctx, sx, sy, size * 0.22, shadeColor(color, i % 2 === 0 ? 20 : -10), null, time, 0, 1, false, null, 1, false, 0, false);
   }
+}
+
+// Amorphophallus titanum's own "gas ring" (direct request: "it will have
+// a gas ring around it," distinct wording from Corpse Flower's own
+// Hazard Path "gas" which is a filled disc — drawGasCloud above) — a
+// pulsing ANNULUS between innerRadius and outerRadius, drawn with an
+// even-odd fill so the inner circle is cut out rather than filled in,
+// plus a dashed stroke tracing each of the ring's own two edges.
+function drawGasRing(ctx, x, y, innerRadius, outerRadius, color, time) {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.2);
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.2 + pulse * 0.12;
+  ctx.beginPath();
+  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+  ctx.arc(x, y, innerRadius, 0, Math.PI * 2, true);
+  ctx.fill('evenodd');
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 6]);
+  ctx.beginPath();
+  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// Corpse Flower's Prodigy ($100,000, direct request, built from a real
+// reference photo sent directly — "a giant corpse flower... it will look
+// like this"): deliberately NOT a scaled-up version of the base tower's
+// own drawCorpseFlowerHead (a flat 5-petal Rafflesia pinwheel — a
+// completely different real flower from the actual Titan Arum/
+// Amorphophallus titanum this Prodigy is named after). The real plant's
+// own silhouette — a short, bulbous green base wrapped in a wide, deeply
+// ruffled maroon "spathe" skirt, with one towering pale spadix spike
+// rising far above it from the center — is built from scratch below as
+// its own 3-piece shape: drawTitanBase(), drawTitanSpathe() (a ring of
+// ruffled lobes, the same per-lobe rotate-and-draw loop
+// drawCorpseFlowerPetal's own petals use, just longer/narrower/two-toned
+// for the ruffled read) and drawTitanSpadix() (drawn last, on top, since
+// it's the tallest feature and should never be hidden behind the skirt).
+
+const TITAN_SPATHE_LOBE_COUNT = 10;
+
+// One ruffled spathe lobe, drawn pointing straight "up" (away from the
+// tower's own center) from the origin — rotated into place by the caller,
+// same convention drawCorpseFlowerPetal already uses for its own petals.
+// A deep-maroon bezier body plus a paler, slightly inset overlay tracing
+// the same outline — reads as the two-toned, frilled inner face visible
+// in the real flower's own reference photo, without needing an actually
+// jagged/wobbled path.
+function drawTitanSpatheLobe(ctx, length, width, color) {
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(width * 0.5, length * 0.3, width * 0.4, length * 0.8, 0, length);
+  ctx.bezierCurveTo(-width * 0.4, length * 0.8, -width * 0.5, length * 0.3, 0, 0);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(0, length * 0.15);
+  ctx.bezierCurveTo(width * 0.3, length * 0.4, width * 0.25, length * 0.75, 0, length * 0.92);
+  ctx.bezierCurveTo(-width * 0.25, length * 0.75, -width * 0.3, length * 0.4, 0, length * 0.15);
+  ctx.closePath();
+  ctx.fillStyle = shadeColor(color, 28);
+  ctx.globalAlpha = 0.65;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// The flared, ruffled spathe skirt, as a ring of lobes around the
+// tower's own center. `openness` (0-1) lengthens every lobe outward —
+// the bloom attack visibly pulls the whole skirt wider open right as it
+// fires (see drawAmorphophallusTitanum()'s own bloomGlow below), on top
+// of a slow idle breathing sway so it's never perfectly static even at
+// rest.
+function drawTitanSpathe(ctx, x, y, size, color, openness) {
+  const lobeLength = size * (1.4 + openness * 0.5);
+  const lobeWidth = size * 0.8;
+  for (let i = 0; i < TITAN_SPATHE_LOBE_COUNT; i += 1) {
+    const angle = (i / TITAN_SPATHE_LOBE_COUNT) * Math.PI * 2;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    drawTitanSpatheLobe(ctx, lobeLength, lobeWidth, color);
+    ctx.restore();
+  }
+}
+
+// The short, bulbous green base the spathe/spadix both rise out of —
+// the real flower's own ovary/calyx, a simple flattened ellipse low
+// enough to read as sitting beneath the ruffled skirt rather than
+// competing with it.
+function drawTitanBase(ctx, x, y, size) {
+  ctx.fillStyle = '#4a6b2a';
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.12, size * 0.5, size * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// The spadix: a single tall tapering spike rising from dead center, far
+// above the spathe around it — the tallest feature on the tower, matching
+// the real flower's own silhouette (a towering spike wrapped in a short,
+// flared skirt, not the other way around — unlike every other tower in
+// the game, this one's single most prominent feature is the plain, pale
+// spike in the middle, not a brightly-colored bloom). Glows with a red
+// acid-colored pulse at its own tip while `bloomGlow` is active — the
+// "it blooms and shoots acid" moment made visible right at the source of
+// the acid itself.
+function drawTitanSpadix(ctx, x, y, size, bloomGlow) {
+  const height = size * 3.2;
+  const baseWidth = size * 0.55;
+
+  ctx.fillStyle = '#c9c17a';
+  ctx.beginPath();
+  ctx.moveTo(x - baseWidth / 2, y);
+  ctx.quadraticCurveTo(x - baseWidth * 0.3, y - height * 0.6, x, y - height);
+  ctx.quadraticCurveTo(x + baseWidth * 0.3, y - height * 0.6, x + baseWidth / 2, y);
+  ctx.closePath();
+  ctx.fill();
+
+  if (bloomGlow > 0) {
+    ctx.save();
+    ctx.globalAlpha = bloomGlow * 0.8;
+    ctx.fillStyle = '#e53935';
+    ctx.beginPath();
+    ctx.arc(x, y - height, baseWidth * (0.5 + bloomGlow * 0.6), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawAmorphophallusTitanum(ctx, x, y, size, color, glow, time, flashAmount, bloomProgress = 0) {
+  // bloomProgress counts down from its own fixed visual window (see
+  // BLOOM_OPEN_DURATION in game.js) — normalized here to a 0-1 glow/
+  // openness amount without towers.js needing to know that exact
+  // duration, the same way flashAmount above is already handed in pre-
+  // normalized by renderTower() rather than this function reading
+  // ATTACK_FLASH_DURATION itself.
+  const bloomGlow = Math.min(1, bloomProgress * 2);
+  const sway = Math.sin(time * 0.6 + x * 0.007) * 0.03;
+  const openness = Math.max(0, Math.min(1, 0.35 + 0.25 * Math.sin(time * 0.8) + bloomGlow * 0.4));
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(sway);
+  ctx.translate(-x, -y);
+  ctx.translate(x, y);
+  ctx.scale(1 + flashAmount * 0.1, 1 + flashAmount * 0.1);
+  ctx.translate(-x, -y);
+
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 24;
+  }
+
+  drawTitanBase(ctx, x, y, size);
+  drawTitanSpathe(ctx, x, y, size, color, openness);
+  drawTitanSpadix(ctx, x, y, size, bloomGlow);
+
+  ctx.restore();
 }

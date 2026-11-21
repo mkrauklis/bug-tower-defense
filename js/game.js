@@ -556,6 +556,38 @@ function spawnAcidProjectile(tower, target) {
   });
 }
 
+// Amorphophallus titanum's own bloom attack: near-identical to Corpse
+// Flower's own spawnAcidProjectile() just above (same travel/slow-on-hit
+// mechanics, reuses resolveProjectile() unchanged — even the same 'acid'
+// render shape), but reads its damage/slow/color off tower.bloom instead
+// of tower.acid, and gets fired at several different targets at once by
+// updateTowerBloom() rather than one target per cooldown.
+function spawnBloomAcidProjectile(tower, target) {
+  const dx = target.x - tower.x;
+  const dy = target.y - tower.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  projectiles.push({
+    x: tower.x,
+    y: tower.y,
+    vx: (dx / distance) * PROJECTILE_SPEED,
+    vy: (dy / distance) * PROJECTILE_SPEED,
+    distanceLeft: distance,
+    aimX: target.x,
+    aimY: target.y,
+    target,
+    damage: tower.bloom.damage,
+    burn: null,
+    slow: { multiplier: tower.bloom.slowMultiplier, duration: tower.bloom.slowDuration },
+    color: tower.bloom.color,
+    shape: 'acid',
+    isSpore: false,
+    zombifyChance: 0,
+    zombieExplosionDamage: 0,
+    reanimateChance: 0,
+    resolved: false,
+  });
+}
+
 function resolveProjectile(projectile) {
   const { target } = projectile;
   // A zombie is a separate state machine (turnIntoZombie()/
@@ -747,6 +779,8 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.grabInterval > 0) updateTowerGrab(tower, x, y, deltaSeconds);
   if (tower.gasCloud) updateTowerGasCloud(tower, x, y, deltaSeconds);
   if (tower.acid) updateTowerAcidShot(tower, x, y, deltaSeconds);
+  if (tower.gasRing) updateTowerGasRing(tower, x, y, deltaSeconds);
+  if (tower.bloom) updateTowerBloom(tower, x, y, deltaSeconds);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
 }
 
@@ -787,6 +821,56 @@ function updateTowerAcidShot(tower, x, y, deltaSeconds) {
   const target = findNearestEnemyInRange(x, y, tower.stats.range);
   if (!target) return;
   spawnAcidProjectile(tower, target);
+}
+
+// Amorphophallus titanum's own "gas ring" (direct request: "it will have
+// a gas ring around it"): ticks on the same GAS_CLOUD_TICK_INTERVAL
+// cadence as Hazard Path's own gasCloud (updateTowerGasCloud above), but
+// only damages an enemy whose distance from the tower falls between
+// tower.gasRing.innerRadius and outerRadius — a genuine ring, not a
+// filled disc. getEnemiesInRadius already does the outer-bound check;
+// this just adds the inner-bound exclusion on top of it.
+function updateTowerGasRing(tower, x, y, deltaSeconds) {
+  tower.gasRingCooldown -= deltaSeconds;
+  if (tower.gasRingCooldown > 0) return;
+  tower.gasRingCooldown = GAS_CLOUD_TICK_INTERVAL;
+
+  getEnemiesInRadius(x, y, tower.gasRing.outerRadius).forEach((enemy) => {
+    const dist = Math.hypot(enemy.x - x, enemy.y - y);
+    if (dist >= tower.gasRing.innerRadius) damageEnemy(enemy, tower.gasRing.damagePerTick);
+  });
+}
+
+// How long Amorphophallus titanum's own "just bloomed" visual pulse lasts
+// (tower.bloomProgress counts down from this — see
+// drawAmorphophallusTitanum() in towers.js, which normalizes it back to a
+// 0-1 glow/openness amount without needing to know this exact number).
+const BLOOM_OPEN_DURATION = 0.6;
+
+// Amorphophallus titanum's own bloom attack (direct request: "it will
+// bloom and shoot acid at the bugs"): every tower.bloom.interval seconds,
+// visibly opens (sets tower.bloomProgress, read by
+// drawAmorphophallusTitanum() in towers.js) and fires one acid projectile
+// (spawnBloomAcidProjectile() below — same travel/slow-on-hit mechanics
+// as Corpse Flower's own spawnAcidProjectile()) at each of up to
+// tower.bloom.targetCount different enemies currently in range, closest
+// first — "the bugs," plural, read literally as several per bloom rather
+// than one. Completely independent of, and on top of, the tower's own
+// base attack above, same "a second effect on its own cooldown" shape as
+// updateTowerAcidShot/updateTowerGrab.
+function updateTowerBloom(tower, x, y, deltaSeconds) {
+  tower.bloomCooldown -= deltaSeconds;
+  tower.bloomProgress = Math.max(0, tower.bloomProgress - deltaSeconds);
+  if (tower.bloomCooldown > 0) return;
+  tower.bloomCooldown = tower.bloom.interval;
+
+  const targets = getEnemiesInRadius(x, y, tower.stats.range).sort(
+    (a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)
+  );
+  if (targets.length === 0) return;
+
+  tower.bloomProgress = BLOOM_OPEN_DURATION;
+  targets.slice(0, tower.bloom.targetCount).forEach((target) => spawnBloomAcidProjectile(tower, target));
 }
 
 // The Mangler (Rose's Prodigy) only: every grabInterval seconds, grabs one

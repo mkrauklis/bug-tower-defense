@@ -225,6 +225,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       PRODIGY_BASE_TYPE, updateTowerGrab, turnIntoPurpleZombie,
       updateTowerGasCloud, GAS_CLOUD_TICK_INTERVAL,
       updateTowerAcidShot, spawnAcidProjectile, ACID_SHOT_INTERVAL,
+      updateTowerGasRing, updateTowerBloom, spawnBloomAcidProjectile, BLOOM_OPEN_DURATION,
       applyLayout, getCanvas: () => canvas,
       getLayoutMode: () => layoutMode,
       getLogicalWidth: () => logicalWidth,
