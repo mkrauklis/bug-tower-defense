@@ -522,21 +522,41 @@ function getActiveRoster() {
 // 150/300/600 progression this file's own comment above describes is now
 // 300/600/1200 — still exactly 2x tier-over-tier, just from a doubled
 // starting point.
-// Whirlpool reskin (user bug report: literal land beetles were showing up
-// walking the ocean floor — visibly out of place). Mechanically these are
-// still the exact same ARMORED_BEETLE_TIERS entries below (same key, same
-// health/armorThreshold/unlockRound/bounty/speedMultiplier — nothing about
-// the forcing function itself changes on any map), but on Whirlpool
-// specifically generateWave() and drawEnemyShape() both consult this theme
-// table (keyed by the tier's own shared `key`, read only when
-// getActiveMap().terrain === 'ocean') to swap in an ocean-appropriate
-// name/color/shape — see this file's own "Whirlpool: ocean-themed armored
-// reskin" section further down for the actual art. Every other map keeps
-// drawing/naming these exactly as before; this is purely additive.
-const ARMORED_OCEAN_THEME = {
-  carapaceBeetle: { name: 'Armored Hermit Crab', color: '#9a5230' },
-  ironshellBeetle: { name: 'Spiny Lobster', color: '#2f4a42' },
-  titanBeetle: { name: 'Giant Isopod', color: '#a89aa5' },
+// Per-terrain reskin (user bug report: literal land beetles were showing
+// up on every map — Whirlpool's ocean floor originally, then flagged
+// again more broadly as "beetles in random maps" once Marshland/Savanah/
+// Tundra existed too). Mechanically these are still the exact same
+// ARMORED_BEETLE_TIERS entries below (same key, same health/
+// armorThreshold/unlockRound/bounty/speedMultiplier — nothing about the
+// forcing function itself changes on any map), but generateWave()/
+// getSpawnEntryForEnemyKey()/drawEnemyShape() all consult this table
+// (keyed by TERRAIN id, then by the tier's own shared `key`) to swap in a
+// theme-appropriate name/color/shape wherever one is defined — see this
+// file's own "per-terrain armored reskins" section further down for the
+// actual art. Deep Forest has no entry here: it's the "native" land-
+// beetle look every tier's own stored name/color already is, so it falls
+// through unchanged exactly like before any of this existed.
+const ARMORED_BEETLE_THEME_BY_TERRAIN = {
+  ocean: {
+    carapaceBeetle: { name: 'Armored Hermit Crab', color: '#9a5230' },
+    ironshellBeetle: { name: 'Spiny Lobster', color: '#2f4a42' },
+    titanBeetle: { name: 'Giant Isopod', color: '#a89aa5' },
+  },
+  marsh: {
+    carapaceBeetle: { name: 'Snapping Turtle', color: '#4a5a32' },
+    ironshellBeetle: { name: 'Armored Mud Crab', color: '#5a4530' },
+    titanBeetle: { name: 'Giant Marsh Isopod', color: '#3a3a28' },
+  },
+  desert: {
+    carapaceBeetle: { name: 'Desert Carapace Beetle', color: '#9c7a42' },
+    ironshellBeetle: { name: 'Desert Ironshell Beetle', color: '#7a5a32' },
+    titanBeetle: { name: 'Desert Titan Beetle', color: '#5a3f22' },
+  },
+  tundra: {
+    carapaceBeetle: { name: 'Frost Isopod', color: '#8aa0ac' },
+    ironshellBeetle: { name: 'Glacial Pillbug', color: '#5a7a8c' },
+    titanBeetle: { name: 'Permafrost Colossus', color: '#3a4a52' },
+  },
 };
 
 const ARMORED_BEETLE_TIERS = [
@@ -844,11 +864,11 @@ function generateWave(round) {
 
   const armoredEntries = [...armoredKeys].map((key) => {
     const tier = getArmoredBeetleTier(key);
-    const oceanTheme = getActiveMap().terrain === 'ocean' ? ARMORED_OCEAN_THEME[key] : null;
+    const theme = ARMORED_BEETLE_THEME_BY_TERRAIN[getActiveMap().terrain]?.[key];
     return {
       enemyKey: key,
-      name: oceanTheme ? oceanTheme.name : tier.name,
-      color: oceanTheme ? oceanTheme.color : tier.color,
+      name: theme ? theme.name : tier.name,
+      color: theme ? theme.color : tier.color,
       radius: tier.radius,
       count: 1,
       health: Math.round(tier.health * scaling.healthMultiplier),
@@ -1146,11 +1166,11 @@ function getSpawnEntryForEnemyKey(key) {
   // active roster.
   const armoredTier = getArmoredBeetleTier(key);
   if (armoredTier) {
-    const oceanTheme = getActiveMap().terrain === 'ocean' ? ARMORED_OCEAN_THEME[key] : null;
+    const theme = ARMORED_BEETLE_THEME_BY_TERRAIN[getActiveMap().terrain]?.[key];
     return {
       enemyKey: key,
-      name: oceanTheme ? oceanTheme.name : armoredTier.name,
-      color: oceanTheme ? oceanTheme.color : armoredTier.color,
+      name: theme ? theme.name : armoredTier.name,
+      color: theme ? theme.color : armoredTier.color,
       radius: armoredTier.radius,
       health: armoredTier.health,
       speedMultiplier: armoredTier.speedMultiplier,
@@ -1235,6 +1255,19 @@ function applyBurn(enemy, burn) {
   enemy.burn = { damagePerSecond: burn.damagePerSecond, remaining: burn.duration };
 }
 
+// Corpse Flower's Acidic Mixture Path (direct request): a genuinely new
+// mechanic — a timed speed REDUCTION, distinct from the existing
+// immobilizedRemaining/infectedRemaining (a full stop at 0 speed). Same
+// plain-overwrite convention as applyBurn above (a fresh hit replaces
+// whatever slow was already active rather than stacking or taking
+// whichever is stronger) — simplest, and consistent with how burn
+// already works. `multiplier` is the fraction of normal speed the enemy
+// moves at while slowed (e.g. 0.8 for "slows them down 20%"), not the
+// amount removed.
+function applySlow(enemy, slow) {
+  enemy.slow = { multiplier: slow.multiplier, remaining: slow.duration };
+}
+
 function updateEnemies(deltaSeconds) {
   activeEnemies.forEach((enemy) => {
     // A zombie (Mushroom's Zombify) is a completely separate little state
@@ -1280,6 +1313,15 @@ function updateEnemies(deltaSeconds) {
       if (enemy.burn.remaining <= 0) enemy.burn = null;
     }
 
+    // Corpse Flower's Acidic Mixture Path: a timed speed reduction, ticked
+    // down the same way burn is above — a slowed enemy still moves (unlike
+    // immobilizedRemaining/infectedRemaining below, a full stop), just at
+    // a fraction of its own speed, applied to `remaining` further down.
+    if (enemy.slow) {
+      enemy.slow.remaining -= deltaSeconds;
+      if (enemy.slow.remaining <= 0) enemy.slow = null;
+    }
+
     // Tunneling (Savanah's Sandworm/Desert Termite): a periodic cooldown
     // that starts a tunneledRemaining countdown every tunnelInterval
     // seconds, surfacing again once tunnelDuration has elapsed. Ticks
@@ -1320,7 +1362,8 @@ function updateEnemies(deltaSeconds) {
     // since path 0 always exists, and exactly matches the old single-path
     // behavior for Deep Forest/Marshland.
     const path = MAP_PATHS[enemy.pathIndex || 0];
-    let remaining = enemy.speed * deltaSeconds;
+    const effectiveSpeed = enemy.slow ? enemy.speed * enemy.slow.multiplier : enemy.speed;
+    let remaining = effectiveSpeed * deltaSeconds;
     while (remaining > 0 && enemy.waypointIndex < path.length - 1) {
       const target = path[enemy.waypointIndex + 1];
       const dx = target.x - enemy.x;
@@ -2597,15 +2640,22 @@ function drawGreatWhite(ctx, e) {
   ctx.fill();
 }
 
-// --- Whirlpool: ocean-themed armored reskin -------------------------------
-// See ARMORED_OCEAN_THEME's own comment: same shared armored-beetle
-// mechanics, just a crustacean body plan instead of a land beetle when
-// Whirlpool is the active map. Shares drawHorseshoeCrab's "rounded shell,
-// front claws/head toward -x" convention (these keep the shared rotation
-// table's existing Math.PI entry for carapaceBeetle/ironshellBeetle/
-// titanBeetle), and mirrors drawBeetlePlates' own "more segments each
-// tier" progression so the tier-over-tier escalation still reads clearly
-// even with all-new art.
+// --- Per-terrain armored reskins -------------------------------------------
+// See ARMORED_BEETLE_THEME_BY_TERRAIN's own comment: same shared armored-
+// beetle mechanics, just a different body plan instead of a land beetle
+// on every terrain but Deep Forest. Shares drawHorseshoeCrab's "rounded
+// shell, front claws/head toward -x" convention (these keep the shared
+// rotation table's existing Math.PI entry for carapaceBeetle/
+// ironshellBeetle/titanBeetle), and mirrors drawBeetlePlates' own "more
+// segments each tier" progression so the tier-over-tier escalation still
+// reads clearly even with all-new art. Reused as-is (just a different
+// color/name per ARMORED_BEETLE_THEME_BY_TERRAIN) for Marshland and
+// Tundra too — a generic "shelled armored creature" silhouette doubles
+// reasonably for a crab, a turtle, or an isopod at this small a scale;
+// Savanah deliberately has no entry here at all, since it keeps the
+// literal beetle shape (dungBeetle/tigerBeetle already establish beetles
+// as native fauna there) — only its name/color are reskinned, the same
+// as Deep Forest's own untouched "native" look just recolored.
 function drawArmoredShellBody(ctx, e, segmentCount) {
   ctx.fillStyle = e.color;
   ctx.beginPath();
@@ -2670,10 +2720,24 @@ function drawGiantIsopod(ctx, e) {
   ctx.fill();
 }
 
-const ARMORED_OCEAN_DRAW_FUNCTIONS = {
-  carapaceBeetle: drawArmoredHermitCrab,
-  ironshellBeetle: drawSpinyLobster,
-  titanBeetle: drawGiantIsopod,
+const ARMORED_BEETLE_DRAW_FUNCTIONS_BY_TERRAIN = {
+  ocean: {
+    carapaceBeetle: drawArmoredHermitCrab,
+    ironshellBeetle: drawSpinyLobster,
+    titanBeetle: drawGiantIsopod,
+  },
+  marsh: {
+    carapaceBeetle: drawArmoredHermitCrab,
+    ironshellBeetle: drawSpinyLobster,
+    titanBeetle: drawGiantIsopod,
+  },
+  tundra: {
+    carapaceBeetle: drawArmoredHermitCrab,
+    ironshellBeetle: drawSpinyLobster,
+    titanBeetle: drawGiantIsopod,
+  },
+  // desert has no entry — Savanah keeps the literal beetle shape, just
+  // recolored/renamed (see this section's own top comment).
 };
 
 // --- Savanah: scorpions ---------------------------------------------------
@@ -3117,12 +3181,15 @@ function drawFallbackCircle(ctx, e) {
 
 function drawEnemyShape(ctx, enemy) {
   // Armored beetles are the one enemy family shared across every map (see
-  // ARMORED_BEETLE_TIERS' own comment) — on Whirlpool specifically, swap
-  // in the ocean-themed reskin instead of the default land-beetle art so
-  // they don't look out of place on the seafloor. Every other map falls
-  // through to the normal lookup below, unchanged.
-  if (!enemy.isBoss && getActiveMap().terrain === 'ocean' && ARMORED_OCEAN_DRAW_FUNCTIONS[enemy.enemyKey]) {
-    ARMORED_OCEAN_DRAW_FUNCTIONS[enemy.enemyKey](ctx, enemy);
+  // ARMORED_BEETLE_TIERS' own comment) — on every terrain with its own
+  // entry in ARMORED_BEETLE_DRAW_FUNCTIONS_BY_TERRAIN, swap in that
+  // terrain's reskin instead of the default land-beetle art so they don't
+  // look out of place (Savanah and Deep Forest have no entry — both keep
+  // the literal beetle shape, see that table's own comment). Every other
+  // map falls through to the normal lookup below, unchanged.
+  const terrainOverrides = ARMORED_BEETLE_DRAW_FUNCTIONS_BY_TERRAIN[getActiveMap().terrain];
+  if (!enemy.isBoss && terrainOverrides && terrainOverrides[enemy.enemyKey]) {
+    terrainOverrides[enemy.enemyKey](ctx, enemy);
     return;
   }
   const draw = enemy.isBoss ? BOSS_DRAW_FUNCTIONS[enemy.enemyKey] : ENEMY_DRAW_FUNCTIONS[enemy.enemyKey];

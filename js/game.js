@@ -560,6 +560,44 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
   });
 }
 
+// Corpse Flower's Acidic Mixture Path: a distinct projectile from the
+// tower's own base attack (see updateTowerAcidShot() below for the
+// separate fixed-cadence firing that calls this) — same travel-with-
+// target-drift-tolerance mechanics as spawnProjectile()'s own
+// projectiles (reuses resolveProjectile() unchanged below), but carries
+// `slow` instead of `burn`/Zombify/reanimate, and its own damage/color
+// read straight off the tower's current acid tier (tower.acid) rather
+// than tower.stats.damage.
+function spawnAcidProjectile(tower, target) {
+  const dx = target.x - tower.x;
+  const dy = target.y - tower.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  projectiles.push({
+    x: tower.x,
+    y: tower.y,
+    vx: (dx / distance) * PROJECTILE_SPEED,
+    vy: (dy / distance) * PROJECTILE_SPEED,
+    distanceLeft: distance,
+    aimX: target.x,
+    aimY: target.y,
+    target,
+    damage: tower.acid.damage,
+    burn: null,
+    slow: { multiplier: tower.acid.slowMultiplier, duration: tower.acid.slowDuration },
+    // Same acid-color progression as the tower's own dripping-acid visual
+    // (drawCorpseFlowerHead, towers.js) — toxic green-yellow through
+    // tier 2, red from tier 3 on ("the acid turns red") — tower.acid.color
+    // is the single source of truth both read, set per tier in TOWER_TYPES.
+    color: tower.acid.color,
+    shape: 'acid',
+    isSpore: false,
+    zombifyChance: 0,
+    zombieExplosionDamage: 0,
+    reanimateChance: 0,
+    resolved: false,
+  });
+}
+
 function resolveProjectile(projectile) {
   const { target } = projectile;
   // A zombie is a separate state machine (turnIntoZombie()/
@@ -578,6 +616,7 @@ function resolveProjectile(projectile) {
 
   damageEnemy(target, projectile.damage);
   if (projectile.burn) applyBurn(target, projectile.burn);
+  if (projectile.slow) applySlow(target, projectile.slow);
 
   // Zombify: only a spore's own killing blow counts (never any other
   // damage source — burn, a root, another tower entirely, etc. — and never
@@ -749,6 +788,7 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.infectStun) updateTowerInfectStun(tower, x, y, deltaSeconds);
   if (tower.grabInterval > 0) updateTowerGrab(tower, x, y, deltaSeconds);
   if (tower.gasCloud) updateTowerGasCloud(tower, x, y, deltaSeconds);
+  if (tower.acid) updateTowerAcidShot(tower, x, y, deltaSeconds);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
 }
 
@@ -768,6 +808,27 @@ function updateTowerGasCloud(tower, x, y, deltaSeconds) {
   tower.gasCloudCooldown = GAS_CLOUD_TICK_INTERVAL;
 
   getEnemiesInRadius(x, y, tower.gasCloud.radius).forEach((enemy) => damageEnemy(enemy, tower.gasCloud.damagePerTick));
+}
+
+// Corpse Flower's Acidic Mixture Path (all 4 tiers): every
+// ACID_SHOT_INTERVAL (towers.js — a fixed 2s, never itself changed per
+// tier), fires one acid projectile at the tower's own current target in
+// range — completely independent of the tower's base-attack cooldown
+// (its own separate tower.acidCooldown, not shared with
+// tower.attackCooldown), same "a second independent effect on its own
+// cooldown" shape as updateTowerGrab below. Finds its own target rather
+// than reusing tower.target (set by the base attack above) since the two
+// cooldowns can drift out of phase with each other — by the time this
+// fires, the base attack's own target may have died, left range, or
+// never existed yet this tick.
+function updateTowerAcidShot(tower, x, y, deltaSeconds) {
+  tower.acidCooldown -= deltaSeconds;
+  if (tower.acidCooldown > 0) return;
+  tower.acidCooldown = ACID_SHOT_INTERVAL;
+
+  const target = findNearestEnemyInRange(x, y, tower.stats.range);
+  if (!target) return;
+  spawnAcidProjectile(tower, target);
 }
 
 // The Mangler (Rose's Prodigy) only: every grabInterval seconds, grabs one

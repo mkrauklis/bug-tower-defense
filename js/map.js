@@ -1050,16 +1050,17 @@ function renderOceanDecor(ctx, decor, time = 0) {
 const WHIRLPOOL_PATH_COLORS = { outline: '#0a1f2e', fill: '#3d7a6e' };
 
 // ---------------------------------------------------------------------------
-// Terrain: Tundra (direct request) — a snowy Hard-tier map. Two separate
-// spawns following the convention established for Savanah's ORIGINAL two-
-// path fix (commit 2189bc6, before Savanah's own later follow-up split
-// them into fully separate goals): the two routes never merge, overlap,
-// or run alongside each other anywhere, each has its own turns, and they
-// only meet at one shared goal at the very end — here, a frozen den/ice
-// cave rather than Savanah's stepped-stone temple. Also deliberately the
-// first terrain with a BRIGHT background (every other map's is dark) —
-// snow reads naturally as pale/bright, and it doubles as real visual
-// variety against five increasingly dark-toned maps in a row.
+// Terrain: Tundra (direct request) — a snowy Hard-tier map. Originally
+// shipped with two spawns converging on one shared ice-cave goal (the
+// shape Savanah's own two paths ORIGINALLY had — commit 2189bc6 — before
+// a direct follow-up request asked for this map's two paths to be fully
+// separate instead, "like Forest or Marsh": each path is really its own
+// single-path route glued next to the other, with its own independent
+// ice cave, never merging, overlapping, or running alongside each other
+// anywhere. Also deliberately the first terrain with a BRIGHT background
+// (every other map's is dark) — snow reads naturally as pale/bright, and
+// it doubles as real visual variety against five increasingly dark-toned
+// maps in a row.
 // ---------------------------------------------------------------------------
 
 // A simple 3-tier snowman — biggest ball at the base, shrinking upward,
@@ -1067,39 +1068,57 @@ const WHIRLPOOL_PATH_COLORS = { outline: '#0a1f2e', fill: '#3d7a6e' };
 // thin stick arms. Purely decorative, same role every other terrain's own
 // "signature" decor piece (Deep Forest's trees, Savanah's cacti) plays.
 function drawSnowman(ctx, x, y, size) {
+  // Real bug (user report): the previous version computed each ball's
+  // center as `y - ballY + r`, which actually put the BIGGEST ball
+  // highest up and the SMALLEST ball lowest — an upside-down snowman.
+  // Fixed by stacking from the ground up explicitly: the base ball's
+  // center sits `r` above the ground (y), and each ball above that sits
+  // with its own center `r(below) + r(this)` above the ball below it, so
+  // biggest-at-bottom/smallest-at-top is true by construction instead of
+  // by coincidence.
+  const radii = [0.5, 0.36, 0.22].map((f) => size * f);
+  const centers = [y - radii[0]];
+  for (let i = 1; i < radii.length; i += 1) {
+    centers.push(centers[i - 1] - radii[i - 1] - radii[i]);
+  }
+  const [baseY, midY, headY] = centers;
+  const [, midR, headR] = radii;
+
   ctx.fillStyle = '#f0f6fa';
   ctx.strokeStyle = shadeColor('#f0f6fa', -18);
   ctx.lineWidth = 1.5;
-  [[0, size], [0, size * 0.62], [0, size * 0.32]].forEach(([dx, ballY], i) => {
-    const r = size * (0.5 - i * 0.14);
+  radii.forEach((r, i) => {
     ctx.beginPath();
-    ctx.arc(x + dx, y - ballY + r, r, 0, Math.PI * 2);
+    ctx.arc(x, centers[i], r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   });
 
-  const headY = y - size * 0.32 + size * 0.22;
+  // Stick arms, attached at the middle ball's own vertical center,
+  // angled outward and slightly up.
   ctx.strokeStyle = '#4a3326';
   ctx.lineWidth = Math.max(1.5, size * 0.07);
   [-1, 1].forEach((side) => {
     ctx.beginPath();
-    ctx.moveTo(x, y - size * 0.62 + size * 0.18);
-    ctx.lineTo(x + side * size * 0.5, y - size * 0.62 + size * 0.05);
+    ctx.moveTo(x, midY);
+    ctx.lineTo(x + side * size * 0.5, midY - size * 0.13);
     ctx.stroke();
   });
 
+  // Coal eyes on the head, buttons down the middle ball.
   ctx.fillStyle = '#2b2420';
   [-0.13, 0.13].forEach((dx) => {
     ctx.beginPath();
-    ctx.arc(x + dx * size, headY - size * 0.04, size * 0.04, 0, Math.PI * 2);
+    ctx.arc(x + dx * size, headY - headR * 0.15, size * 0.04, 0, Math.PI * 2);
     ctx.fill();
   });
-  [0.1, 0.3].forEach((t) => {
+  [-0.3, 0, 0.3].forEach((t) => {
     ctx.beginPath();
-    ctx.arc(x, y - size * 0.62 + size * t, size * 0.035, 0, Math.PI * 2);
+    ctx.arc(x, midY + t * midR, size * 0.035, 0, Math.PI * 2);
     ctx.fill();
   });
 
+  // Carrot nose, poking out from the head.
   ctx.fillStyle = '#e8822e';
   ctx.beginPath();
   ctx.moveTo(x, headY);
@@ -1153,10 +1172,11 @@ function drawSnowBoulder(ctx, x, y, r) {
   ctx.fill();
 }
 
-// Marks both paths' shared goal: a rounded snow-mound with a dark arched
-// cave mouth carved into it and a couple of icicles hanging from the top
-// of the arch — the same "the goal gets its own drawn landmark" role
-// Savanah's drawTemple()/Whirlpool's drawVortexHole() play.
+// Marks one of Tundra's two independent goals (each path ends at its own
+// — see TUNDRA_DECOR's own comment): a rounded snow-mound with a dark
+// arched cave mouth carved into it and a couple of icicles hanging from
+// the top of the arch — the same "the goal gets its own drawn landmark"
+// role Savanah's drawTemple()/Whirlpool's drawVortexHole() play.
 function drawIceCave(ctx, x, y, size) {
   ctx.fillStyle = '#dce9f0';
   ctx.beginPath();
@@ -1188,15 +1208,17 @@ function drawIceCave(ctx, x, y, size) {
   });
 }
 
-// Path A: spawns top-left, heads east then south, entering the cave from
-// directly above (final leg VERTICAL, column x=480). Path B: spawns top-
-// right, heads west then south, entering the cave from the east (final
-// leg HORIZONTAL, row y=320) — a different direction from Path A's own
-// final approach, the same fix Savanah's original path pair needed
-// (see git history) applied from the start here instead of after the
-// fact. The two routes occupy entirely separate x/y bands everywhere
-// before that shared final point, so they never touch, cross, or run
-// alongside each other.
+// Direct follow-up request: the user wants Tundra's two paths FULLY
+// separate, "like Forest or Marsh" — i.e. each path is really its own
+// single-path map glued next to the other, with its own independent
+// goal, not two routes converging on one shared cave (the shape this map
+// originally shipped with). Path A's own route and ice cave are
+// unchanged. Path B's last leg used to continue west all the way to
+// (480, 320) to meet Path A there; it now continues straight south past
+// that same (650, 320) corner instead, to its own separate ice cave —
+// same "extend the existing corner into fresh territory rather than
+// inventing a whole new turn" minimal change Savanah's own fully-
+// separate-goals follow-up used for its Path B.
 const TUNDRA_PATH_A = [
   { x: -20, y: 220 },
   { x: 300, y: 220 },
@@ -1208,11 +1230,15 @@ const TUNDRA_PATH_B = [
   { x: 980, y: 120 },
   { x: 650, y: 120 },
   { x: 650, y: 320 },
-  { x: 480, y: 320 },
+  { x: 650, y: 480 },
 ];
 
 // Hand-placed clear of both paths above (checked against every segment of
-// each, same convention as every other terrain's decor).
+// each, same convention as every other terrain's decor). Three items
+// were repositioned (from 600,420 / 600,580 / unmoved otherwise) when
+// Path B's new final leg and its own ice cave landed at (650, 320)-
+// (650, 480) — they used to sit in open ground near that corner and
+// ended up too close to the new path/cave.
 const TUNDRA_SNOWMEN = [
   { x: 130, y: 500, size: 30 }, { x: 800, y: 480, size: 28 },
   { x: 860, y: 220, size: 26 }, { x: 150, y: 90, size: 28 },
@@ -1221,28 +1247,34 @@ const TUNDRA_SNOWMEN = [
 const TUNDRA_ICE_SPIKES = [
   { x: 60, y: 350, size: 24 }, { x: 420, y: 60, size: 22 }, { x: 700, y: 50, size: 26 },
   { x: 900, y: 380, size: 24 }, { x: 900, y: 580, size: 22 }, { x: 380, y: 590, size: 26 },
-  { x: 600, y: 420, size: 22 }, { x: 150, y: 300, size: 24 },
+  { x: 520, y: 420, size: 22 }, { x: 150, y: 300, size: 24 },
 ];
 
 const TUNDRA_BOULDERS = [
   { x: 60, y: 600, r: 32 }, { x: 870, y: 50, r: 30 }, { x: 900, y: 500, r: 34 },
-  { x: 600, y: 580, r: 28 }, { x: 150, y: 150, r: 32 }, { x: 350, y: 500, r: 28 },
+  { x: 550, y: 560, r: 28 }, { x: 150, y: 150, r: 32 }, { x: 350, y: 500, r: 28 },
 ];
 
-const TUNDRA_CAVE = { x: 480, y: 320, size: 72 };
+// Each path now ends at its own independent ice cave (direct follow-up
+// request — see TUNDRA_PATH_A/B's own comment for why) rather than one
+// shared goal both paths converged on — same "own named fields, not one
+// array" convention Savanah's own two temples use, for the same reason
+// (each stays visibly paired with the path it belongs to in this file).
+const TUNDRA_CAVE_A = { x: 480, y: 320, size: 72 };
+const TUNDRA_CAVE_B = { x: 650, y: 480, size: 72 };
 
 const TUNDRA_DECOR = {
   snowmen: TUNDRA_SNOWMEN,
   iceSpikes: TUNDRA_ICE_SPIKES,
   boulders: TUNDRA_BOULDERS,
-  cave: TUNDRA_CAVE,
+  caves: [TUNDRA_CAVE_A, TUNDRA_CAVE_B],
 };
 
 function renderTundraDecor(ctx, decor) {
   decor.boulders.forEach((rock) => drawSnowBoulder(ctx, rock.x, rock.y, rock.r));
   decor.iceSpikes.forEach((spike) => drawIceSpike(ctx, spike.x, spike.y, spike.size));
   decor.snowmen.forEach((snowman) => drawSnowman(ctx, snowman.x, snowman.y, snowman.size));
-  drawIceCave(ctx, decor.cave.x, decor.cave.y, decor.cave.size);
+  decor.caves.forEach((cave) => drawIceCave(ctx, cave.x, cave.y, cave.size));
 }
 
 // A worn, dark slate-blue pair — reads clearly as packed-ice tracks
@@ -1368,11 +1400,9 @@ const MAP_TYPES = {
     decor: WHIRLPOOL_DECOR,
   },
   // Direct request: a snowy Hard-tier map (MAP_DIFFICULTY_MULTIPLIER,
-  // enemies.js) — two separate spawns converging on one shared goal (the
-  // ice cave), the shape Savanah's own two paths originally had before
-  // Savanah's later follow-up split it into fully separate goals; see
-  // TUNDRA_PATH_A/B's own comment above for why this map keeps that
-  // original shared-goal shape instead.
+  // enemies.js) — two fully separate paths, each with its own ice cave
+  // goal (see TUNDRA_PATH_A/B's own comment above for the follow-up that
+  // changed this from the shared-goal shape it originally shipped with).
   tundra: {
     id: 'tundra',
     name: 'Tundra',

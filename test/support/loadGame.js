@@ -43,7 +43,7 @@ function loadGameContext() {
       isBossRound, getBossForRound, getUnlockedEnemyTypes, getRoundScaling,
       getTotalWaveSize,
       generateWave, spawnWave, updateEnemies, getLastLeakedEnemies,
-      findNearestEnemyInRange, damageEnemy, applyBurn, getEnemiesInRadius,
+      findNearestEnemyInRange, damageEnemy, applyBurn, applySlow, getEnemiesInRadius,
       ARMORED_BEETLE_TIERS, getUnlockedArmoredBeetleKeys, getArmoredBeetleTier,
       getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath,
@@ -169,7 +169,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
     `
     globalThis.__fullExports = {
       createTower, purchaseUpgrade, getAvailableUpgrade,
-      damageEnemy, applyBurn, findNearestEnemyInRange, getEnemiesInRadius,
+      damageEnemy, applyBurn, applySlow, findNearestEnemyInRange, getEnemiesInRadius,
       updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies, getLastLeakedEnemies,
       getStrongestAuraFor,
       updateTowerIncome,
@@ -226,6 +226,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getProdigyOption, getProdigyTypeKeyFor,
       PRODIGY_BASE_TYPE, updateTowerGrab, turnIntoPurpleZombie,
       updateTowerGasCloud, GAS_CLOUD_TICK_INTERVAL,
+      updateTowerAcidShot, spawnAcidProjectile, ACID_SHOT_INTERVAL,
       applyLayout, getCanvas: () => canvas,
       getLayoutMode: () => layoutMode,
       getLogicalWidth: () => logicalWidth,

@@ -2,15 +2,15 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 
-// Tundra (direct request): a snowy Hard-tier map. Two separate spawns
-// converging on one shared goal (an ice cave) — the shape Savanah's own
-// two paths originally had (commit 2189bc6: non-merging geometry, each
-// path its own turns, final legs in DIFFERENT directions so they don't
-// read as one collinear line) rather than Savanah's later fully-separate-
-// goals follow-up. 12 enemies total (3 regular tiers of 3 plus 3 bosses,
-// the same shape Whirlpool's own 12-entry roster used), so this needed
-// zero engine changes, only data — see TUNDRA_ROSTER's own comment in
-// enemies.js for the health/speed/bounty judgment calls.
+// Tundra (direct request): a snowy Hard-tier map. Originally shipped with
+// two spawns converging on one shared ice-cave goal; a direct follow-up
+// request ("make tundra have 2 completely separate paths that end like
+// forest or marsh") changed that to two fully independent paths, each
+// with its own ice cave — see TUNDRA_PATH_A/B's own comment in map.js.
+// 12 enemies total (3 regular tiers of 3 plus 3 bosses, the same shape
+// Whirlpool's own 12-entry roster used), so this needed zero engine
+// changes, only data — see TUNDRA_ROSTER's own comment in enemies.js for
+// the health/speed/bounty judgment calls.
 
 test('tundra is registered in MAP_TYPES with the expected shape', () => {
   const game = loadGameContext();
@@ -36,7 +36,7 @@ test('Tundra is explicitly Hard-tier, matching Whirlpool\'s own 1.8x map multipl
   assert.ok(Math.abs(tundraMultiplier / forestMultiplier - 1.8) < 1e-9);
 });
 
-test('both of Tundra\'s paths start off-canvas and converge on the identical shared goal', () => {
+test('both of Tundra\'s paths start off-canvas and each ends at its own separate ice cave', () => {
   const game = loadGameContext();
   const [pathA, pathB] = game.MAP_TYPES.tundra.paths;
 
@@ -45,19 +45,29 @@ test('both of Tundra\'s paths start off-canvas and converge on the identical sha
 
   const endA = pathA[pathA.length - 1];
   const endB = pathB[pathB.length - 1];
-  assert.deepEqual(endA, endB); // both routes converge on the identical point (the ice cave)
+  assert.notDeepEqual(endA, endB); // two independent goals, not a shared convergence point
 
-  const { cave } = game.MAP_TYPES.tundra.decor;
-  assert.deepEqual(endA, { x: cave.x, y: cave.y }); // that shared point IS the ice cave's own position
+  const [caveA, caveB] = game.MAP_TYPES.tundra.decor.caves;
+  assert.deepEqual(endA, { x: caveA.x, y: caveA.y });
+  assert.deepEqual(endB, { x: caveB.x, y: caveB.y });
 });
 
-test('Tundra\'s two paths never touch, cross, or run alongside each other before their shared final point', () => {
+test('Tundra\'s two ice caves sit far enough apart to read as visually distinct, not overlapping', () => {
+  const game = loadGameContext();
+  const [caveA, caveB] = game.MAP_TYPES.tundra.decor.caves;
+  const dist = Math.hypot(caveA.x - caveB.x, caveA.y - caveB.y);
+  assert.ok(dist > caveA.size); // comfortably further apart than either cave's own width
+});
+
+test('Tundra\'s two paths never touch, cross, or run alongside each other anywhere', () => {
   const game = loadGameContext();
   const [pathA, pathB] = game.MAP_TYPES.tundra.paths;
 
-  // Compare every segment of A (excluding its own final point, the shared
-  // goal) against every segment of B (same exclusion) — a real geometric
-  // bounding-box separation check, not just "the arrays differ."
+  // Compare every segment of A against every segment of B, including each
+  // path's own final leg into its own separate ice cave — a real
+  // geometric bounding-box separation check, not just "the arrays
+  // differ." (Unlike the shared-goal shape this map used to have, there's
+  // no legitimate shared point to exclude from the comparison anymore.)
   function segmentsOverlap(a1, a2, b1, b2) {
     const minAx = Math.min(a1.x, a2.x) - 28;
     const maxAx = Math.max(a1.x, a2.x) + 28;
@@ -70,8 +80,8 @@ test('Tundra\'s two paths never touch, cross, or run alongside each other before
     return minAx < maxBx && maxAx > minBx && minAy < maxBy && maxAy > minBy;
   }
 
-  for (let i = 0; i < pathA.length - 2; i += 1) {
-    for (let j = 0; j < pathB.length - 2; j += 1) {
+  for (let i = 0; i < pathA.length - 1; i += 1) {
+    for (let j = 0; j < pathB.length - 1; j += 1) {
       assert.equal(
         segmentsOverlap(pathA[i], pathA[i + 1], pathB[j], pathB[j + 1]),
         false,
@@ -81,7 +91,7 @@ test('Tundra\'s two paths never touch, cross, or run alongside each other before
   }
 });
 
-test('Tundra\'s two final approaches point in different directions, so they read as a visible junction at the cave, not one straight line', () => {
+test('Tundra\'s two final approaches point in genuinely different directions', () => {
   const game = loadGameContext();
   const [pathA, pathB] = game.MAP_TYPES.tundra.paths;
   const lastA = pathA[pathA.length - 1];
@@ -190,7 +200,7 @@ test('getAllSpawnableEnemyKeys lists Tundra\'s full roster plus the shared armor
   ].forEach((key) => assert.ok(keys.includes(key), `expected ${key} to be spawnable`));
 });
 
-test('Tundra\'s decor (snowmen, ice spikes, boulders, the ice cave goal) is present with sane, on-canvas coordinates', () => {
+test('Tundra\'s decor (snowmen, ice spikes, boulders, both ice cave goals) is present with sane, on-canvas coordinates', () => {
   const game = loadGameContext();
   const { decor } = game.MAP_TYPES.tundra;
   ['snowmen', 'iceSpikes', 'boulders'].forEach((key) => {
@@ -200,9 +210,12 @@ test('Tundra\'s decor (snowmen, ice spikes, boulders, the ice cave goal) is pres
       assert.ok(item.y >= 0 && item.y <= 640);
     });
   });
-  assert.ok(decor.cave.x >= 0 && decor.cave.x <= 960);
-  assert.ok(decor.cave.y >= 0 && decor.cave.y <= 640);
-  assert.ok(decor.cave.size > 0);
+  assert.equal(decor.caves.length, 2);
+  decor.caves.forEach((cave) => {
+    assert.ok(cave.x >= 0 && cave.x <= 960);
+    assert.ok(cave.y >= 0 && cave.y <= 640);
+    assert.ok(cave.size > 0);
+  });
 });
 
 test('a spawned Tundra enemy renders without throwing (smoke check via drawEnemyShape dispatch) for every regular type and every boss', () => {

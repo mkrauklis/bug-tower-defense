@@ -819,7 +819,83 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 2 — not yet designed
+      // Acidic Mixture Path (direct request, mutually exclusive with
+      // Hazard Path above): a second, independent damage source — a
+      // distinct acid projectile fired on its own fixed 2-second cooldown
+      // (ACID_SHOT_INTERVAL, this file), completely separate from the
+      // base attack's own cadence, dealing its own damage AND applying a
+      // timed speed-slow debuff (applySlow()/enemy.slow, enemies.js — a
+      // genuinely new mechanic, distinct from the existing
+      // immobilizedRemaining full-stop) on hit. See updateTowerAcidShot()/
+      // spawnAcidProjectile() in game.js for the firing/travel/impact
+      // logic, and resolveProjectile()'s own `if (projectile.slow)`
+      // branch for where the debuff is actually applied.
+      //
+      // attackDamage is the SAME absolute-replace key Hazard Path's own
+      // base-attack damage uses (7 -> 15 -> 20 -> 20) — note tier 1's own
+      // 7 is LOWER than the unupgraded tower's base 10 damage, per the
+      // user's literal numbers: a deliberate early trade-off for the acid
+      // utility, not a bug. acid.slowMultiplier is the FRACTION of normal
+      // speed while slowed (0.8/0.7/0.65/0.65 for "slows them 20/30/35/
+      // 35%"); acid.slowDuration only changes at tier 4 (5s -> 7s).
+      // sizeMultiplier (tier 1, "larger") and color (every tier, "darker")
+      // are the same generic effects fields every other tower's paths
+      // already use. Extra petals (tier 3+) and the taller stem (tier 2+,
+      // shared with Hazard Path's own height-growth tiers — see
+      // drawCorpseFlower()'s own comment) are driven directly off
+      // upgradesPurchased in the render call (towers.js:drawTower), the
+      // same way hasSpikes/hazardTier already are for Hazard Path, rather
+      // than needing their own effects flags.
+      {
+        name: 'Acidic Mixture Path',
+        upgrades: [
+          {
+            name: 'Acidic Mixture',
+            description:
+              'Corpse Flower turns darker and larger; it now spits acid that deals 5 damage and slows an enemy 20% for 5 seconds, and its base attack deals 7 damage.',
+            cost: 1500,
+            effects: {
+              attackDamage: 7,
+              sizeMultiplier: 1.15,
+              color: '#6b2818',
+              acid: { damage: 5, slowMultiplier: 0.8, slowDuration: 5, color: '#9ccc65' },
+            },
+          },
+          {
+            name: 'Acid Reflux',
+            description:
+              'Corpse Flower drips acid and grows taller and darker; the slow now reaches 30% and the acid deals 10 damage, with its base attack dealing 15 damage.',
+            cost: 4000,
+            effects: {
+              attackDamage: 15,
+              color: '#4a1c10',
+              acid: { damage: 10, slowMultiplier: 0.7, slowDuration: 5, color: '#9ccc65' },
+            },
+          },
+          {
+            name: 'Acidtonics',
+            description:
+              'The acid turns red and the plant starts growing extra petals, turning darker; the slow now reaches 35% and the acid deals 15 damage, with its base attack dealing 20 damage.',
+            cost: 8500,
+            effects: {
+              attackDamage: 20,
+              color: '#331208',
+              acid: { damage: 15, slowMultiplier: 0.65, slowDuration: 5, color: '#e53935' },
+            },
+          },
+          {
+            name: 'Dissolvable Mixture',
+            description:
+              'The acid glows red and the flower grows more petals and taller; the acid now lasts 7 seconds, still dealing 15 damage and a 35% slow, with its base attack still dealing 20 damage. The acid is its own separate projectile, fired once every 2 seconds.',
+            cost: 15000,
+            effects: {
+              attackDamage: 20,
+              glow: '#ff5252',
+              acid: { damage: 15, slowMultiplier: 0.65, slowDuration: 7, color: '#e53935' },
+            },
+          },
+        ],
+      },
       null, // Path 3 — not yet designed
     ],
   },
@@ -916,6 +992,15 @@ const PRODIGY_BASE_TYPE = {
 // tier's damagePerTick/radius/color ever change, never the interval
 // itself (see each tier's own effects.gasCloud in TOWER_TYPES above).
 const GAS_CLOUD_TICK_INTERVAL = 0.2;
+
+// Corpse Flower's Acidic Mixture Path: the acid projectile's own fixed
+// firing cadence, explicitly stated by the user as "once every 2
+// seconds" — completely independent of the tower's own base-attack
+// cooldown (tower.stats.attackInterval). Only a tier's acid.damage/
+// slowMultiplier/slowDuration ever change (see each tier's own
+// effects.acid in TOWER_TYPES above), never this interval itself, same
+// shape as GAS_CLOUD_TICK_INTERVAL just above.
+const ACID_SHOT_INTERVAL = 2;
 
 function createTower(typeKey) {
   const type = TOWER_TYPES[typeKey];
@@ -1090,6 +1175,16 @@ function createTower(typeKey) {
     hasSpikes: false,
     gasCloud: null,
     gasCloudCooldown: 0,
+    // Corpse Flower's Acidic Mixture Path only (mutually exclusive with
+    // Hazard Path above). acid is a whole-object {damage, slowMultiplier,
+    // slowDuration}, null until that path's first tier — a distinct
+    // projectile fired on its own fixed ACID_SHOT_INTERVAL cadence (see
+    // updateTowerAcidShot() in game.js), completely separate from the
+    // tower's own base attack. acidCooldown counts down to the next shot
+    // the same "don't fire instantly on purchase" way every other
+    // periodic effect in this file already does.
+    acid: null,
+    acidCooldown: 0,
     // The Mangler (Rose's Prodigy) only: every grabInterval seconds,
     // grabs one random non-boss enemy in range for grabDamage bonus
     // damage, holding it immobilized for grabDuration — on top of (not
@@ -1272,6 +1367,17 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.gasCloud) {
     tower.gasCloud = effects.gasCloud;
     tower.gasCloudCooldown = GAS_CLOUD_TICK_INTERVAL; // don't fire instantly on purchase
+  }
+  // Corpse Flower's Acidic Mixture Path: a whole-object replace (same
+  // convention as gasCloud/puddle/spark/shockwave above) — see
+  // updateTowerAcidShot()/spawnAcidProjectile() in game.js for the actual
+  // firing/travel/impact logic, and ACID_SHOT_INTERVAL just below for why
+  // this tower's own fixed firing cadence is never itself part of the
+  // effects object (it never changes tier to tier, same as
+  // GAS_CLOUD_TICK_INTERVAL never does for Hazard Path's gas).
+  if (effects.acid) {
+    tower.acid = effects.acid;
+    tower.acidCooldown = ACID_SHOT_INTERVAL; // don't fire instantly on purchase
   }
 
   // Coneflower's Overgrowth Path: numPlants/perPlantCash each compound or
@@ -1503,7 +1609,10 @@ function renderTower(ctx, tower, x, y, time) {
       // Hazard Path's own tiered height growth is gated the same way
       // Coupons Path's (above) and Infect Path's own tiered art are —
       // chosenPath + upgradesPurchased directly, no extra per-tier field.
-      tower.chosenPath === 0 ? tower.upgradesPurchased : 0
+      tower.chosenPath === 0 ? tower.upgradesPurchased : 0,
+      // Acidic Mixture Path's own tiered art (extra petals/drips/height) —
+      // same chosenPath + upgradesPurchased gating, just path index 1.
+      tower.chosenPath === 1 ? tower.upgradesPurchased : 0
     );
   } else if (tower.type === 'sunlitConductor') {
     drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
@@ -2569,7 +2678,7 @@ function drawCorpseFlowerPetal(ctx, size, color) {
   }
 }
 
-function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes) {
+function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes, acidTier = 0) {
   for (let i = 0; i < CORPSE_FLOWER_PETAL_COUNT; i += 1) {
     const angle = (i / CORPSE_FLOWER_PETAL_COUNT) * Math.PI * 2;
     ctx.save();
@@ -2577,6 +2686,41 @@ function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes) {
     ctx.rotate(angle);
     drawCorpseFlowerPetal(ctx, size, color);
     ctx.restore();
+  }
+
+  // Acidic Mixture Path tier 3+: smaller extra petals growing into the
+  // gaps between the original 5 — "the plant starts growing extra
+  // petals" (tier 3, 2 of the 5 gaps filled), "grows more petals" (tier
+  // 4, 4 of the 5 filled) — progressively more, not a one-time add.
+  const extraPetalCount = acidTier >= 4 ? 4 : acidTier >= 3 ? 2 : 0;
+  for (let i = 0; i < extraPetalCount; i += 1) {
+    const angle = ((i + 0.5) / CORPSE_FLOWER_PETAL_COUNT) * Math.PI * 2;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.scale(0.6, 0.6); // smaller than the original 5 — reads as newer growth
+    drawCorpseFlowerPetal(ctx, size, color);
+    ctx.restore();
+  }
+
+  // Acidic Mixture Path tier 2+: a few drips of the acid itself (not the
+  // flower's own body color) hanging off the outer rim — "drips acid."
+  // Toxic green-yellow through tier 2, turning red from tier 3 on ("the
+  // acid turns red") — matches the acid projectile's own color exactly
+  // (see spawnAcidProjectile() in game.js).
+  if (acidTier >= 2) {
+    ctx.fillStyle = acidTier >= 3 ? '#e53935' : '#9ccc65';
+    for (let i = 0; i < 3; i += 1) {
+      const angle = (i / 3) * Math.PI * 2 + 0.6;
+      const bx = x + Math.cos(angle) * size * 1.25;
+      const by = y + Math.sin(angle) * size * 1.1;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.quadraticCurveTo(bx + size * 0.05, by + size * 0.25, bx, by + size * 0.4);
+      ctx.quadraticCurveTo(bx - size * 0.05, by + size * 0.25, bx, by);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
   // Hazard Path tier 1+: a ring of spikes poking out past the petals' own
@@ -2633,17 +2777,22 @@ function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes) {
   ctx.fill();
 }
 
-// Corpse Flower's base tower art: a short stem (growing taller at Hazard
-// Path tiers 2 and 4 — "grows slightly taller"/"grows taller" — via
-// hazardTier, the same chosenPath+upgradesPurchased tier-gating Coupons
-// Path and Infect Path already use, no extra per-tier field needed)
-// topped with the Rafflesia head above. The base-tier stem is
-// deliberately short (the real flower is flat/ground-hugging, not a
-// tall stem-and-bloom shape) — the height growth at later tiers still
-// reads clearly relative to this shorter base, it's just no longer tall
-// enough at tier 0 to fight the "ground-hugging" read of the head itself.
-function drawCorpseFlower(ctx, x, y, size, color, glow, time, flashAmount, hasSpikes, hazardTier) {
-  const heightMultiplier = hazardTier >= 4 ? 1.5 : hazardTier >= 2 ? 1.2 : 1;
+// Corpse Flower's base tower art: a short stem (growing taller at tiers
+// 2 and 4 of WHICHEVER path is active — Hazard Path's "grows slightly
+// taller"/"grows taller" and Acidic Mixture Path's "grows taller" at both
+// its own tier 2 and tier 4 use the identical cadence, so one shared
+// heightMultiplier covers both; hazardTier/acidTier are mutually
+// exclusive since a tower only ever has one chosenPath, same
+// chosenPath+upgradesPurchased tier-gating Coupons Path and Infect Path
+// already use, no extra per-tier field needed) topped with the Rafflesia
+// head above. The base-tier stem is deliberately short (the real flower
+// is flat/ground-hugging, not a tall stem-and-bloom shape) — the height
+// growth at later tiers still reads clearly relative to this shorter
+// base, it's just no longer tall enough at tier 0 to fight the "ground-
+// hugging" read of the head itself.
+function drawCorpseFlower(ctx, x, y, size, color, glow, time, flashAmount, hasSpikes, hazardTier, acidTier = 0) {
+  const pathTier = Math.max(hazardTier, acidTier);
+  const heightMultiplier = pathTier >= 4 ? 1.5 : pathTier >= 2 ? 1.2 : 1;
   const stemHeight = size * 0.3 * heightMultiplier;
   const groundY = y + stemHeight;
   const sway = Math.sin(time * 1 + x * 0.009) * 0.04;
@@ -2668,7 +2817,7 @@ function drawCorpseFlower(ctx, x, y, size, color, glow, time, flashAmount, hasSp
     ctx.shadowBlur = 20;
   }
 
-  drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes);
+  drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes, acidTier);
 
   ctx.restore();
 }
