@@ -756,7 +756,7 @@ const TOWER_TYPES = {
     baseStats: {
       damage: 10,
       size: 26, // big and fleshy — see drawCorpseFlower()
-      color: '#7a2e3a', // a deep maroon, the real corpse flower's own color
+      color: '#8c3522', // deep brick-red/rust-red, matching the real Rafflesia reference photo
       range: 160,
       attackInterval: 1, // 10 damage once a second = 10 dps baseline, the literal spec
     },
@@ -2507,66 +2507,135 @@ function drawGasCloud(ctx, x, y, radius, color, time) {
   ctx.restore();
 }
 
-// The bulbous, mottled "head" (really a spathe wrapped around a central
-// spadix, like a real corpse flower) — blotchy darker patches for the
-// mottling, a frilly folded edge around the rim, and (Hazard Path tier 1
-// and up) a ring of small triangular spikes poking out past that edge.
-function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes) {
+// Rafflesia redesign (direct request, from a real reference photo): 5
+// large, thick, fleshy petals splayed outward in a star/pinwheel pattern
+// around a central cavity — a flat, ground-hugging flower seen from
+// above/a slight angle, not a tall stem-and-bloom shape (drawCorpseFlower
+// below still gives it a short stem so it has somewhere to visually
+// "grow taller" at Hazard Path tiers 2/4, but the stem is deliberately
+// short so this head — the actual flower — dominates the frame). Petal
+// color comes from `color` (tier-driven, same as before: deep brick-red
+// at the base tier, shifting green/yellow through Hazard Path); the dense
+// pale cream wart/bump texture covering every petal edge-to-edge is drawn
+// in a near-fixed off-white regardless of tier, since that mottled,
+// diseased-looking rash texture — not the petals' own hue — is the single
+// most distinctive trait of the reference and the one thing that has to
+// survive every recolor for this to still read as the same flower at
+// every tier. Petal edges are wavy/irregular (quadratic curves, not a
+// smooth oval) with a curled tip, and the whole thing reads unsettling
+// rather than pretty, in keeping with the tower's gas/hazard theme.
+const CORPSE_FLOWER_PETAL_COUNT = 5;
+const CORPSE_FLOWER_WART_COLOR = '#ded0ab';
+
+function drawCorpseFlowerPetal(ctx, size, color) {
+  const length = size * 1.4;
+  const width = size * 0.68;
+
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.ellipse(x, y, size * 0.6, size * 0.55, 0, 0, Math.PI * 2);
+  ctx.moveTo(size * 0.12, -width * 0.32);
+  ctx.quadraticCurveTo(length * 0.4, -width * 0.6, length * 0.82, -width * 0.24);
+  ctx.quadraticCurveTo(length * 1.08, -width * 0.08, length * 0.95, width * 0.04); // curled tip
+  ctx.quadraticCurveTo(length * 0.78, width * 0.3, length * 0.42, width * 0.56);
+  ctx.quadraticCurveTo(size * 0.25, width * 0.4, size * 0.12, width * 0.3);
+  ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = shadeColor(color, -20);
-  [[-0.2, -0.15], [0.25, 0.1], [-0.1, 0.3], [0.15, -0.3]].forEach(([dx, dy]) => {
-    ctx.beginPath();
-    ctx.ellipse(x + dx * size, y + dy * size, size * 0.18, size * 0.13, 0, 0, Math.PI * 2);
-    ctx.fill();
-  });
+  // Darker shading along the trailing edge — depth, not a flat cutout.
+  ctx.fillStyle = shadeColor(color, -22);
+  ctx.beginPath();
+  ctx.moveTo(size * 0.18, width * 0.28);
+  ctx.quadraticCurveTo(length * 0.5, width * 0.5, length * 0.88, width * 0.1);
+  ctx.quadraticCurveTo(length * 0.5, width * 0.22, size * 0.18, width * 0.28);
+  ctx.closePath();
+  ctx.fill();
 
-  ctx.fillStyle = shadeColor(color, 12);
-  for (let i = 0; i < 6; i += 1) {
-    const angle = (i / 6) * Math.PI * 2;
+  // The dense, raised, pale wart/bump texture — covers the petal surface
+  // edge-to-edge, the reference's own single most distinctive trait.
+  ctx.fillStyle = CORPSE_FLOWER_WART_COLOR;
+  const wartRows = 4;
+  const wartCols = 6;
+  for (let row = 0; row < wartRows; row += 1) {
+    for (let col = 0; col < wartCols; col += 1) {
+      const t = (col + 0.5) / wartCols; // 0 (base) -> 1 (tip)
+      const s = (row + 0.5) / wartRows - 0.5; // -0.5 .. 0.5 across the width
+      const taper = 1 - t * 0.35; // petal narrows toward its tip
+      const wx = size * 0.2 + t * length * 0.82;
+      const wy = s * width * 0.78 * taper;
+      ctx.beginPath();
+      ctx.arc(wx, wy, size * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes) {
+  for (let i = 0; i < CORPSE_FLOWER_PETAL_COUNT; i += 1) {
+    const angle = (i / CORPSE_FLOWER_PETAL_COUNT) * Math.PI * 2;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
-    ctx.beginPath();
-    ctx.moveTo(size * 0.3, 0);
-    ctx.quadraticCurveTo(size * 0.75, -size * 0.18, size * 0.85, 0);
-    ctx.quadraticCurveTo(size * 0.75, size * 0.18, size * 0.3, 0);
-    ctx.closePath();
-    ctx.fill();
+    drawCorpseFlowerPetal(ctx, size, color);
     ctx.restore();
   }
 
+  // Hazard Path tier 1+: a ring of spikes poking out past the petals' own
+  // outer edge, offset between petals so they read as a separate feature
+  // rather than overlapping one.
   if (hasSpikes) {
-    ctx.fillStyle = shadeColor(color, -32);
-    for (let i = 0; i < 8; i += 1) {
-      const angle = (i / 8) * Math.PI * 2 + 0.3;
-      const bx = x + Math.cos(angle) * size * 0.58;
-      const by = y + Math.sin(angle) * size * 0.52;
+    ctx.fillStyle = shadeColor(color, -35);
+    for (let i = 0; i < CORPSE_FLOWER_PETAL_COUNT; i += 1) {
+      const angle = (i / CORPSE_FLOWER_PETAL_COUNT) * Math.PI * 2 + Math.PI / CORPSE_FLOWER_PETAL_COUNT;
+      const bx = x + Math.cos(angle) * size * 1.5;
+      const by = y + Math.sin(angle) * size * 1.5;
       ctx.save();
       ctx.translate(bx, by);
       ctx.rotate(angle);
       ctx.beginPath();
-      ctx.moveTo(0, -size * 0.08);
-      ctx.lineTo(size * 0.22, 0);
-      ctx.lineTo(0, size * 0.08);
+      ctx.moveTo(0, -size * 0.1);
+      ctx.lineTo(size * 0.26, 0);
+      ctx.lineTo(0, size * 0.1);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
   }
+
+  // Central cavity, drawn last (on top) since every petal converges into
+  // it: a yellowish-orange ring of spiky/hairy filaments just inside the
+  // rim, with pure black/near-black depth sunk further in.
+  ctx.strokeStyle = '#d98a1a';
+  ctx.lineWidth = Math.max(1.5, size * 0.07);
+  for (let i = 0; i < 16; i += 1) {
+    const angle = (i / 16) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(x + Math.cos(angle) * size * 0.28, y + Math.sin(angle) * size * 0.28);
+    ctx.lineTo(x + Math.cos(angle) * size * 0.44, y + Math.sin(angle) * size * 0.44);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#140d08';
+  ctx.beginPath();
+  ctx.arc(x, y, size * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(x, y, size * 0.18, 0, Math.PI * 2);
+  ctx.fill();
 }
 
-// Corpse Flower's base tower art: a thick fleshy stem (growing taller at
-// Hazard Path tiers 2 and 4 — "grows slightly taller"/"grows taller" —
-// via hazardTier, the same chosenPath+upgradesPurchased tier-gating
-// Coupons Path and Infect Path already use, no extra per-tier field
-// needed) topped with the mottled head above.
+// Corpse Flower's base tower art: a short stem (growing taller at Hazard
+// Path tiers 2 and 4 — "grows slightly taller"/"grows taller" — via
+// hazardTier, the same chosenPath+upgradesPurchased tier-gating Coupons
+// Path and Infect Path already use, no extra per-tier field needed)
+// topped with the Rafflesia head above. The base-tier stem is
+// deliberately short (the real flower is flat/ground-hugging, not a
+// tall stem-and-bloom shape) — the height growth at later tiers still
+// reads clearly relative to this shorter base, it's just no longer tall
+// enough at tier 0 to fight the "ground-hugging" read of the head itself.
 function drawCorpseFlower(ctx, x, y, size, color, glow, time, flashAmount, hasSpikes, hazardTier) {
   const heightMultiplier = hazardTier >= 4 ? 1.5 : hazardTier >= 2 ? 1.2 : 1;
-  const stemHeight = size * 0.9 * heightMultiplier;
+  const stemHeight = size * 0.3 * heightMultiplier;
   const groundY = y + stemHeight;
   const sway = Math.sin(time * 1 + x * 0.009) * 0.04;
 
