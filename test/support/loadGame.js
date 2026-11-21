@@ -211,6 +211,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       canAfford,
       getHordeSpawnTimer: () => hordeSpawnTimer,
       MAP_ROSTERS, FOREST_ROSTER, MARSH_ROSTER, getActiveRoster, generateWave,
+      listAllMaps,
       MAP_TYPES, getActiveMap, setActiveMap,
       getMapPaths: () => MAP_PATHS,
       getSelectedMap: () => selectedMap,

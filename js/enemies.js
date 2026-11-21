@@ -210,10 +210,60 @@ const SAVANAH_ROSTER = {
   orderTier3: [],
 };
 
+// Whirlpool (direct request): an ocean-floor roster, and the first map with
+// a real THIRD boss tier — the user gave all 12 enemies (3 regular tiers of
+// 3 plus 3 bosses) as one ordered, weakest-to-strongest list, with the
+// bosses sitting at positions 4/8/12. That maps directly onto this file's
+// existing order/bossTypes[1]/orderTier2/bossTypes[2]/orderTier3/
+// bossTypes[3] shape — getBossForRound()'s own fallback-to-highest-
+// designed-tier logic already supports an arbitrary number of boss tiers
+// (it was written generically, just never had a 3rd one to use before), so
+// no engine changes were needed to add a real round-75 boss, only data.
+//
+// The user didn't give explicit health/speed numbers this time (unlike
+// every other map's roster) — judgment calls below, picked to land in the
+// same value ranges the other 3 rosters already sit in post the recent
+// global 2x health pass (this is brand-new content, so there's no earlier,
+// lower baseline for it to be "doubled" relative to — these are just
+// chosen directly at the current scale other maps' numbers now live at):
+// tier1 ~8-15hp, tier2 ~90-170hp, tier3 (the toughest regular tier) ~250-
+// 400hp, boss1(round25) ~250hp, boss2(round50) ~480hp. Great White
+// (boss3, round75) is deliberately well past ALL of that — 1400hp, even
+// above the shared Titan Beetle's own 1200 — since the request was
+// explicit that it should be "noticeably tougher... not just
+// incrementally so" and "the strongest enemy in this entire roster," a
+// genuine new high-water mark, not another modest step up the existing
+// curve. Bounty follows the same ~HP/2 convention as every other roster,
+// computed directly against these numbers (no stale pre-doubling drift to
+// account for, again because this is new content).
+const OCEAN_ROSTER = {
+  enemyTypes: {
+    seaCucumber: { name: 'Sea Cucumber', speedMultiplier: 0.3, health: 8, color: '#6b5a3a', radius: 8, bounty: 4 },
+    urchin: { name: 'Urchin', speedMultiplier: 0.4, health: 15, color: '#2a1a3a', radius: 9, bounty: 8 }, // round(7.5)=8
+    clownFish: { name: 'Clown Fish', speedMultiplier: 0.9, health: 12, color: '#ff7a33', radius: 7, bounty: 6 },
+    starfish: { name: 'Starfish', speedMultiplier: 0.3, health: 90, color: '#d9622b', radius: 10, bounty: 45 },
+    seahorse: { name: 'Seahorse', speedMultiplier: 0.35, health: 110, color: '#c9a04a', radius: 8, bounty: 55 },
+    horseshoeCrab: { name: 'Horseshoe Crab', speedMultiplier: 0.3, health: 170, color: '#4a4030', radius: 11, bounty: 85 },
+    stingray: { name: 'Stingray', speedMultiplier: 0.6, health: 250, color: '#6a7f8a', radius: 13, bounty: 125 },
+    tuna: { name: 'Tuna', speedMultiplier: 1.1, health: 320, color: '#395a78', radius: 10, bounty: 160 }, // the fastest regular enemy on this map — real tuna are famously quick
+    marlin: { name: 'Marlin', speedMultiplier: 1, health: 400, color: '#1f3a5c', radius: 11, bounty: 200 },
+  },
+  bossTypes: {
+    1: { name: 'Reef Shark', speedMultiplier: 0.6, health: 250, color: '#6e7c82', radius: 16, bounty: 125 },
+    2: { name: 'Hammerhead Shark', speedMultiplier: 0.55, health: 480, color: '#51626e', radius: 19, bounty: 240 },
+    // The map's true final boss — see this roster's own top comment for
+    // why it's set well above a simple next-step in the curve.
+    3: { name: 'Great White', speedMultiplier: 0.55, health: 1400, color: '#8a9aa0', radius: 24, bounty: 700 },
+  },
+  order: ['seaCucumber', 'urchin', 'clownFish'],
+  orderTier2: ['starfish', 'seahorse', 'horseshoeCrab'],
+  orderTier3: ['stingray', 'tuna', 'marlin'],
+};
+
 // Keyed by TERRAIN id (map.js's TERRAIN_THEMES keys — 'forest'/'marsh'/
 // 'desert'), not the map's own id ('deepForest'/'marshland'/'savanah') —
 // getActiveRoster() below looks this up via getActiveMap().terrain.
-const MAP_ROSTERS = { forest: FOREST_ROSTER, marsh: MARSH_ROSTER, desert: SAVANAH_ROSTER };
+const MAP_ROSTERS = { forest: FOREST_ROSTER, marsh: MARSH_ROSTER, desert: SAVANAH_ROSTER, ocean: OCEAN_ROSTER };
 
 // Falls back to the Forest roster if the active map's terrain isn't a
 // known key (shouldn't happen — every terrain id in map.js's
@@ -601,6 +651,16 @@ const ENEMY_FACING_OFFSET = {
   carapaceBeetle: Math.PI,
   ironshellBeetle: Math.PI,
   titanBeetle: Math.PI,
+  // Whirlpool: every fish/shark/ray draws its own head/snout/bill toward
+  // -x, same convention as everything above. Starfish and Urchin have no
+  // real "front" (radially symmetric art) and are left out entirely,
+  // falling through to the 0 default, same as Frog Larva's own comment.
+  clownFish: Math.PI,
+  seahorse: Math.PI,
+  horseshoeCrab: Math.PI,
+  stingray: Math.PI,
+  tuna: Math.PI,
+  marlin: Math.PI,
 };
 // Keyed by enemyKey (e.g. 'forest-boss-tier-1'), same as
 // ENEMY_FACING_OFFSET, since different boss tiers can have different
@@ -612,6 +672,9 @@ const BOSS_FACING_OFFSET = {
   'marsh-boss-tier-2': Math.PI, // Military Helmet Snail — same snail-body convention
   'desert-boss-tier-1': Math.PI, // Desert Termite — same ant-body convention (reuses drawAntBody); keyed by TERRAIN id, not map id ("desert", not "savanah") — see generateWave()'s enemyKey format
   'desert-boss-tier-2': Math.PI, // Blue Death Beetle — same beetle-body convention
+  'ocean-boss-tier-1': Math.PI, // Reef Shark
+  'ocean-boss-tier-2': Math.PI, // Hammerhead Shark
+  'ocean-boss-tier-3': Math.PI, // Great White
 };
 
 function getInitialPathHeading(path) {
@@ -1829,6 +1892,317 @@ function drawTitanBeetle(ctx, e) {
   ctx.fill();
 }
 
+// --- Whirlpool: ocean-floor creatures -------------------------------------
+
+function drawSeaCucumber(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.3, e.radius * 0.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, -18);
+  [[-0.6, 0], [-0.1, 0.25], [0.4, -0.2], [0.8, 0.1]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.ellipse(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.18, e.radius * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawUrchin(ctx, e) {
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = Math.max(1.3, e.radius * 0.12);
+  for (let i = 0; i < 12; i += 1) {
+    const angle = (i / 12) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(e.x + Math.cos(angle) * e.radius * 0.5, e.y + Math.sin(angle) * e.radius * 0.5);
+    ctx.lineTo(e.x + Math.cos(angle) * e.radius * 1.3, e.y + Math.sin(angle) * e.radius * 1.3);
+    ctx.stroke();
+  }
+  ctx.fillStyle = shadeColor(e.color, 20);
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawClownFish(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.8, e.y);
+  ctx.lineTo(e.x + e.radius * 1.5, e.y - e.radius * 0.5);
+  ctx.lineTo(e.x + e.radius * 1.5, e.y + e.radius * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  [-0.3, 0.15].forEach((dx) => {
+    ctx.beginPath();
+    ctx.ellipse(e.x + dx * e.radius, e.y, e.radius * 0.12, e.radius * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.7, e.y - e.radius * 0.15, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Shared by Reef Shark/Hammerhead/Great White below — a generic predator
+// silhouette (body + snout + dorsal fin + tail) each boss's own function
+// tweaks (hammer-head bar, bigger snout/teeth) rather than duplicating.
+function drawSharkBody(ctx, e, snoutLength) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius, e.y - e.radius * 0.15);
+  ctx.quadraticCurveTo(e.x - e.radius * (1 + snoutLength), e.y, e.x - e.radius, e.y + e.radius * 0.25);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, -15);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.1, e.y - e.radius * 0.4);
+  ctx.lineTo(e.x + e.radius * 0.2, e.y - e.radius * (0.9 + snoutLength * 0.3));
+  ctx.lineTo(e.x + e.radius * 0.45, e.y - e.radius * 0.4);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.95, e.y);
+  ctx.lineTo(e.x + e.radius * 1.6, e.y - e.radius * 0.7);
+  ctx.lineTo(e.x + e.radius * 1.15, e.y);
+  ctx.lineTo(e.x + e.radius * 1.6, e.y + e.radius * 0.45);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, 28);
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y + e.radius * 0.2, e.radius * 0.8, e.radius * 0.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawReefShark(ctx, e) {
+  drawSharkBody(ctx, e, 0.35);
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.85, e.y - e.radius * 0.08, e.radius * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawStarfish(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i += 1) {
+    const outerAngle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    const innerAngle = outerAngle + Math.PI / 5;
+    const ox = e.x + Math.cos(outerAngle) * e.radius;
+    const oy = e.y + Math.sin(outerAngle) * e.radius;
+    const ix = e.x + Math.cos(innerAngle) * e.radius * 0.45;
+    const iy = e.y + Math.sin(innerAngle) * e.radius * 0.45;
+    if (i === 0) ctx.moveTo(ox, oy);
+    else ctx.lineTo(ox, oy);
+    ctx.lineTo(ix, iy);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, 20);
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSeahorse(ctx, e) {
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = Math.max(2, e.radius * 0.5);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(e.x, e.y - e.radius * 1.2);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.5, e.y - e.radius * 0.3, e.x, e.y + e.radius * 0.5);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.5, e.y + e.radius * 1.1, e.x + e.radius * 0.1, e.y + e.radius * 1.3);
+  ctx.stroke();
+  ctx.strokeStyle = shadeColor(e.color, -15);
+  ctx.lineWidth = Math.max(1.5, e.radius * 0.25);
+  ctx.beginPath();
+  ctx.moveTo(e.x, e.y - e.radius * 1.2);
+  ctx.lineTo(e.x - e.radius * 0.5, e.y - e.radius * 1.4);
+  ctx.stroke();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.1, e.y - e.radius * 1.15, e.radius * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawHorseshoeCrab(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.3, e.y, e.radius * 0.7, e.radius * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.3, e.y, e.radius * 0.5, Math.PI * 0.2, Math.PI * 0.8);
+  ctx.stroke();
+  ctx.fillStyle = shadeColor(e.color, -20);
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.6, e.y - e.radius * 0.15);
+  ctx.lineTo(e.x + e.radius * 1.5, e.y);
+  ctx.lineTo(e.x + e.radius * 0.6, e.y + e.radius * 0.15);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawHammerhead(ctx, e) {
+  drawSharkBody(ctx, e, 0.3);
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.95, e.y, e.radius * 0.6, e.radius * 0.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  [-1.45, -0.5].forEach((dx) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y, e.radius * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawStingray(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.3, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.3, e.y - e.radius * 1.1, e.x + e.radius * 0.6, e.y - e.radius * 0.15);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.3, e.y + e.radius * 1.1, e.x - e.radius * 1.3, e.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = Math.max(1.5, e.radius * 0.15);
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.55, e.y - e.radius * 0.1);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.3, e.y, e.x + e.radius * 1.7, e.y + e.radius * 0.3);
+  ctx.stroke();
+  ctx.fillStyle = shadeColor(e.color, 20);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.5, e.y, e.radius * 0.4, e.radius * 0.25, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.9, e.y - e.radius * 0.1, e.radius * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawTuna(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.2, e.radius * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 1.0, e.y);
+  ctx.lineTo(e.x + e.radius * 1.7, e.y - e.radius * 0.55);
+  ctx.lineTo(e.x + e.radius * 1.25, e.y);
+  ctx.lineTo(e.x + e.radius * 1.7, e.y + e.radius * 0.55);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, -18);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.1, e.y - e.radius * 0.4);
+  ctx.lineTo(e.x + e.radius * 0.15, e.y - e.radius * 0.85);
+  ctx.lineTo(e.x + e.radius * 0.4, e.y - e.radius * 0.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, 30);
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y + e.radius * 0.18, e.radius * 0.9, e.radius * 0.15, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 1.0, e.y - e.radius * 0.08, e.radius * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawMarlin(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.1, e.radius * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -20);
+  ctx.lineWidth = Math.max(1.5, e.radius * 0.12);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.0, e.y);
+  ctx.lineTo(e.x - e.radius * 1.9, e.y);
+  ctx.stroke();
+  ctx.fillStyle = shadeColor(e.color, -15);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.3, e.y - e.radius * 0.35);
+  ctx.lineTo(e.x + e.radius * 0.1, e.y - e.radius * 1.15);
+  ctx.lineTo(e.x + e.radius * 0.5, e.y - e.radius * 0.35);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.95, e.y);
+  ctx.lineTo(e.x + e.radius * 1.6, e.y - e.radius * 0.5);
+  ctx.lineTo(e.x + e.radius * 1.15, e.y);
+  ctx.lineTo(e.x + e.radius * 1.6, e.y + e.radius * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.85, e.y - e.radius * 0.06, e.radius * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// The map's final boss — biggest body, a long gaping snout with visible
+// teeth (no other type on this roster shows teeth), distinctly scarier
+// than the two reef-dwelling sharks earlier in the roster.
+function drawGreatWhite(ctx, e) {
+  ctx.fillStyle = shadeColor(e.color, 25);
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y + e.radius * 0.25, e.radius * 1.1, e.radius * 0.32, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.25, e.radius * 0.62, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.2, e.y - e.radius * 0.1);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.7, e.y, e.x - e.radius * 1.2, e.y + e.radius * 0.25);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, -20);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.15, e.y - e.radius * 0.5);
+  ctx.lineTo(e.x + e.radius * 0.2, e.y - e.radius * 1.5);
+  ctx.lineTo(e.x + e.radius * 0.5, e.y - e.radius * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 1.1, e.y);
+  ctx.lineTo(e.x + e.radius * 1.9, e.y - e.radius * 0.9);
+  ctx.lineTo(e.x + e.radius * 1.35, e.y);
+  ctx.lineTo(e.x + e.radius * 1.9, e.y + e.radius * 0.55);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 4; i += 1) {
+    const tx = e.x - e.radius * 1.1 + i * e.radius * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(tx, e.y + e.radius * 0.2);
+    ctx.lineTo(tx + e.radius * 0.08, e.y + e.radius * 0.38);
+    ctx.lineTo(tx + e.radius * 0.16, e.y + e.radius * 0.2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 1.0, e.y - e.radius * 0.15, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 const ENEMY_DRAW_FUNCTIONS = {
   ant: drawAnt,
   fireAnt: drawFireAnt,
@@ -1851,6 +2225,15 @@ const ENEMY_DRAW_FUNCTIONS = {
   carapaceBeetle: drawCarapaceBeetle,
   ironshellBeetle: drawIronshellBeetle,
   titanBeetle: drawTitanBeetle,
+  seaCucumber: drawSeaCucumber,
+  urchin: drawUrchin,
+  clownFish: drawClownFish,
+  starfish: drawStarfish,
+  seahorse: drawSeahorse,
+  horseshoeCrab: drawHorseshoeCrab,
+  stingray: drawStingray,
+  tuna: drawTuna,
+  marlin: drawMarlin,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -1860,6 +2243,9 @@ const BOSS_DRAW_FUNCTIONS = {
   'marsh-boss-tier-2': drawMilitaryHelmetSnail,
   'desert-boss-tier-1': drawDesertTermite,
   'desert-boss-tier-2': drawBlueDeathBeetle,
+  'ocean-boss-tier-1': drawReefShark,
+  'ocean-boss-tier-2': drawHammerhead,
+  'ocean-boss-tier-3': drawGreatWhite,
 };
 
 function drawFallbackCircle(ctx, e) {

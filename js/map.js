@@ -569,6 +569,249 @@ function renderDesertDecor(ctx, decor) {
 const SAVANAH_PATH_COLORS = { outline: '#3d2c18', fill: '#a67c3f' };
 
 // ---------------------------------------------------------------------------
+// Terrain: Whirlpool (direct request) — an ocean-floor theme with a path
+// that spirals/curls inward instead of the straight-segment routes every
+// other map uses, ending in a central vortex hole (the goal). The
+// movement code in enemies.js is entirely path-shape-agnostic (it just
+// walks whichever waypoint list it's given, per this file's own header
+// comment), so a spiral needs zero changes there — only a waypoint list
+// with a lot more points than a straight-segment path, generated here
+// rather than hand-typed.
+// ---------------------------------------------------------------------------
+
+// Builds a spiral's waypoints by walking its angle from 0 up to
+// `turns * 2*Math.PI`, lerping the radius down from the outer ellipse
+// (outerRadiusX/Y) to a small circular hole (innerRadius) as it goes —
+// elliptical rather than circular so the spiral actually fills the
+// 960x640 world's wider-than-tall shape instead of leaving large unused
+// margins on the left/right. `pointsPerTurn` controls smoothness (more
+// points = a smoother-looking curve, since strokeMapPath only ever draws
+// straight lines between consecutive waypoints); ring-to-ring spacing
+// here (outer-to-inner radius divided by turns) comfortably exceeds
+// pathWidth, so successive loops of the spiral never overlap or cross
+// themselves.
+function generateSpiralWaypoints(cx, cy, outerRadiusX, outerRadiusY, innerRadius, turns, pointsPerTurn) {
+  const totalPoints = Math.round(turns * pointsPerTurn);
+  const points = [];
+  for (let i = 0; i <= totalPoints; i += 1) {
+    const t = i / totalPoints;
+    const angle = t * turns * Math.PI * 2;
+    const radiusX = outerRadiusX + (innerRadius - outerRadiusX) * t;
+    const radiusY = outerRadiusY + (innerRadius - outerRadiusY) * t;
+    points.push({ x: cx + Math.cos(angle) * radiusX, y: cy + Math.sin(angle) * radiusY });
+  }
+  return points;
+}
+
+const WHIRLPOOL_CENTER = { x: 480, y: 320 };
+// Chosen so the spiral's own outer loop (480±360, 320±230 => x:[120,840],
+// y:[90,550]) leaves a comfortable margin on every side for decor, and so
+// angle 0's own starting point (840, 320) lines up smoothly with the
+// off-canvas lead-in segment below (same straight-line-in-from-the-edge
+// convention every other map's own first waypoint uses).
+const WHIRLPOOL_WAYPOINTS = [
+  { x: 980, y: 320 }, // off-canvas spawn
+  ...generateSpiralWaypoints(WHIRLPOOL_CENTER.x, WHIRLPOOL_CENTER.y, 360, 230, 18, 3, 36),
+];
+
+// A soft, slowly-darkening radial vignette — lightest at the outer edge,
+// darkest right at the central hole — rather than a flat fill, to sell
+// "looking down into a whirlpool." theme.renderBackground (see
+// fillThemeBackground()/TERRAIN_THEMES below) is a new, OPTIONAL hook on
+// top of the existing flat-color theme.background: every other terrain
+// still just uses a flat fill (unchanged), only this one theme needs
+// something fancier.
+function renderWhirlpoolBackground(ctx, width, height) {
+  const gradient = ctx.createRadialGradient(
+    WHIRLPOOL_CENTER.x, WHIRLPOOL_CENTER.y, 0,
+    WHIRLPOOL_CENTER.x, WHIRLPOOL_CENTER.y, 440 // reaches past the spiral's own outer radius, so the vignette covers the whole visible play area
+  );
+  gradient.addColorStop(0, '#02050a');
+  gradient.addColorStop(0.45, '#08192e');
+  gradient.addColorStop(1, '#1c4f6b');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+}
+
+// Marks the spiral's own center — the goal enemies walk into — the same
+// "the goal gets its own drawn marker" role Savanah's drawTemple() plays.
+// Concentric darkening rings (reusing the same "darker toward the middle"
+// visual language as the background gradient above, at a tighter, tower-
+// icon-adjacent scale) plus a few curling swirl strokes suggesting water
+// spinning down into the hole.
+function drawVortexHole(ctx, x, y, size) {
+  [1, 0.72, 0.46, 0.22].forEach((scale, i) => {
+    ctx.fillStyle = i === 3 ? '#000000' : `rgba(2, 8, 15, ${0.5 + i * 0.15})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y, size * scale, size * scale * 0.72, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.strokeStyle = 'rgba(150, 200, 220, 0.4)';
+  ctx.lineWidth = 2;
+  [0, 1, 2].forEach((i) => {
+    const startAngle = (i / 3) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(x, y, size * (0.9 - i * 0.1), startAngle, startAngle + Math.PI * 1.2);
+    ctx.stroke();
+  });
+}
+
+// A branching coral cluster — a handful of curved stalks fanning up from
+// one base, each tipped with a small rounded node.
+function drawCoral(ctx, x, y, size) {
+  const branches = [-0.5, -0.2, 0.1, 0.4];
+  ctx.strokeStyle = '#e07856';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(2, size * 0.14);
+  branches.forEach((lean) => {
+    const tipX = x + lean * size;
+    const tipY = y - size * (0.8 + Math.abs(lean) * 0.3);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + lean * size * 0.5, y - size * 0.5, tipX, tipY);
+    ctx.stroke();
+  });
+  ctx.fillStyle = '#f2a37a';
+  branches.forEach((lean) => {
+    const tipX = x + lean * size;
+    const tipY = y - size * (0.8 + Math.abs(lean) * 0.3);
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, size * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Wavy kelp-like blades, same swaying-stroke technique Marshland's own
+// drawCattail() uses, just colored green and with no seed head.
+function drawSeaweed(ctx, x, y, size) {
+  ctx.strokeStyle = '#1f6b4a';
+  ctx.lineCap = 'round';
+  [-0.3, 0, 0.3].forEach((lean, i) => {
+    ctx.lineWidth = Math.max(2, size * 0.12);
+    ctx.beginPath();
+    ctx.moveTo(x + lean * size * 0.4, y);
+    ctx.quadraticCurveTo(
+      x + lean * size * 0.4 + size * 0.3,
+      y - size * 0.6,
+      x + lean * size * 0.4 - size * 0.15,
+      y - size * (1.1 + i * 0.1)
+    );
+    ctx.stroke();
+  });
+}
+
+function drawBubbleCluster(ctx, x, y, r) {
+  ctx.strokeStyle = 'rgba(200, 230, 255, 0.5)';
+  ctx.fillStyle = 'rgba(200, 230, 255, 0.12)';
+  ctx.lineWidth = 1.2;
+  [[0, 0, 1], [0.6, -0.5, 0.6], [-0.5, -0.3, 0.5], [0.2, -0.9, 0.4]].forEach(([dx, dy, scale]) => {
+    ctx.beginPath();
+    ctx.arc(x + dx * r, y + dy * r, r * 0.3 * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+}
+
+// A loose boulder cluster, same layered-ellipse technique as Savanah's own
+// drawSandstoneFormation(), recolored to a cool slate-gray so it reads as
+// ocean-floor rock rather than desert stone.
+const OCEAN_ROCK_COLOR = '#4a5560';
+
+function drawOceanRock(ctx, x, y, r) {
+  ctx.fillStyle = OCEAN_ROCK_COLOR;
+  [[-0.3, 0.1, 1], [0.3, 0.15, 0.75], [0, -0.25, 0.6]].forEach(([dx, dy, scale]) => {
+    ctx.beginPath();
+    ctx.ellipse(x + dx * r, y + dy * r, r * 0.5 * scale, r * 0.38 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = shadeColor(OCEAN_ROCK_COLOR, 18);
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.1, y - r * 0.3, r * 0.25, r * 0.15, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawShell(ctx, x, y, size) {
+  ctx.fillStyle = '#f0d9c0';
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * 0.5);
+  for (let i = 0; i <= 6; i += 1) {
+    const angle = -Math.PI / 2 + (i / 6) * Math.PI;
+    ctx.lineTo(x + Math.cos(angle) * size * 0.5, y + Math.sin(angle) * size * 0.5 + size * 0.1);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor('#f0d9c0', -25);
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 6; i += 1) {
+    const angle = -Math.PI / 2 + (i / 6) * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(x, y - size * 0.1);
+    ctx.lineTo(x + Math.cos(angle) * size * 0.5, y + Math.sin(angle) * size * 0.5 + size * 0.1);
+    ctx.stroke();
+  }
+}
+
+// Hand-placed in the four margins OUTSIDE the spiral's own elliptical
+// extent (x:[120,840], y:[90,550], per WHIRLPOOL_WAYPOINTS' own comment)
+// rather than threaded between individual loops of the spiral — far
+// simpler to verify clear of the path than checking distance-to-segment
+// against a few dozen spiral waypoints by hand, and these margins are
+// comfortably wide (x<100/x>860 are clear at every y; y<70/y>570 are
+// clear at every x). The one exception needing its own check: the
+// off-canvas lead-in segment runs along y=320 for x in [840,980], so the
+// right-margin items below are kept away from y=320 by a wide buffer.
+const WHIRLPOOL_CORAL = [
+  { x: 160, y: 35, size: 20 }, { x: 700, y: 30, size: 22 },
+  { x: 220, y: 610, size: 20 }, { x: 760, y: 605, size: 22 },
+  { x: 910, y: 150, size: 20 }, { x: 900, y: 500, size: 22 },
+];
+
+const WHIRLPOOL_SEAWEED = [
+  { x: 40, y: 160, size: 24 }, { x: 55, y: 460, size: 22 },
+  { x: 380, y: 615, size: 20 }, { x: 630, y: 618, size: 22 },
+];
+
+const WHIRLPOOL_ROCKS = [
+  { x: 420, y: 25, r: 26 }, { x: 35, y: 300, r: 28 },
+  { x: 930, y: 90, r: 26 }, { x: 500, y: 625, r: 28 },
+];
+
+const WHIRLPOOL_BUBBLES = [
+  { x: 280, y: 20, r: 16 }, { x: 560, y: 15, r: 14 },
+  { x: 65, y: 90, r: 15 }, { x: 70, y: 560, r: 16 },
+  { x: 935, y: 220, r: 15 }, { x: 890, y: 570, r: 16 },
+  { x: 140, y: 595, r: 14 },
+];
+
+const WHIRLPOOL_SHELLS = [
+  { x: 45, y: 240, size: 18 }, { x: 490, y: 40, size: 16 }, { x: 915, y: 440, size: 18 },
+];
+
+const WHIRLPOOL_DECOR = {
+  coral: WHIRLPOOL_CORAL,
+  seaweed: WHIRLPOOL_SEAWEED,
+  rocks: WHIRLPOOL_ROCKS,
+  bubbles: WHIRLPOOL_BUBBLES,
+  shells: WHIRLPOOL_SHELLS,
+  vortex: WHIRLPOOL_CENTER,
+};
+
+function renderOceanDecor(ctx, decor) {
+  decor.rocks.forEach((rock) => drawOceanRock(ctx, rock.x, rock.y, rock.r));
+  decor.seaweed.forEach((kelp) => drawSeaweed(ctx, kelp.x, kelp.y, kelp.size));
+  decor.coral.forEach((piece) => drawCoral(ctx, piece.x, piece.y, piece.size));
+  decor.shells.forEach((shell) => drawShell(ctx, shell.x, shell.y, shell.size));
+  decor.bubbles.forEach((cluster) => drawBubbleCluster(ctx, cluster.x, cluster.y, cluster.r));
+  drawVortexHole(ctx, decor.vortex.x, decor.vortex.y, 46);
+}
+
+// A sandy, lighter-teal pair — reads clearly as an ocean-floor trench
+// against the dark-to-light blue vignette background, distinct from every
+// other terrain's own path coloring.
+const WHIRLPOOL_PATH_COLORS = { outline: '#0a1f2e', fill: '#3d7a6e' };
+
+// ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/renderMapIcon()
 // below both dispatch through this rather than special-casing map ids.
@@ -591,7 +834,28 @@ const TERRAIN_THEMES = {
   // only. See SAVANAH_PATH_COLORS and drawSandstoneFormation's own
   // comments for the related contrast adjustments this required.
   desert: { background: '#c8601f', renderDecor: renderDesertDecor },
+  // `background` here is only a flat-fill FALLBACK (used if
+  // renderBackground were ever missing) — renderWhirlpoolBackground's own
+  // radial vignette is what actually draws, via fillThemeBackground()
+  // below. renderBackground is a new, optional hook: every theme above
+  // still just gets a flat ctx.fillRect(theme.background), unchanged —
+  // only this one theme needed something fancier.
+  ocean: { background: '#1c4f6b', renderDecor: renderOceanDecor, renderBackground: renderWhirlpoolBackground },
 };
+
+// Fills the world background for the active theme — a flat
+// ctx.fillRect(theme.background) for every terrain except Whirlpool,
+// which supplies its own renderBackground (the radial vignette) instead.
+// Shared by renderMap() and renderMapIcon() so both stay in sync without
+// duplicating this dispatch.
+function fillThemeBackground(ctx, theme, width, height) {
+  if (theme.renderBackground) {
+    theme.renderBackground(ctx, width, height);
+  } else {
+    ctx.fillStyle = theme.background;
+    ctx.fillRect(0, 0, width, height);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // MAP_TYPES — the built-in maps (the only maps there are now that the map
@@ -641,9 +905,22 @@ const MAP_TYPES = {
     terrain: 'desert',
     decor: SAVANAH_DECOR,
   },
+  // Direct request: an ocean-floor map whose single path spirals inward
+  // into a central vortex (the goal) rather than any straight-segment
+  // route — see WHIRLPOOL_WAYPOINTS' own comment for how that's generated.
+  whirlpool: {
+    id: 'whirlpool',
+    name: 'Whirlpool',
+    builtin: true,
+    paths: [WHIRLPOOL_WAYPOINTS],
+    pathWidth: 56,
+    pathColors: WHIRLPOOL_PATH_COLORS,
+    terrain: 'ocean',
+    decor: WHIRLPOOL_DECOR,
+  },
 };
 
-const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah'];
+const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool'];
 
 // ---------------------------------------------------------------------------
 // Active-map state. MAP_PATHS/MAP_PATH_WIDTH are what every other file
@@ -697,8 +974,7 @@ function isPointOnPath(x, y, margin = 0) {
 function renderMap(ctx, canvas) {
   const theme = TERRAIN_THEMES[activeMap.terrain];
 
-  ctx.fillStyle = theme.background;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  fillThemeBackground(ctx, theme, canvas.width, canvas.height);
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -742,8 +1018,7 @@ function renderMapIcon(ctx, map, x, y, size) {
   ctx.translate(x, y);
   ctx.scale(size / MAP_WORLD_WIDTH, size / MAP_WORLD_HEIGHT);
 
-  ctx.fillStyle = theme.background;
-  ctx.fillRect(0, 0, MAP_WORLD_WIDTH, MAP_WORLD_HEIGHT);
+  fillThemeBackground(ctx, theme, MAP_WORLD_WIDTH, MAP_WORLD_HEIGHT);
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
