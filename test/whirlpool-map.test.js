@@ -268,3 +268,68 @@ test('every Easter egg sits outside the spiral\'s own bounding ellipse (x:[120,8
     assert.ok(outsideBoundingBox, `decor.${key} at (${item.x}, ${item.y}) is inside the spiral's own extent`);
   });
 });
+
+// --- Armored beetle ocean reskin (user bug report: literal land beetles
+// walking the Whirlpool seafloor looked out of place) ---------------------
+// The shared ARMORED_BEETLE_TIERS forcing function (Carapace/Ironshell/
+// Titan Beetle, rounds 75/100/125) still spawns on every map, Whirlpool
+// included — these tests confirm only the presentation (name/color)
+// changes on Whirlpool, while every mechanical stat stays byte-for-byte
+// identical to the shared tier data, and every other map's presentation
+// is completely untouched.
+
+test('on Deep Forest (default), armored beetles still read as the original land-beetle names/colors', () => {
+  const game = loadGameContext();
+  const entry = game.getSpawnEntryForEnemyKey('carapaceBeetle');
+  assert.equal(entry.name, 'Carapace Beetle');
+  assert.equal(entry.color, game.getArmoredBeetleTier('carapaceBeetle').color);
+});
+
+test('on Whirlpool, each armored beetle tier gets an ocean-themed name/color instead of the land-beetle one', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+
+  const carapace = game.getSpawnEntryForEnemyKey('carapaceBeetle');
+  const ironshell = game.getSpawnEntryForEnemyKey('ironshellBeetle');
+  const titan = game.getSpawnEntryForEnemyKey('titanBeetle');
+
+  assert.equal(carapace.name, 'Armored Hermit Crab');
+  assert.equal(ironshell.name, 'Spiny Lobster');
+  assert.equal(titan.name, 'Giant Isopod');
+
+  // Names actually changed from the shared tier data's own land-beetle names.
+  assert.notEqual(carapace.color, game.getArmoredBeetleTier('carapaceBeetle').color);
+  assert.notEqual(ironshell.color, game.getArmoredBeetleTier('ironshellBeetle').color);
+  assert.notEqual(titan.color, game.getArmoredBeetleTier('titanBeetle').color);
+});
+
+test('the ocean reskin changes presentation only — health, armorThreshold, speedMultiplier, and bounty are untouched', () => {
+  const game = loadGameContext();
+  const forestEntry = game.getSpawnEntryForEnemyKey('ironshellBeetle'); // Deep Forest is the default active map
+
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+  const oceanEntry = game.getSpawnEntryForEnemyKey('ironshellBeetle');
+
+  assert.equal(oceanEntry.health, forestEntry.health);
+  assert.equal(oceanEntry.armorThreshold, forestEntry.armorThreshold);
+  assert.equal(oceanEntry.speedMultiplier, forestEntry.speedMultiplier);
+  assert.equal(oceanEntry.bounty, forestEntry.bounty);
+  assert.notEqual(oceanEntry.name, forestEntry.name); // only the presentation differs
+});
+
+test('a generated Whirlpool wave past round 75 carries the reskinned name, not the land-beetle one', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+  const wave = game.generateWave(76);
+  const armored = wave.find((entry) => entry.enemyKey === 'carapaceBeetle');
+  assert.ok(armored);
+  assert.equal(armored.name, 'Armored Hermit Crab');
+});
+
+test('a generated Deep Forest wave past round 75 still carries the original land-beetle name', () => {
+  const game = loadGameContext();
+  const wave = game.generateWave(76); // Deep Forest is the default active map
+  const armored = wave.find((entry) => entry.enemyKey === 'carapaceBeetle');
+  assert.ok(armored);
+  assert.equal(armored.name, 'Carapace Beetle');
+});

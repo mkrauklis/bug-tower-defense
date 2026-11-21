@@ -415,6 +415,23 @@ function getActiveRoster() {
 // 150/300/600 progression this file's own comment above describes is now
 // 300/600/1200 — still exactly 2x tier-over-tier, just from a doubled
 // starting point.
+// Whirlpool reskin (user bug report: literal land beetles were showing up
+// walking the ocean floor — visibly out of place). Mechanically these are
+// still the exact same ARMORED_BEETLE_TIERS entries below (same key, same
+// health/armorThreshold/unlockRound/bounty/speedMultiplier — nothing about
+// the forcing function itself changes on any map), but on Whirlpool
+// specifically generateWave() and drawEnemyShape() both consult this theme
+// table (keyed by the tier's own shared `key`, read only when
+// getActiveMap().terrain === 'ocean') to swap in an ocean-appropriate
+// name/color/shape — see this file's own "Whirlpool: ocean-themed armored
+// reskin" section further down for the actual art. Every other map keeps
+// drawing/naming these exactly as before; this is purely additive.
+const ARMORED_OCEAN_THEME = {
+  carapaceBeetle: { name: 'Armored Hermit Crab', color: '#9a5230' },
+  ironshellBeetle: { name: 'Spiny Lobster', color: '#2f4a42' },
+  titanBeetle: { name: 'Giant Isopod', color: '#a89aa5' },
+};
+
 const ARMORED_BEETLE_TIERS = [
   {
     key: 'carapaceBeetle',
@@ -696,10 +713,11 @@ function generateWave(round) {
 
   const armoredEntries = [...armoredKeys].map((key) => {
     const tier = getArmoredBeetleTier(key);
+    const oceanTheme = getActiveMap().terrain === 'ocean' ? ARMORED_OCEAN_THEME[key] : null;
     return {
       enemyKey: key,
-      name: tier.name,
-      color: tier.color,
+      name: oceanTheme ? oceanTheme.name : tier.name,
+      color: oceanTheme ? oceanTheme.color : tier.color,
       radius: tier.radius,
       count: 1,
       health: Math.round(tier.health * scaling.healthMultiplier),
@@ -972,10 +990,11 @@ function getSpawnEntryForEnemyKey(key) {
   // active roster.
   const armoredTier = getArmoredBeetleTier(key);
   if (armoredTier) {
+    const oceanTheme = getActiveMap().terrain === 'ocean' ? ARMORED_OCEAN_THEME[key] : null;
     return {
       enemyKey: key,
-      name: armoredTier.name,
-      color: armoredTier.color,
+      name: oceanTheme ? oceanTheme.name : armoredTier.name,
+      color: oceanTheme ? oceanTheme.color : armoredTier.color,
       radius: armoredTier.radius,
       health: armoredTier.health,
       speedMultiplier: armoredTier.speedMultiplier,
@@ -2322,6 +2341,85 @@ function drawGreatWhite(ctx, e) {
   ctx.fill();
 }
 
+// --- Whirlpool: ocean-themed armored reskin -------------------------------
+// See ARMORED_OCEAN_THEME's own comment: same shared armored-beetle
+// mechanics, just a crustacean body plan instead of a land beetle when
+// Whirlpool is the active map. Shares drawHorseshoeCrab's "rounded shell,
+// front claws/head toward -x" convention (these keep the shared rotation
+// table's existing Math.PI entry for carapaceBeetle/ironshellBeetle/
+// titanBeetle), and mirrors drawBeetlePlates' own "more segments each
+// tier" progression so the tier-over-tier escalation still reads clearly
+// even with all-new art.
+function drawArmoredShellBody(ctx, e, segmentCount) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, -15);
+  [-0.35, 0.35].forEach((dy) => {
+    ctx.beginPath();
+    ctx.ellipse(e.x - e.radius * 0.9, e.y + dy * e.radius, e.radius * 0.35, e.radius * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.strokeStyle = shadeColor(e.color, -35);
+  ctx.lineWidth = Math.max(1.3, e.radius * 0.09);
+  for (let i = 1; i < segmentCount; i += 1) {
+    const t = i / segmentCount;
+    const px = e.x + e.radius * (0.7 - t * 1.3);
+    ctx.beginPath();
+    ctx.moveTo(px, e.y - e.radius * 0.72);
+    ctx.lineTo(px, e.y + e.radius * 0.72);
+    ctx.stroke();
+  }
+}
+
+// Carapace Beetle's reskin — the lightest of the three, 3 shell segments.
+function drawArmoredHermitCrab(ctx, e) {
+  drawArmoredShellBody(ctx, e, 3);
+}
+
+// Ironshell Beetle's reskin — 4 segments plus a pair of trailing antennae,
+// the one added signature feature at this tier (same role Ironshell's own
+// metallic rivets play).
+function drawSpinyLobster(ctx, e) {
+  drawArmoredShellBody(ctx, e, 4);
+  ctx.strokeStyle = shadeColor(e.color, 35);
+  ctx.lineWidth = Math.max(1, e.radius * 0.08);
+  [-0.25, 0.25].forEach((dy) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 0.85, e.y + dy * e.radius * 0.3);
+    ctx.quadraticCurveTo(
+      e.x - e.radius * 1.4,
+      e.y + dy * e.radius * 0.8,
+      e.x - e.radius * 1.8,
+      e.y + dy * e.radius * 1.3
+    );
+    ctx.stroke();
+  });
+}
+
+// Titan Beetle's reskin — 6 segments plus a trailing tail-fan, the one
+// added signature feature at this tier (same role Titan Beetle's own
+// frontal horn plays).
+function drawGiantIsopod(ctx, e) {
+  drawArmoredShellBody(ctx, e, 6);
+  ctx.fillStyle = shadeColor(e.color, -25);
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.6, e.y - e.radius * 0.5);
+  ctx.lineTo(e.x + e.radius * 1.3, e.y);
+  ctx.lineTo(e.x + e.radius * 0.6, e.y + e.radius * 0.5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+const ARMORED_OCEAN_DRAW_FUNCTIONS = {
+  carapaceBeetle: drawArmoredHermitCrab,
+  ironshellBeetle: drawSpinyLobster,
+  titanBeetle: drawGiantIsopod,
+};
+
 // --- Savanah: scorpions ---------------------------------------------------
 
 // Shared body plan for all 4 scorpions below — a segmented tail curling up
@@ -2475,6 +2573,15 @@ function drawFallbackCircle(ctx, e) {
 }
 
 function drawEnemyShape(ctx, enemy) {
+  // Armored beetles are the one enemy family shared across every map (see
+  // ARMORED_BEETLE_TIERS' own comment) — on Whirlpool specifically, swap
+  // in the ocean-themed reskin instead of the default land-beetle art so
+  // they don't look out of place on the seafloor. Every other map falls
+  // through to the normal lookup below, unchanged.
+  if (!enemy.isBoss && getActiveMap().terrain === 'ocean' && ARMORED_OCEAN_DRAW_FUNCTIONS[enemy.enemyKey]) {
+    ARMORED_OCEAN_DRAW_FUNCTIONS[enemy.enemyKey](ctx, enemy);
+    return;
+  }
   const draw = enemy.isBoss ? BOSS_DRAW_FUNCTIONS[enemy.enemyKey] : ENEMY_DRAW_FUNCTIONS[enemy.enemyKey];
   (draw || drawFallbackCircle)(ctx, enemy);
 }
