@@ -188,6 +188,34 @@ const SAVANAH_ROSTER = {
       bounty: 25,
     },
     kissingBug: { name: 'Kissing Bug', speedMultiplier: 0.8, health: 150, color: '#2e1f1a', radius: 8, bounty: 38 }, // round(37.5)=38 against the pre-2nd-doubling health of 75
+    // Scorpions (direct request): Savanah's first tier-3 roster — same
+    // "an empty orderTier3 slot was already there waiting" fit the Deep
+    // Forest snakes found, so this needed the same zero engine changes,
+    // only data. No health/speed numbers were given again — picked to
+    // escalate clearly past this roster's own tier2 ceiling (kissingBug's
+    // 150) the same way Deep Forest's snakes escalated past its own tier2,
+    // just not quite as extreme a jump (this is "a new mid-tier line," not
+    // explicitly asked to dwarf everything before it the way the snakes'
+    // own final tier was). Bounty follows the usual ~HP/2 convention.
+    // Emperor Scorpion is the one judgment call (same shape as Armored
+    // Snake's own): a light armorThreshold for its obvious exoskeleton
+    // theme and "strongest/most imposing" billing, calibrated as a preview
+    // of the mechanic rather than a repeat of the Armored Beetle line —
+    // threshold 6 blocks only the very weakest tier-1 hits, clearly under
+    // Carapace Beetle's own threshold 8, and it unlocks at round 66, 9
+    // rounds before Carapace Beetle's round-75 debut.
+    stripedScorpion: { name: 'Striped Scorpion', speedMultiplier: 0.8, health: 160, color: '#b8946a', radius: 8, bounty: 80 },
+    duneScorpion: { name: 'Dune Scorpion', speedMultiplier: 0.6, health: 220, color: '#c9a876', radius: 9, bounty: 110 },
+    redScorpion: { name: 'Red Scorpion', speedMultiplier: 0.7, health: 320, color: '#a13a2a', radius: 9, bounty: 160 },
+    emperorScorpion: {
+      name: 'Emperor Scorpion',
+      speedMultiplier: 0.45,
+      health: 450,
+      color: '#2a2420',
+      radius: 13,
+      bounty: 225,
+      armorThreshold: 6,
+    },
   },
   // Boss health doubled (direct request) — see Deep Forest's bossTypes
   // comment (enemies.js, FOREST_ROSTER) for the same scope note, including
@@ -207,7 +235,10 @@ const SAVANAH_ROSTER = {
   },
   order: ['sandLion', 'sandworm', 'desertAnt'],
   orderTier2: ['giantLubberGrasshopper', 'desertPrayingMantis', 'kissingBug'],
-  orderTier3: [],
+  // Scorpions unlock weakest-to-strongest on the same every-5-rounds-
+  // after-round-50 cadence (round 51/56/61/66) every other map's own
+  // orderTier3 already uses.
+  orderTier3: ['stripedScorpion', 'duneScorpion', 'redScorpion', 'emperorScorpion'],
 };
 
 // Whirlpool (direct request): an ocean-floor roster, and the first map with
@@ -661,6 +692,12 @@ const ENEMY_FACING_OFFSET = {
   stingray: Math.PI,
   tuna: Math.PI,
   marlin: Math.PI,
+  // Scorpions: pincers forward (-x), same convention as every other
+  // Savanah type above.
+  stripedScorpion: Math.PI,
+  duneScorpion: Math.PI,
+  redScorpion: Math.PI,
+  emperorScorpion: Math.PI,
 };
 // Keyed by enemyKey (e.g. 'forest-boss-tier-1'), same as
 // ENEMY_FACING_OFFSET, since different boss tiers can have different
@@ -2203,6 +2240,102 @@ function drawGreatWhite(ctx, e) {
   ctx.fill();
 }
 
+// --- Savanah: scorpions ---------------------------------------------------
+
+// Shared body plan for all 4 scorpions below — a segmented tail curling up
+// and back over the body to a stinger, an oval body, two front pincers,
+// and three pairs of legs. `banded` draws Striped Scorpion's dark bands
+// across the body; `pincerScale` lets Emperor Scorpion's own pincers read
+// as visibly larger/more imposing than the other three's, rather than
+// every scorpion sharing identical-sized claws.
+function drawScorpionBody(ctx, e, { banded = false, pincerScale = 1 } = {}) {
+  ctx.strokeStyle = shadeColor(e.color, -10);
+  ctx.lineWidth = Math.max(2, e.radius * 0.25);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.3, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.1, e.y - e.radius * 0.2, e.x + e.radius * 1.2, e.y - e.radius * 0.9);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.25, e.y - e.radius * 1.3, e.x + e.radius * 0.9, e.y - e.radius * 1.35);
+  ctx.stroke();
+
+  ctx.fillStyle = shadeColor(e.color, -25);
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.9, e.y - e.radius * 1.35);
+  ctx.lineTo(e.x + e.radius * 0.75, e.y - e.radius * 1.55);
+  ctx.lineTo(e.x + e.radius * 1.05, e.y - e.radius * 1.45);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.75, e.radius * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (banded) {
+    ctx.strokeStyle = shadeColor(e.color, -35);
+    ctx.lineWidth = 1.3;
+    [-0.3, 0, 0.3].forEach((dx) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x + dx * e.radius, e.y - e.radius * 0.5);
+      ctx.lineTo(e.x + dx * e.radius, e.y + e.radius * 0.5);
+      ctx.stroke();
+    });
+  }
+
+  ctx.fillStyle = shadeColor(e.color, 10);
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.ellipse(
+      e.x - e.radius * 0.9 * pincerScale,
+      e.y + side * e.radius * 0.35,
+      e.radius * 0.35 * pincerScale,
+      e.radius * 0.22 * pincerScale,
+      side * 0.3,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  });
+
+  ctx.strokeStyle = shadeColor(e.color, -20);
+  ctx.lineWidth = 1;
+  [-1, 1].forEach((side) => {
+    [0, 1, 2].forEach((i) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x - e.radius * 0.3 + i * e.radius * 0.25, e.y + side * e.radius * 0.3);
+      ctx.lineTo(e.x - e.radius * 0.3 + i * e.radius * 0.25 + side * e.radius * 0.15, e.y + side * e.radius * 0.6);
+      ctx.stroke();
+    });
+  });
+}
+
+function drawStripedScorpion(ctx, e) {
+  drawScorpionBody(ctx, e, { banded: true });
+}
+
+// Sandy camouflage tone (its own color, set on the roster entry) plus a
+// few darker mottled specks on the body — reads as "blending into the
+// dunes" rather than a flat color swap.
+function drawDuneScorpion(ctx, e) {
+  drawScorpionBody(ctx, e);
+  ctx.fillStyle = shadeColor(e.color, -18);
+  [[-0.2, -0.1], [0.15, 0.15], [-0.3, 0.2]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawRedScorpion(ctx, e) {
+  drawScorpionBody(ctx, e);
+}
+
+// Larger, darker, with visibly bigger pincers than the other three — the
+// roster's own strongest and most imposing scorpion.
+function drawEmperorScorpion(ctx, e) {
+  drawScorpionBody(ctx, e, { pincerScale: 1.4 });
+}
+
 const ENEMY_DRAW_FUNCTIONS = {
   ant: drawAnt,
   fireAnt: drawFireAnt,
@@ -2234,6 +2367,10 @@ const ENEMY_DRAW_FUNCTIONS = {
   stingray: drawStingray,
   tuna: drawTuna,
   marlin: drawMarlin,
+  stripedScorpion: drawStripedScorpion,
+  duneScorpion: drawDuneScorpion,
+  redScorpion: drawRedScorpion,
+  emperorScorpion: drawEmperorScorpion,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
