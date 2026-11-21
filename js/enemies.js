@@ -527,7 +527,15 @@ function getArmoredBeetleTier(key) {
 // creatures, nothing here warrants it. See recordTrailPoint()/
 // renderMillipedeBody() below for the (still-intact) generic mechanism
 // this drives, kept ready for a future multi-segment type.
-const MILLIPEDE_FAMILY_KEYS = new Set(['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda']);
+// Electric Eel (direct request: "make electric eel behave like the
+// snake") joined this family despite being a boss, not a regular roster
+// entry — nothing about the mechanism cares whether an enemyKey belongs
+// to a regular type or a boss, it's keyed the same way either way (see
+// generateWave()'s boss enemyKey format), and a genuinely serpentine
+// swimmer is an even better fit for "curls around corners instead of
+// snapping to one rigid rotation" than the snakes it's borrowing the
+// mechanic from.
+const MILLIPEDE_FAMILY_KEYS = new Set(['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda', 'marsh-boss-tier-3']);
 
 const BOSS_INTERVAL = 25;
 
@@ -866,7 +874,9 @@ const BOSS_FACING_OFFSET = {
   'ocean-boss-tier-1': Math.PI, // Reef Shark
   'ocean-boss-tier-2': Math.PI, // Hammerhead Shark
   'ocean-boss-tier-3': Math.PI, // Great White
-  'marsh-boss-tier-3': Math.PI, // Electric Eel — same fish-body convention as the rest of this roster
+  // marsh-boss-tier-3 (Electric Eel) has no entry here — the millipede-
+  // body family computes each segment's own heading straight from the
+  // trail, same as every snake (none of which have an entry here either).
   'desert-boss-tier-3': Math.PI, // Emperor Scorpion (retrofit) — reuses drawEmperorScorpion, same pincers-forward convention
 };
 
@@ -1905,33 +1915,6 @@ function drawRedtailCatfish(ctx, e) {
   ctx.fill();
 }
 
-// Boss: Electric Eel — a long, sinuous, undulating body (a wavy ribbon
-// rather than any of the regular fish's rigid ovals) with a pale yellow
-// glowing belly-stripe to read as "electric" at a glance.
-function drawElectricEel(ctx, e) {
-  ctx.strokeStyle = e.color;
-  ctx.lineWidth = e.radius * 0.85;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(e.x + e.radius * 1.8, e.y);
-  ctx.quadraticCurveTo(e.x + e.radius * 0.9, e.y - e.radius * 0.9, e.x, e.y);
-  ctx.quadraticCurveTo(e.x - e.radius * 0.9, e.y + e.radius * 0.9, e.x - e.radius * 1.8, e.y);
-  ctx.stroke();
-
-  ctx.strokeStyle = '#f4d03f';
-  ctx.lineWidth = Math.max(1.5, e.radius * 0.18);
-  ctx.beginPath();
-  ctx.moveTo(e.x + e.radius * 1.75, e.y);
-  ctx.quadraticCurveTo(e.x + e.radius * 0.9, e.y - e.radius * 0.9, e.x, e.y);
-  ctx.quadraticCurveTo(e.x - e.radius * 0.9, e.y + e.radius * 0.9, e.x - e.radius * 1.75, e.y);
-  ctx.stroke();
-
-  ctx.fillStyle = '#000';
-  ctx.beginPath();
-  ctx.arc(e.x - e.radius * 1.75, e.y - e.radius * 0.1, e.radius * 0.1, 0, Math.PI * 2);
-  ctx.fill();
-}
-
 // --- Savanah: desert ------------------------------------------------------
 
 // Round head, two small triangular ears, and a curled tail — simple but
@@ -2745,7 +2728,11 @@ const BOSS_DRAW_FUNCTIONS = {
   'forest-boss-tier-2': drawLonghornBeetle,
   'marsh-boss-tier-1': drawFrogBoss,
   'marsh-boss-tier-2': drawMilitaryHelmetSnail,
-  'marsh-boss-tier-3': drawElectricEel,
+  // marsh-boss-tier-3 (Electric Eel) was here, but it joined the
+  // millipede-body family (MILLIPEDE_FAMILY_KEYS) and renders through
+  // renderMillipedeBody() instead — same as every snake, none of which
+  // have an entry here either (their Sandbox-menu tile icon falls back to
+  // drawFallbackCircle, same precedent this follows).
   'desert-boss-tier-1': drawDesertTermite,
   'desert-boss-tier-2': drawBlueDeathBeetle,
   'desert-boss-tier-3': drawEmperorScorpion, // retrofit — reuses the same art, just a boss now
@@ -2795,6 +2782,7 @@ const MILLIPEDE_BODY = {
   bananaSnake: { segmentCount: 5, spacingFactor: 1.1, segmentDrawFn: drawBananaSnakeSegment },
   armoredSnake: { segmentCount: 6, spacingFactor: 1.05, segmentDrawFn: drawArmoredSnakeSegment },
   anaconda: { segmentCount: 8, spacingFactor: 1.0, segmentDrawFn: drawAnacondaSegment },
+  'marsh-boss-tier-3': { segmentCount: 7, spacingFactor: 1.0, segmentDrawFn: drawElectricEelSegment },
 };
 const DEFAULT_MILLIPEDE_BODY = { segmentCount: 5, spacingFactor: 1.3 };
 
@@ -2946,6 +2934,37 @@ function drawArmoredSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex
 }
 function drawAnacondaSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
   drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, false, time);
+}
+
+// Electric Eel's own segment — shares drawSnakeSegment's basic "elongated
+// ellipse with a lighter belly stripe" body plan (same per-segment look
+// every snake above uses) but with its own simpler head (a single eye, no
+// forked tongue — a fish, not a reptile) and a pale-yellow glowing stripe
+// instead of a plain highlight, matching the standalone glow look this
+// boss had before it joined the millipede family.
+function drawElectricEelSegment(ctx, x, y, radius, color, heading, segmentIndex) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(heading);
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius * 1.15, radius * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#f4d03f';
+  ctx.beginPath();
+  ctx.ellipse(0, radius * 0.1, radius * 0.95, radius * 0.16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (segmentIndex === 0) {
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(radius * 0.7, -radius * 0.15, radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 // The millipede-family renderer: draws the head at the enemy's own (x, y)/

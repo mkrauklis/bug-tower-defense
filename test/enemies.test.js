@@ -434,11 +434,14 @@ test('applyBurn sets a fresh damage-over-time window on the enemy', () => {
 // --- for their own dedicated coverage; these tests just exercise the
 // --- generic mechanism itself using a synthetic key.)
 
-test('MILLIPEDE_FAMILY_KEYS lists exactly Deep Forest\'s 4 snakes', () => {
+test('MILLIPEDE_FAMILY_KEYS lists Deep Forest\'s 4 snakes plus Marshland\'s Electric Eel boss', () => {
   const game = loadGameContext();
+  // Electric Eel joined this family later (direct request: "make electric
+  // eel behave like the snake") despite being a boss, not a regular
+  // roster entry — nothing about the mechanism cares which.
   assert.deepEqual(
     [...game.MILLIPEDE_FAMILY_KEYS].sort(),
-    ['anaconda', 'armoredSnake', 'bananaSnake', 'gardenerSnake']
+    ['anaconda', 'armoredSnake', 'bananaSnake', 'gardenerSnake', 'marsh-boss-tier-3']
   );
 });
 

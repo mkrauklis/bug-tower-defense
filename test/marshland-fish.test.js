@@ -147,3 +147,17 @@ test('getSpawnEntryForEnemyKey resolves Electric Eel to its real, unscaled boss 
   assert.equal(entry.isBoss, true);
   assert.equal(entry.armorThreshold, 0); // no armor trait requested for this boss
 });
+
+// Direct follow-up request: "make electric eel behave like the snake" —
+// opted into the same segmented millipede-family renderer Deep Forest's
+// snakes already use (MILLIPEDE_FAMILY_KEYS), despite being a boss rather
+// than a regular roster entry — nothing about the mechanism cares which.
+test('a spawned Electric Eel gets a trail array (opted into the segmented millipede-family renderer, like the snakes)', () => {
+  const game = loadFullGameContext();
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  const entry = game.getSpawnEntryForEnemyKey('marsh-boss-tier-3');
+  game.spawnSingleEnemy(entry);
+  const eel = game.getActiveEnemies()[0];
+  assert.equal(eel.enemyKey, 'marsh-boss-tier-3');
+  assert.deepEqual(eel.trail, []);
+});

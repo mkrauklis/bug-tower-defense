@@ -2602,25 +2602,34 @@ function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes) {
   }
 
   // Central cavity, drawn last (on top) since every petal converges into
-  // it: a yellowish-orange ring of spiky/hairy filaments just inside the
-  // rim, with pure black/near-black depth sunk further in.
-  ctx.strokeStyle = '#d98a1a';
-  ctx.lineWidth = Math.max(1.5, size * 0.07);
-  for (let i = 0; i < 16; i += 1) {
-    const angle = (i / 16) * Math.PI * 2;
+  // it. Refined against the user's own real reference photo (sent
+  // directly, not just described): the hole isn't a flat ring-then-black
+  // jump — it reads in layers, outside-in: a pale spiky/hairy filament
+  // ring right at the rim, a reddish-orange diaphragm band just inside
+  // that (the photo's own visible "inner throat" texture, not a flat
+  // color — directly where that single ring used to cut straight to
+  // near-black), then near-black and finally pure black sunk deepest.
+  ctx.strokeStyle = '#e8d9a8';
+  ctx.lineWidth = Math.max(1.5, size * 0.065);
+  for (let i = 0; i < 18; i += 1) {
+    const angle = (i / 18) * Math.PI * 2;
     ctx.beginPath();
-    ctx.moveTo(x + Math.cos(angle) * size * 0.28, y + Math.sin(angle) * size * 0.28);
-    ctx.lineTo(x + Math.cos(angle) * size * 0.44, y + Math.sin(angle) * size * 0.44);
+    ctx.moveTo(x + Math.cos(angle) * size * 0.3, y + Math.sin(angle) * size * 0.3);
+    ctx.lineTo(x + Math.cos(angle) * size * 0.46, y + Math.sin(angle) * size * 0.46);
     ctx.stroke();
   }
 
+  ctx.fillStyle = '#b5503a';
+  ctx.beginPath();
+  ctx.arc(x, y, size * 0.3, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = '#140d08';
   ctx.beginPath();
-  ctx.arc(x, y, size * 0.32, 0, Math.PI * 2);
+  ctx.arc(x, y, size * 0.22, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = '#000';
   ctx.beginPath();
-  ctx.arc(x, y, size * 0.18, 0, Math.PI * 2);
+  ctx.arc(x, y, size * 0.14, 0, Math.PI * 2);
   ctx.fill();
 }
 
