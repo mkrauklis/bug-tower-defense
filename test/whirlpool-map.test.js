@@ -239,3 +239,32 @@ test('Whirlpool now shows up on the map-select screen alongside the other 3 buil
   assert.equal(maps.length, 4);
   assert.ok(maps.some((map) => map.id === 'whirlpool'));
 });
+
+// --- Easter eggs (direct follow-up request) ------------------------------
+// Purely decorative, never load-bearing — these tests only confirm they
+// exist with sane coordinates and stay safely clear of the spiral itself
+// (the same bounding-box safety margin every other piece of Whirlpool's
+// decor already relies on — see WHIRLPOOL_CORAL's own comment), not
+// anything about how they look.
+
+test('all 4 Easter eggs are present with sane, on-canvas coordinates', () => {
+  const game = loadGameContext();
+  const { decor } = game.MAP_TYPES.whirlpool;
+  ['shipwreck', 'treasureChest', 'messageBottle', 'snorkelAnt'].forEach((key) => {
+    const item = decor[key];
+    assert.ok(item, `expected decor.${key} to exist`);
+    assert.ok(item.x >= 0 && item.x <= 960);
+    assert.ok(item.y >= 0 && item.y <= 640);
+    assert.ok(item.size > 0);
+  });
+});
+
+test('every Easter egg sits outside the spiral\'s own bounding ellipse (x:[120,840], y:[90,550]), clear of the path', () => {
+  const game = loadGameContext();
+  const { decor } = game.MAP_TYPES.whirlpool;
+  ['shipwreck', 'treasureChest', 'messageBottle', 'snorkelAnt'].forEach((key) => {
+    const item = decor[key];
+    const outsideBoundingBox = item.x < 120 || item.x > 840 || item.y < 90 || item.y > 550;
+    assert.ok(outsideBoundingBox, `decor.${key} at (${item.x}, ${item.y}) is inside the spiral's own extent`);
+  });
+});

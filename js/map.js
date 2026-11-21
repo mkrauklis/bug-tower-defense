@@ -639,7 +639,13 @@ function renderWhirlpoolBackground(ctx, width, height) {
 // visual language as the background gradient above, at a tighter, tower-
 // icon-adjacent scale) plus a few curling swirl strokes suggesting water
 // spinning down into the hole.
-function drawVortexHole(ctx, x, y, size) {
+// Direct follow-up request ("make this one really shine... extra polish
+// into the art/animation"): the swirl strokes now continuously rotate
+// (time * 0.8) and gently pulse in brightness, instead of sitting as a
+// static painted icon — the one piece of decor a player stares at longest
+// (it's the goal every enemy visibly walks into), so it's worth the extra
+// motion.
+function drawVortexHole(ctx, x, y, size, time = 0) {
   [1, 0.72, 0.46, 0.22].forEach((scale, i) => {
     ctx.fillStyle = i === 3 ? '#000000' : `rgba(2, 8, 15, ${0.5 + i * 0.15})`;
     ctx.beginPath();
@@ -647,10 +653,11 @@ function drawVortexHole(ctx, x, y, size) {
     ctx.fill();
   });
 
-  ctx.strokeStyle = 'rgba(150, 200, 220, 0.4)';
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.5);
+  ctx.strokeStyle = `rgba(150, 200, 220, ${0.3 + pulse * 0.2})`;
   ctx.lineWidth = 2;
   [0, 1, 2].forEach((i) => {
-    const startAngle = (i / 3) * Math.PI * 2;
+    const startAngle = (i / 3) * Math.PI * 2 + time * 0.8;
     ctx.beginPath();
     ctx.arc(x, y, size * (0.9 - i * 0.1), startAngle, startAngle + Math.PI * 1.2);
     ctx.stroke();
@@ -683,8 +690,18 @@ function drawCoral(ctx, x, y, size) {
 }
 
 // Wavy kelp-like blades, same swaying-stroke technique Marshland's own
-// drawCattail() uses, just colored green and with no seed head.
-function drawSeaweed(ctx, x, y, size) {
+// drawCattail() uses, just colored green and with no seed head. Now
+// actually sways (direct follow-up request for more polish/animation) —
+// the whole cluster rocks a few degrees around its own base, x-seeded
+// (same "no shared per-instance state needed" trick towers' own idle sway
+// already uses) so different clusters don't all swing in lockstep.
+function drawSeaweed(ctx, x, y, size, time = 0) {
+  const sway = Math.sin(time * 1.1 + x * 0.05) * 0.18;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(sway);
+  ctx.translate(-x, -y);
+
   ctx.strokeStyle = '#1f6b4a';
   ctx.lineCap = 'round';
   [-0.3, 0, 0.3].forEach((lean, i) => {
@@ -699,18 +716,206 @@ function drawSeaweed(ctx, x, y, size) {
     );
     ctx.stroke();
   });
+  ctx.restore();
 }
 
-function drawBubbleCluster(ctx, x, y, r) {
+// Each bubble in the cluster bobs independently (its own sine phase,
+// seeded by its own slot index) rather than the whole cluster moving as
+// one rigid unit — direct follow-up request for more animation/polish.
+// A gentle bob rather than a full rise-and-reset loop deliberately: a
+// bubble that drifted up and then snapped back down to restart would
+// read as a visible "pop," which a bounded wobble never does.
+function drawBubbleCluster(ctx, x, y, r, time = 0) {
   ctx.strokeStyle = 'rgba(200, 230, 255, 0.5)';
   ctx.fillStyle = 'rgba(200, 230, 255, 0.12)';
   ctx.lineWidth = 1.2;
-  [[0, 0, 1], [0.6, -0.5, 0.6], [-0.5, -0.3, 0.5], [0.2, -0.9, 0.4]].forEach(([dx, dy, scale]) => {
+  [[0, 0, 1, 0], [0.6, -0.5, 0.6, 1], [-0.5, -0.3, 0.5, 2], [0.2, -0.9, 0.4, 3]].forEach(([dx, dy, scale, seed]) => {
+    const bob = Math.sin(time * 1.6 + seed * 2.1) * 0.12;
     ctx.beginPath();
-    ctx.arc(x + dx * r, y + dy * r, r * 0.3 * scale, 0, Math.PI * 2);
+    ctx.arc(x + dx * r, y + (dy + bob) * r, r * 0.3 * scale, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   });
+}
+
+// Faint, slowly drifting diagonal light bands across the whole water —
+// an underwater-sunbeam/caustic-shimmer touch, direct follow-up request
+// ("extra polish... overall presentation") for a flashy centerpiece map.
+// Drawn over the background gradient but under the path/decor, at very
+// low opacity, so it reads as atmosphere rather than competing with
+// anything gameplay-relevant.
+function renderWhirlpoolCaustics(ctx, width, height, time) {
+  ctx.save();
+  ctx.globalAlpha = 0.05;
+  ctx.strokeStyle = '#bfe8ff';
+  ctx.lineWidth = 18;
+  const spacing = 170;
+  for (let i = -1; i < Math.ceil((width + 300) / spacing) + 1; i += 1) {
+    const x = ((time * 14 + i * spacing) % (width + 300)) - 150;
+    ctx.beginPath();
+    ctx.moveTo(x, -50);
+    ctx.lineTo(x + 220, height + 50);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// --- Whirlpool Easter eggs -------------------------------------------------
+// Direct follow-up request: a few small, purely decorative, tucked-away
+// discoveries — not load-bearing, nothing a player needs to find, just a
+// reward for exploring/looking closely. Placed in the same safe decor
+// margins as everything else (see WHIRLPOOL_CORAL's own comment on why
+// those margins are provably clear of the spiral).
+
+// A half-buried wreck — a curved hull with planking lines, a snapped
+// mast, and one tattered sail remnant.
+function drawShipwreck(ctx, x, y, size) {
+  ctx.fillStyle = '#3a2a1f';
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 1.1, size * 0.42, -0.12, 0, Math.PI, false);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor('#3a2a1f', -25);
+  ctx.lineWidth = 1;
+  for (let i = -2; i <= 2; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(x + i * size * 0.22, y - size * 0.3);
+    ctx.lineTo(x + i * size * 0.22, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#2e2318';
+  ctx.lineWidth = Math.max(2, size * 0.1);
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.3, y - size * 0.25);
+  ctx.lineTo(x - size * 0.5, y - size * 1.3);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(220, 210, 190, 0.5)';
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.5, y - size * 1.3);
+  ctx.lineTo(x - size * 0.1, y - size * 1.0);
+  ctx.lineTo(x - size * 0.45, y - size * 0.75);
+  ctx.closePath();
+  ctx.fill();
+
+  // Half-buried sand mound at the base, same visual language as the
+  // treasure chest's own (they're meant to read as one "wreck site").
+  ctx.fillStyle = 'rgba(200, 180, 140, 0.35)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.3, size * 1.0, size * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// An open chest, half-buried in a sand mound, with a twinkling gold
+// glint inside — the twinkle fades in and out rather than blinking, so
+// it reads as "catching the light" rather than a UI notification.
+function drawTreasureChest(ctx, x, y, size, time = 0) {
+  ctx.fillStyle = 'rgba(200, 180, 140, 0.4)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.15, size * 0.65, size * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#5a3a1f';
+  ctx.fillRect(x - size * 0.5, y - size * 0.35, size, size * 0.5);
+  ctx.strokeStyle = '#2e1f10';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x - size * 0.5, y - size * 0.35, size, size * 0.5);
+
+  ctx.save();
+  ctx.translate(x - size * 0.5, y - size * 0.35);
+  ctx.rotate(-0.3);
+  ctx.fillStyle = '#6b4a2a';
+  ctx.beginPath();
+  ctx.ellipse(size * 0.5, 0, size * 0.5, size * 0.22, 0, Math.PI, 0, true);
+  ctx.fill();
+  ctx.restore();
+
+  const twinkle = 0.35 + 0.55 * Math.max(0, Math.sin(time * 2.3));
+  ctx.fillStyle = `rgba(255, 215, 0, ${twinkle})`;
+  ctx.beginPath();
+  ctx.arc(x, y - size * 0.12, size * 0.13, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A sealed bottle resting on the seafloor with a visible scroll inside,
+// marked with an "X" — the player's own tiny "X marks the spot" joke,
+// paired thematically with the wreck/chest nearby but placed well apart
+// from them so it's its own separate little discovery.
+function drawMessageBottle(ctx, x, y, size) {
+  ctx.fillStyle = 'rgba(74, 155, 120, 0.7)';
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.2, y + size * 0.6);
+  ctx.quadraticCurveTo(x - size * 0.3, y, x - size * 0.12, y - size * 0.3);
+  ctx.lineTo(x - size * 0.08, y - size * 0.55);
+  ctx.lineTo(x + size * 0.08, y - size * 0.55);
+  ctx.lineTo(x + size * 0.12, y - size * 0.3);
+  ctx.quadraticCurveTo(x + size * 0.3, y, x + size * 0.2, y + size * 0.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor('#4a9b78', -20);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = '#c9a06a';
+  ctx.fillRect(x - size * 0.07, y - size * 0.68, size * 0.14, size * 0.14);
+
+  ctx.fillStyle = 'rgba(240, 230, 210, 0.9)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.05, size * 0.1, size * 0.22, 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#8b1a1a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.04, y - size * 0.02);
+  ctx.lineTo(x + size * 0.04, y + size * 0.1);
+  ctx.moveTo(x + size * 0.04, y - size * 0.02);
+  ctx.lineTo(x - size * 0.04, y + size * 0.1);
+  ctx.stroke();
+}
+
+// A tiny cameo: one of Deep Forest's own Ants, on vacation, snorkeling
+// goggles and all, perched on a little rock — a small cross-map wink for
+// anyone who's played the other maps, not referencing anything that
+// needs to be recognized to still read as "a tiny ant wearing goggles,"
+// which is funny on its own.
+function drawSnorkelAnt(ctx, x, y, size) {
+  ctx.fillStyle = OCEAN_ROCK_COLOR;
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.3, size * 0.5, size * 0.25, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#2e2018';
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.26, size * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(x - size * 0.28, y, size * 0.16, size * 0.13, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#2e2018';
+  ctx.lineWidth = 1;
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(x, y + side * size * 0.1);
+    ctx.lineTo(x + size * 0.15, y + side * size * 0.3);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = '#9ec7e0';
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x + size * 0.18, y - size * 0.05, size * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = '#e0533d';
+  ctx.lineWidth = Math.max(1.5, size * 0.07);
+  ctx.beginPath();
+  ctx.moveTo(x + size * 0.22, y - size * 0.15);
+  ctx.lineTo(x + size * 0.3, y - size * 0.55);
+  ctx.stroke();
 }
 
 // A loose boulder cluster, same layered-ellipse technique as Savanah's own
@@ -788,6 +993,17 @@ const WHIRLPOOL_SHELLS = [
   { x: 45, y: 240, size: 18 }, { x: 490, y: 40, size: 16 }, { x: 915, y: 440, size: 18 },
 ];
 
+// Easter eggs (direct follow-up request): small, purely decorative,
+// tucked-away discoveries — never load-bearing, nothing a player needs to
+// find to progress. The shipwreck and treasure chest sit near each other
+// as one "wreck site" (bottom-left corner); the message bottle and the
+// snorkeling ant cameo are placed well apart from that and from each
+// other, so they read as separate finds rather than one cluster.
+const WHIRLPOOL_SHIPWRECK = { x: 70, y: 605, size: 32 };
+const WHIRLPOOL_TREASURE_CHEST = { x: 120, y: 628, size: 26 };
+const WHIRLPOOL_MESSAGE_BOTTLE = { x: 65, y: 350, size: 22 };
+const WHIRLPOOL_SNORKEL_ANT = { x: 820, y: 45, size: 24 };
+
 const WHIRLPOOL_DECOR = {
   coral: WHIRLPOOL_CORAL,
   seaweed: WHIRLPOOL_SEAWEED,
@@ -795,15 +1011,23 @@ const WHIRLPOOL_DECOR = {
   bubbles: WHIRLPOOL_BUBBLES,
   shells: WHIRLPOOL_SHELLS,
   vortex: WHIRLPOOL_CENTER,
+  shipwreck: WHIRLPOOL_SHIPWRECK,
+  treasureChest: WHIRLPOOL_TREASURE_CHEST,
+  messageBottle: WHIRLPOOL_MESSAGE_BOTTLE,
+  snorkelAnt: WHIRLPOOL_SNORKEL_ANT,
 };
 
-function renderOceanDecor(ctx, decor) {
+function renderOceanDecor(ctx, decor, time = 0) {
   decor.rocks.forEach((rock) => drawOceanRock(ctx, rock.x, rock.y, rock.r));
-  decor.seaweed.forEach((kelp) => drawSeaweed(ctx, kelp.x, kelp.y, kelp.size));
+  decor.seaweed.forEach((kelp) => drawSeaweed(ctx, kelp.x, kelp.y, kelp.size, time));
   decor.coral.forEach((piece) => drawCoral(ctx, piece.x, piece.y, piece.size));
   decor.shells.forEach((shell) => drawShell(ctx, shell.x, shell.y, shell.size));
-  decor.bubbles.forEach((cluster) => drawBubbleCluster(ctx, cluster.x, cluster.y, cluster.r));
-  drawVortexHole(ctx, decor.vortex.x, decor.vortex.y, 46);
+  decor.bubbles.forEach((cluster) => drawBubbleCluster(ctx, cluster.x, cluster.y, cluster.r, time));
+  drawShipwreck(ctx, decor.shipwreck.x, decor.shipwreck.y, decor.shipwreck.size);
+  drawTreasureChest(ctx, decor.treasureChest.x, decor.treasureChest.y, decor.treasureChest.size, time);
+  drawMessageBottle(ctx, decor.messageBottle.x, decor.messageBottle.y, decor.messageBottle.size);
+  drawSnorkelAnt(ctx, decor.snorkelAnt.x, decor.snorkelAnt.y, decor.snorkelAnt.size);
+  drawVortexHole(ctx, decor.vortex.x, decor.vortex.y, 46, time);
 }
 
 // A sandy, lighter-teal pair — reads clearly as an ocean-floor trench
@@ -840,7 +1064,12 @@ const TERRAIN_THEMES = {
   // below. renderBackground is a new, optional hook: every theme above
   // still just gets a flat ctx.fillRect(theme.background), unchanged —
   // only this one theme needed something fancier.
-  ocean: { background: '#1c4f6b', renderDecor: renderOceanDecor, renderBackground: renderWhirlpoolBackground },
+  ocean: {
+    background: '#1c4f6b',
+    renderDecor: renderOceanDecor,
+    renderBackground: renderWhirlpoolBackground,
+    renderWaterEffects: renderWhirlpoolCaustics,
+  },
 };
 
 // Fills the world background for the active theme — a flat
@@ -971,10 +1200,20 @@ function isPointOnPath(x, y, margin = 0) {
   });
 }
 
-function renderMap(ctx, canvas) {
+// `time` (the game's own animation clock, game.js's animationTime) is a
+// new, OPTIONAL third parameter — forwarded straight through to
+// theme.renderDecor so a theme can animate its own decor (Whirlpool's
+// swirling vortex/swaying seaweed/bobbing bubbles). Every existing decor
+// renderer takes just (ctx, decor) and simply ignores the extra argument,
+// so this is backward-compatible with Forest/Marsh/Desert's own static
+// decor unchanged. Defaults to 0 so a caller that still only passes
+// (ctx, canvas) — none left in this codebase, but cheap insurance — gets
+// a stable, non-animated first frame instead of NaN-driven drawing.
+function renderMap(ctx, canvas, time = 0) {
   const theme = TERRAIN_THEMES[activeMap.terrain];
 
   fillThemeBackground(ctx, theme, canvas.width, canvas.height);
+  if (theme.renderWaterEffects) theme.renderWaterEffects(ctx, canvas.width, canvas.height, time);
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -997,7 +1236,7 @@ function renderMap(ctx, canvas) {
     strokeMapPath(ctx, path);
   });
 
-  theme.renderDecor(ctx, activeMap.decor);
+  theme.renderDecor(ctx, activeMap.decor, time);
 }
 
 // A mini version of a map's real rendering, drawn into an arbitrary

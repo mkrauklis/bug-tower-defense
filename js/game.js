@@ -1131,7 +1131,7 @@ function render() {
   // map.js only reads .width/.height off what's passed here — this keeps
   // the world's own rendering fixed at WORLD_WIDTH x WORLD_HEIGHT regardless
   // of how big the real canvas is (map.js itself is untouched).
-  renderMap(ctx, { width: WORLD_WIDTH, height: WORLD_HEIGHT });
+  renderMap(ctx, { width: WORLD_WIDTH, height: WORLD_HEIGHT }, animationTime);
   renderWildlife(ctx, wildlife, animationTime, 'frog'); // ground-level, under everything else
 
   towers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
