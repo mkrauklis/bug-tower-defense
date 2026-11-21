@@ -85,7 +85,7 @@ test('generateWave(1) on Deep Forest is just Ant, scaled to the round-1 baseline
   assert.equal(wave.length, 1);
   assert.equal(wave[0].enemyKey, 'ant');
   assert.equal(wave[0].count, 5); // WAVE_SIZE_AT_ROUND_1, undivided (1 unlocked type)
-  assert.equal(wave[0].health, 2);
+  assert.equal(wave[0].health, 4); // Ant's base HP, doubled from 2 (direct request, every enemy's health — see FOREST_ROSTER's own comment); round 1 has no round-scaling yet
   assert.equal(wave[0].bounty, 2);
 });
 
@@ -189,30 +189,75 @@ test('bounties follow the ~HP/2 convention, Ant bumped up from round(2/2)=1 so t
   assert.equal(game.FOREST_ROSTER.enemyTypes.fireAnt.bounty, 2); // round(3/2)=2
   assert.equal(game.FOREST_ROSTER.enemyTypes.armoredAnt.bounty, 5); // round(10/2)=5
   // Queen Ant's bounty was round(50/2)=25 before boss health was later
-  // doubled (direct request, bounty intentionally left unchanged) — health
-  // is 100 now, but the bounty itself is still just 25.
+  // doubled, twice over (direct request both times, bounty intentionally
+  // left unchanged either time) — health is 200 now, but the bounty
+  // itself is still just 25.
   assert.equal(game.FOREST_ROSTER.bossTypes[1].bounty, 25);
-  assert.equal(game.MARSH_ROSTER.enemyTypes.frogLarva.bounty, 12); // round(23/2)=12 (round(11.5)=12)
+  assert.equal(game.MARSH_ROSTER.enemyTypes.frogLarva.bounty, 12); // round(23/2)=12 (round(11.5)=12), against frogLarva's pre-doubling 23 HP (now 46)
   // Military Helmet Snail's bounty was round(150/2)=75 before boss health
-  // was later doubled (same unchanged-bounty note as Queen Ant above);
-  // health is 300 now.
+  // was later doubled, twice over (same unchanged-bounty note as Queen Ant
+  // above); health is 600 now.
   assert.equal(game.MARSH_ROSTER.bossTypes[2].bounty, 75);
 });
 
-test('every map\'s boss health was doubled (direct request) — a straight 2x, bounty/speed/radius untouched', () => {
+test('every map\'s boss health was doubled, then doubled again (direct request) — bounty/speed/radius untouched throughout', () => {
   const game = loadGameContext();
-  assert.equal(game.FOREST_ROSTER.bossTypes[1].health, 100); // Queen Ant, was 50
-  assert.equal(game.FOREST_ROSTER.bossTypes[2].health, 200); // Longhorn Beetle, was 100
-  assert.equal(game.MARSH_ROSTER.bossTypes[1].health, 130); // Frog Boss, was 65
-  assert.equal(game.MARSH_ROSTER.bossTypes[2].health, 300); // Military Helmet Snail, was 150
+  // Each boss has now been doubled twice: once on its own (direct request,
+  // first pass), then again as part of the later across-the-board "every
+  // enemy's health" pass (see FOREST_ROSTER's own comment in enemies.js) —
+  // the two stack, so these land at ~4x the original pre-either-buff value.
+  assert.equal(game.FOREST_ROSTER.bossTypes[1].health, 200); // Queen Ant: 50 -> 100 -> 200
+  assert.equal(game.FOREST_ROSTER.bossTypes[2].health, 400); // Longhorn Beetle: 100 -> 200 -> 400
+  assert.equal(game.MARSH_ROSTER.bossTypes[1].health, 260); // Frog Boss: 65 -> 130 -> 260
+  assert.equal(game.MARSH_ROSTER.bossTypes[2].health, 600); // Military Helmet Snail: 150 -> 300 -> 600
   game.setActiveMap(game.MAP_TYPES.savanah);
   const savanahRoster = game.getActiveRoster();
-  assert.equal(savanahRoster.bossTypes[1].health, 150); // Desert Termite, was 75
-  assert.equal(savanahRoster.bossTypes[2].health, 290); // Blue Death Beetle, was 145
+  assert.equal(savanahRoster.bossTypes[1].health, 300); // Desert Termite: 75 -> 150 -> 300
+  assert.equal(savanahRoster.bossTypes[2].health, 580); // Blue Death Beetle: 145 -> 290 -> 580
 
   // Speed/radius are untouched — just a couple of spot checks, not every field.
   assert.equal(game.FOREST_ROSTER.bossTypes[1].speedMultiplier, 0.5);
   assert.equal(savanahRoster.bossTypes[1].radius, 21);
+});
+
+test('every regular (non-boss) enemy type\'s health was doubled across every map, speed/bounty/armor untouched', () => {
+  const game = loadGameContext();
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(game.FOREST_ROSTER.enemyTypes).map(([key, type]) => [key, type.health])),
+    {
+      ant: 4, fireAnt: 6, armoredAnt: 20, babyBeetle: 50, dungBeetle: 90, tigerBeetle: 100,
+      gardenerSnake: 300, bananaSnake: 450, armoredSnake: 700, anaconda: 900,
+    }
+  );
+
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(game.getActiveRoster().enemyTypes).map(([key, type]) => [key, type.health])),
+    { tadpole: 10, froglet: 20, frogLarva: 46, appleSnail: 100, slug: 150, assassinSnail: 170 }
+  );
+
+  game.setActiveMap(game.MAP_TYPES.savanah);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(game.getActiveRoster().enemyTypes).map(([key, type]) => [key, type.health])),
+    { sandLion: 12, sandworm: 30, desertAnt: 50, giantLubberGrasshopper: 120, desertPrayingMantis: 100, kissingBug: 150 }
+  );
+
+  // Speed/bounty/armorThreshold spot checks — untouched by this pass.
+  assert.equal(game.FOREST_ROSTER.enemyTypes.ant.speedMultiplier, 0.7);
+  assert.equal(game.FOREST_ROSTER.enemyTypes.ant.bounty, 2);
+  assert.equal(game.FOREST_ROSTER.enemyTypes.armoredSnake.armorThreshold, 5);
+});
+
+test('the shared armored beetles\' health was also doubled by the across-the-board pass — armorThreshold/bounty/speed untouched', () => {
+  const game = loadGameContext();
+  const [carapace, ironshell, titan] = game.ARMORED_BEETLE_TIERS;
+  assert.equal(carapace.health, 300); // was 150
+  assert.equal(ironshell.health, 600); // was 300
+  assert.equal(titan.health, 1200); // was 600
+  assert.equal(carapace.armorThreshold, 8);
+  assert.equal(ironshell.armorThreshold, 16);
+  assert.equal(titan.armorThreshold, 24);
+  assert.equal(carapace.bounty, 75);
 });
 
 test('spawnWave lays out the right number of enemy instances from a manual composition, staggered', () => {
@@ -338,11 +383,17 @@ test('applyBurn sets a fresh damage-over-time window on the enemy', () => {
   assert.deepEqual(enemy.burn, { damagePerSecond: 10, duration: 5 });
 });
 
-// --- Millipede-family trail mechanism (generic engine, no real type left) --
+// --- Millipede-family trail mechanism (generic engine; Deep Forest's 4 --
+// --- snakes are now its first real users — see deep-forest-snakes.test.js
+// --- for their own dedicated coverage; these tests just exercise the
+// --- generic mechanism itself using a synthetic key.)
 
-test('MILLIPEDE_FAMILY_KEYS is empty — no current type opts into the segmented-trail rendering', () => {
+test('MILLIPEDE_FAMILY_KEYS lists exactly Deep Forest\'s 4 snakes', () => {
   const game = loadGameContext();
-  assert.deepEqual([...game.MILLIPEDE_FAMILY_KEYS], []);
+  assert.deepEqual(
+    [...game.MILLIPEDE_FAMILY_KEYS].sort(),
+    ['anaconda', 'armoredSnake', 'bananaSnake', 'gardenerSnake']
+  );
 });
 
 test('an enemy whose key is in MILLIPEDE_FAMILY_KEYS gets a trail array; others get null', () => {

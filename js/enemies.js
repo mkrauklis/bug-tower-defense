@@ -39,18 +39,32 @@ const BASE_SPEED = 60; // px/second
 // global Set shared across every map — without the terrain prefix,
 // "boss-tier-1" would silently mean two different bosses depending which
 // map you were on when you earned it.
+// Every enemy type's health across every map, doubled a second time
+// (direct request, second pass): a straight 2x on each type's own
+// currently-stored base health value — regular enemies, bosses, the
+// shared armored beetles, and the snakes all included ("enemies" with no
+// exclusion stated). Speed, bounty, and armorThreshold are explicitly
+// untouched, so every "round(X/2)"-style bounty comment below (and on
+// MARSH_ROSTER/SAVANAH_ROSTER) now describes the OLD, pre-this-pass
+// health, not the current value — expected drift from this pass, not a
+// bug, the same way the bosses' own bounty comments already read
+// "unchanged" against their first 2x. Bosses already got their own 2x
+// earlier (see each bossTypes' own comment) — this stacks on top of that
+// rather than replacing it, so bosses end up ~4x their original
+// pre-either-buff values. Flagged back to the user in case that
+// compounding wasn't intended.
 const FOREST_ROSTER = {
   enemyTypes: {
     // Bounties follow the file's established ~HP/2 convention (rounded),
     // with Ant bumped from the literal round(2/2)=1 up to 2 so the
     // cheapest enemy in the game is never worth nothing — same exception
     // the original Ant entry made before the roster was replaced.
-    ant: { name: 'Ant', speedMultiplier: 0.7, health: 2, color: '#8d6e63', radius: 7, bounty: 2 },
-    fireAnt: { name: 'Fire Ant', speedMultiplier: 0.9, health: 3, color: '#d84315', radius: 8, bounty: 2 }, // round(3/2)=2
-    armoredAnt: { name: 'Armored Ant', speedMultiplier: 0.6, health: 10, color: '#4e342e', radius: 10, bounty: 5 },
-    babyBeetle: { name: 'Baby Beetle', speedMultiplier: 0.7, health: 25, color: '#558b2f', radius: 9, bounty: 13 },
-    dungBeetle: { name: 'Dung Beetle', speedMultiplier: 0.6, health: 45, color: '#3e2723', radius: 10, bounty: 23 },
-    tigerBeetle: { name: 'Tiger Beetle', speedMultiplier: 0.8, health: 50, color: '#2e7d32', radius: 9, bounty: 25 },
+    ant: { name: 'Ant', speedMultiplier: 0.7, health: 4, color: '#8d6e63', radius: 7, bounty: 2 },
+    fireAnt: { name: 'Fire Ant', speedMultiplier: 0.9, health: 6, color: '#d84315', radius: 8, bounty: 2 }, // round(3/2)=2 against the pre-2nd-doubling health of 3
+    armoredAnt: { name: 'Armored Ant', speedMultiplier: 0.6, health: 20, color: '#4e342e', radius: 10, bounty: 5 },
+    babyBeetle: { name: 'Baby Beetle', speedMultiplier: 0.7, health: 50, color: '#558b2f', radius: 9, bounty: 13 },
+    dungBeetle: { name: 'Dung Beetle', speedMultiplier: 0.6, health: 90, color: '#3e2723', radius: 10, bounty: 23 },
+    tigerBeetle: { name: 'Tiger Beetle', speedMultiplier: 0.8, health: 100, color: '#2e7d32', radius: 9, bounty: 25 },
     // Snakes (direct request): Deep Forest's first tier-3 roster — well
     // above the ant/beetle lines' own HP (2-50), exactly the "clearly
     // belongs later" gap orderTier3's existing every-5-rounds-starting-
@@ -67,26 +81,31 @@ const FOREST_ROSTER = {
     // through untouched; it unlocks at round 61, a full 14 rounds before
     // Carapace Beetle's own round-75/threshold-8 debut, so it reads as a
     // preview of the mechanic, not a repeat of it.
-    gardenerSnake: { name: 'Gardener Snake', speedMultiplier: 0.8, health: 150, color: '#558b2f', radius: 9, bounty: 75 },
-    bananaSnake: { name: 'Banana Snake', speedMultiplier: 0.7, health: 225, color: '#fdd835', radius: 10, bounty: 113 },
+    gardenerSnake: { name: 'Gardener Snake', speedMultiplier: 0.8, health: 300, color: '#558b2f', radius: 9, bounty: 75 },
+    bananaSnake: { name: 'Banana Snake', speedMultiplier: 0.7, health: 450, color: '#fdd835', radius: 10, bounty: 113 },
     armoredSnake: {
       name: 'Armored Snake',
       speedMultiplier: 0.5,
-      health: 350,
+      health: 700,
       color: '#6d7a5a',
       radius: 11,
       bounty: 175,
       armorThreshold: 5,
     },
-    anaconda: { name: 'Anaconda', speedMultiplier: 0.4, health: 450, color: '#1b3a1b', radius: 13, bounty: 225 },
+    anaconda: { name: 'Anaconda', speedMultiplier: 0.4, health: 900, color: '#1b3a1b', radius: 13, bounty: 225 },
   },
   // Boss health doubled across every map (direct request) — a straight
   // 2x multiplier on each boss's own health only, not a redesign; bounty/
   // speed/radius are untouched, so bounty no longer lands at the usual
   // ~round(HP/2) convention for these four (that's expected, not a bug).
+  // A second, later across-the-board doubling pass (see this file's
+  // top-level comment on FOREST_ROSTER) applies on top of THIS one for
+  // every enemy including these bosses — the values below already have
+  // both multipliers baked in (~4x the enemy's original pre-either-buff
+  // health).
   bossTypes: {
-    1: { name: 'Queen Ant', speedMultiplier: 0.5, health: 100, color: '#6d4c41', radius: 20, bounty: 25 }, // was 50
-    2: { name: 'Longhorn Beetle', speedMultiplier: 0.6, health: 200, color: '#5d4037', radius: 22, bounty: 50 }, // was 100
+    1: { name: 'Queen Ant', speedMultiplier: 0.5, health: 200, color: '#6d4c41', radius: 20, bounty: 25 }, // was 50, then 100, then this
+    2: { name: 'Longhorn Beetle', speedMultiplier: 0.6, health: 400, color: '#5d4037', radius: 22, bounty: 50 }, // was 100, then 200, then this
   },
   order: ['ant', 'fireAnt', 'armoredAnt'],
   orderTier2: ['babyBeetle', 'dungBeetle', 'tigerBeetle'],
@@ -98,21 +117,23 @@ const FOREST_ROSTER = {
 
 const MARSH_ROSTER = {
   enemyTypes: {
-    tadpole: { name: 'Tadpole', speedMultiplier: 0.5, health: 5, color: '#5a7a3a', radius: 7, bounty: 3 }, // round(5/2)=3
-    froglet: { name: 'Froglet', speedMultiplier: 0.7, health: 10, color: '#66bb6a', radius: 8, bounty: 5 },
+    tadpole: { name: 'Tadpole', speedMultiplier: 0.5, health: 10, color: '#5a7a3a', radius: 7, bounty: 3 }, // round(5/2)=3 against the pre-2nd-doubling health of 5
+    froglet: { name: 'Froglet', speedMultiplier: 0.7, health: 20, color: '#66bb6a', radius: 8, bounty: 5 },
     // Notably slow/tanky relative to the other two tier-1 types — direct
-    // from spec, not a typo: a 0.2x speed, 23 HP enemy this early acts as
-    // a "soak damage, buys the other two time to get past" road-bump.
-    frogLarva: { name: 'Frog Larva', speedMultiplier: 0.2, health: 23, color: '#c5c87a', radius: 11, bounty: 12 }, // round(11.5)=12
-    appleSnail: { name: 'Apple Snail', speedMultiplier: 0.4, health: 50, color: '#d4a017', radius: 9, bounty: 25 },
-    slug: { name: 'Slug', speedMultiplier: 0.5, health: 75, color: '#bf7e4a', radius: 10, bounty: 38 }, // round(37.5)=38
-    assassinSnail: { name: 'Assassin Snail', speedMultiplier: 0.6, health: 85, color: '#6d4c23', radius: 9, bounty: 43 }, // round(42.5)=43
+    // from spec, not a typo: a 0.2x speed, 23 HP (pre-2nd-doubling) enemy
+    // this early acts as a "soak damage, buys the other two time to get
+    // past" road-bump.
+    frogLarva: { name: 'Frog Larva', speedMultiplier: 0.2, health: 46, color: '#c5c87a', radius: 11, bounty: 12 }, // round(11.5)=12 against the pre-2nd-doubling health of 23
+    appleSnail: { name: 'Apple Snail', speedMultiplier: 0.4, health: 100, color: '#d4a017', radius: 9, bounty: 25 },
+    slug: { name: 'Slug', speedMultiplier: 0.5, health: 150, color: '#bf7e4a', radius: 10, bounty: 38 }, // round(37.5)=38 against the pre-2nd-doubling health of 75
+    assassinSnail: { name: 'Assassin Snail', speedMultiplier: 0.6, health: 170, color: '#6d4c23', radius: 9, bounty: 43 }, // round(42.5)=43 against the pre-2nd-doubling health of 85
   },
   // Boss health doubled (direct request) — see Deep Forest's bossTypes
-  // comment above for the same scope note.
+  // comment above for the same scope note, including the later
+  // across-the-board second doubling pass this stacks with.
   bossTypes: {
-    1: { name: 'Frog Boss', speedMultiplier: 0.5, health: 130, color: '#33691e', radius: 20, bounty: 33 }, // was 65; bounty unchanged
-    2: { name: 'Military Helmet Snail', speedMultiplier: 0.3, health: 300, color: '#8d6e4a', radius: 24, bounty: 75 }, // was 150
+    1: { name: 'Frog Boss', speedMultiplier: 0.5, health: 260, color: '#33691e', radius: 20, bounty: 33 }, // was 65, then 130, then this; bounty unchanged
+    2: { name: 'Military Helmet Snail', speedMultiplier: 0.3, health: 600, color: '#8d6e4a', radius: 24, bounty: 75 }, // was 150, then 300, then this
   },
   order: ['tadpole', 'froglet', 'frogLarva'],
   orderTier2: ['appleSnail', 'slug', 'assassinSnail'],
@@ -138,22 +159,22 @@ const MARSH_ROSTER = {
 // block and createEnemyInstance() below for the rest of the mechanic.
 const SAVANAH_ROSTER = {
   enemyTypes: {
-    sandLion: { name: 'Sand Lion', speedMultiplier: 0.7, health: 6, color: '#d2a24c', radius: 8, bounty: 3 },
+    sandLion: { name: 'Sand Lion', speedMultiplier: 0.7, health: 12, color: '#d2a24c', radius: 8, bounty: 3 },
     sandworm: {
       name: 'Sandworm',
       speedMultiplier: 0.6,
-      health: 15,
+      health: 30,
       color: '#b8926a',
       radius: 8,
-      bounty: 8, // round(7.5)=8
+      bounty: 8, // round(7.5)=8 against the pre-2nd-doubling health of 15
       tunnelInterval: 3,
       tunnelDuration: 2,
     },
-    desertAnt: { name: 'Desert Ant', speedMultiplier: 1, health: 25, color: '#9c5a2e', radius: 7, bounty: 13 }, // round(12.5)=13
+    desertAnt: { name: 'Desert Ant', speedMultiplier: 1, health: 50, color: '#9c5a2e', radius: 7, bounty: 13 }, // round(12.5)=13 against the pre-2nd-doubling health of 25
     giantLubberGrasshopper: {
       name: 'Giant Lubber Grasshopper',
       speedMultiplier: 0.5,
-      health: 60,
+      health: 120,
       color: '#2b2a1f',
       radius: 11,
       bounty: 30,
@@ -161,27 +182,28 @@ const SAVANAH_ROSTER = {
     desertPrayingMantis: {
       name: 'Desert Praying Mantis',
       speedMultiplier: 0.9,
-      health: 50,
+      health: 100,
       color: '#a9a265',
       radius: 9,
       bounty: 25,
     },
-    kissingBug: { name: 'Kissing Bug', speedMultiplier: 0.8, health: 75, color: '#2e1f1a', radius: 8, bounty: 38 }, // round(37.5)=38
+    kissingBug: { name: 'Kissing Bug', speedMultiplier: 0.8, health: 150, color: '#2e1f1a', radius: 8, bounty: 38 }, // round(37.5)=38 against the pre-2nd-doubling health of 75
   },
   // Boss health doubled (direct request) — see Deep Forest's bossTypes
-  // comment (enemies.js, FOREST_ROSTER) for the same scope note.
+  // comment (enemies.js, FOREST_ROSTER) for the same scope note, including
+  // the later across-the-board second doubling pass this stacks with.
   bossTypes: {
     1: {
       name: 'Desert Termite',
       speedMultiplier: 0.6,
-      health: 150, // was 75
+      health: 300, // was 75, then 150, then this
       color: '#dcc89a',
       radius: 21,
-      bounty: 38, // unchanged; round(37.5)=38 against the OLD 75 HP, not re-derived from the new 150
+      bounty: 38, // unchanged; round(37.5)=38 against the ORIGINAL 75 HP, not re-derived from either doubling
       tunnelInterval: 3,
       tunnelDuration: 2,
     },
-    2: { name: 'Blue Death Beetle', speedMultiplier: 0.7, health: 290, color: '#2c4f7c', radius: 22, bounty: 73 }, // was 145; bounty unchanged
+    2: { name: 'Blue Death Beetle', speedMultiplier: 0.7, health: 580, color: '#2c4f7c', radius: 22, bounty: 73 }, // was 145, then 290, then this; bounty unchanged
   },
   order: ['sandLion', 'sandworm', 'desertAnt'],
   orderTier2: ['giantLubberGrasshopper', 'desertPrayingMantis', 'kissingBug'],
@@ -265,12 +287,20 @@ function getActiveRoster() {
 // Each tier spawns at a fixed count of 1 per wave (see generateWave()),
 // not split evenly across unlocked types like regular roster enemies —
 // a rare, attention-grabbing elite unit each wave, not a wave-filler.
+//
+// Health doubled a second time (direct request, the same across-the-board
+// pass documented on FOREST_ROSTER above — these were explicitly called
+// out as included: "armored beetles... everything"). armorThreshold,
+// bounty, and speedMultiplier are untouched, so the tier-over-tier
+// 150/300/600 progression this file's own comment above describes is now
+// 300/600/1200 — still exactly 2x tier-over-tier, just from a doubled
+// starting point.
 const ARMORED_BEETLE_TIERS = [
   {
     key: 'carapaceBeetle',
     name: 'Carapace Beetle',
     unlockRound: 75,
-    health: 150,
+    health: 300,
     armorThreshold: 8,
     color: '#5d6d4a',
     radius: 13,
@@ -281,7 +311,7 @@ const ARMORED_BEETLE_TIERS = [
     key: 'ironshellBeetle',
     name: 'Ironshell Beetle',
     unlockRound: 100,
-    health: 300,
+    health: 600,
     armorThreshold: 16,
     color: '#4a5a6d',
     radius: 15,
@@ -292,7 +322,7 @@ const ARMORED_BEETLE_TIERS = [
     key: 'titanBeetle',
     name: 'Titan Beetle',
     unlockRound: 125,
-    health: 600,
+    health: 1200,
     armorThreshold: 24,
     color: '#3a3a4a',
     radius: 18,

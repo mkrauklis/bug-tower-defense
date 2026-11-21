@@ -9,25 +9,30 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 // stat/armor-threshold rationale (Armored Snake's armor is a judgment
 // call, flagged there and in the commit message).
 
-test('each snake has the user\'s exact health/speed, with bounty following the roster\'s ~HP/2 convention', () => {
+test('each snake has the user\'s exact speed, with bounty following the roster\'s ~HP/2 convention against their original health', () => {
   const game = loadGameContext();
   const { enemyTypes } = game.FOREST_ROSTER;
 
+  // Health values here are the user's original 150/225/350/450, doubled
+  // once by the later across-the-board "every enemy's health" pass (direct
+  // request — see FOREST_ROSTER's own comment in enemies.js); bounty was
+  // deliberately left unchanged by that pass, so it still reflects the
+  // pre-doubling health.
   assert.deepEqual(
     { speed: enemyTypes.gardenerSnake.speedMultiplier, health: enemyTypes.gardenerSnake.health, bounty: enemyTypes.gardenerSnake.bounty },
-    { speed: 0.8, health: 150, bounty: 75 }
+    { speed: 0.8, health: 300, bounty: 75 }
   );
   assert.deepEqual(
     { speed: enemyTypes.bananaSnake.speedMultiplier, health: enemyTypes.bananaSnake.health, bounty: enemyTypes.bananaSnake.bounty },
-    { speed: 0.7, health: 225, bounty: 113 }
+    { speed: 0.7, health: 450, bounty: 113 }
   );
   assert.deepEqual(
     { speed: enemyTypes.armoredSnake.speedMultiplier, health: enemyTypes.armoredSnake.health, bounty: enemyTypes.armoredSnake.bounty },
-    { speed: 0.5, health: 350, bounty: 175 }
+    { speed: 0.5, health: 700, bounty: 175 }
   );
   assert.deepEqual(
     { speed: enemyTypes.anaconda.speedMultiplier, health: enemyTypes.anaconda.health, bounty: enemyTypes.anaconda.bounty },
-    { speed: 0.4, health: 450, bounty: 225 }
+    { speed: 0.4, health: 900, bounty: 225 }
   );
 });
 
@@ -80,7 +85,7 @@ test('getSpawnEntryForEnemyKey resolves every snake to its real, unscaled stats'
   const game = loadGameContext();
   const entry = game.getSpawnEntryForEnemyKey('anaconda');
   assert.equal(entry.name, 'Anaconda');
-  assert.equal(entry.health, 450);
+  assert.equal(entry.health, 900); // the user's original 450, doubled by the later across-the-board health pass
   assert.equal(entry.isBoss, false);
 });
 
