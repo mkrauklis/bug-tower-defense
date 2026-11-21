@@ -2068,55 +2068,96 @@ function renderMenu(ctx) {
   drawMenuTooltip(ctx);
 }
 
-const MAP_TILE_SIZE = 140;
-const MAP_TILE_GAP = 20;
+// Direct follow-up request: "make the map-select screen scrollable...
+// with much bigger map preview images... actually render that map's real
+// terrain and detail... basically a screenshot-quality look," replacing
+// the old small-tile grid above. One large card at a time (arrow buttons
+// step through the list, wrapping at either end) rather than a scrolling
+// grid — "use your judgment on exact interaction" — since a single big
+// preview is what actually makes "much bigger" possible at all on a
+// normal-size screen; a grid of equally-bigger tiles wouldn't fit. The
+// preview itself is renderMapPreview() (map.js): the real map-drawing
+// code (paths, ground, full decor) at a larger size, not hand-drawn
+// preview art — the same "built from real output" rule this game's other
+// art (tool thumbnails, Concept Lab mosaic on the portfolio site) already
+// follows.
+const MAP_PREVIEW_WIDTH = 580;
+const MAP_PREVIEW_HEIGHT = Math.round((MAP_PREVIEW_WIDTH * MAP_WORLD_HEIGHT) / MAP_WORLD_WIDTH); // same 3:2 world aspect ratio, so nothing looks stretched
+const MAP_NAV_BUTTON_SIZE = 48;
+const MAP_NAV_GAP = 20;
 
-// Map select: a grid of map tiles (icon + name), built-ins first, then any
-// saved custom maps — all playable in every mode exactly the same way.
+// Which map the carousel is currently showing — independent of
+// selectedMap (only set once the big preview itself is actually clicked).
+// Persists across a round trip through mode-select-and-back, same as
+// gameSpeed/autoContinue already do, rather than resetting to 0 every
+// time this screen is re-entered.
+let mapCarouselIndex = 0;
+
 function renderMapSelect(ctx) {
   uiBeginFrame();
-  drawMenuTitle(ctx, 'Choose a Map', 'Click a map to continue');
+  drawMenuTitle(ctx, 'Choose a Map', 'Browse with the arrows, click the map to continue');
 
   const maps = listAllMaps();
-  const columns = Math.max(1, Math.floor((logicalWidth - 40) / (MAP_TILE_SIZE + MAP_TILE_GAP)));
-  const gridWidth = columns * MAP_TILE_SIZE + (columns - 1) * MAP_TILE_GAP;
-  const startX = logicalWidth / 2 - gridWidth / 2;
-  const startY = 130;
+  // Clamped (not just wrapped) defensively in case the list ever shrinks
+  // out from under a stale index — ((n % len) + len) % len always lands
+  // in [0, len) for any integer n, positive or negative.
+  mapCarouselIndex = ((mapCarouselIndex % maps.length) + maps.length) % maps.length;
+  const map = maps[mapCarouselIndex];
 
-  maps.forEach((map, i) => {
-    const col = i % columns;
-    const row = Math.floor(i / columns);
-    const x = startX + col * (MAP_TILE_SIZE + MAP_TILE_GAP);
-    const y = startY + row * (MAP_TILE_SIZE + MAP_TILE_GAP);
-    const regionId = `mapselect:${map.id}`;
-    const hovered = hoverRegion && hoverRegion.id === regionId;
-    const selected = selectedMap && selectedMap.id === map.id;
+  const cardX = logicalWidth / 2 - MAP_PREVIEW_WIDTH / 2;
+  const cardY = 120;
+  const cardRegionId = `mapselect:${map.id}`;
+  const cardHovered = hoverRegion && hoverRegion.id === cardRegionId;
+  const selected = selectedMap && selectedMap.id === map.id;
 
-    uiRoundRect(ctx, x, y, MAP_TILE_SIZE, MAP_TILE_SIZE, 8);
-    ctx.fillStyle = selected ? '#3a5a2e' : hovered ? '#262b35' : '#1a1e26';
-    ctx.fill();
-    ctx.strokeStyle = selected ? '#8bc34a' : hovered ? '#5a8a3e' : '#3a4050';
-    ctx.lineWidth = selected ? 2 : 1;
-    ctx.stroke();
+  uiRoundRect(ctx, cardX, cardY, MAP_PREVIEW_WIDTH, MAP_PREVIEW_HEIGHT, 10);
+  ctx.fillStyle = '#10131a';
+  ctx.fill();
+  ctx.strokeStyle = selected ? '#8bc34a' : cardHovered ? '#5a8a3e' : '#3a4050';
+  ctx.lineWidth = selected ? 3 : 1;
+  ctx.stroke();
 
-    renderMapIcon(ctx, map, x + 10, y + 10, MAP_TILE_SIZE - 20);
+  renderMapPreview(ctx, map, cardX, cardY, MAP_PREVIEW_WIDTH, MAP_PREVIEW_HEIGHT, animationTime);
+  uiRegisterRegion(cardRegionId, cardX, cardY, MAP_PREVIEW_WIDTH, MAP_PREVIEW_HEIGHT, { map });
 
-    ctx.fillStyle = '#f0f0f0';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(map.name, x + MAP_TILE_SIZE / 2, y + MAP_TILE_SIZE - 20);
-    if (!map.builtin) {
-      ctx.fillStyle = '#888';
-      ctx.font = '10px sans-serif';
-      ctx.fillText('Custom', x + MAP_TILE_SIZE / 2, y + MAP_TILE_SIZE - 8);
-    }
-
-    uiRegisterRegion(regionId, x, y, MAP_TILE_SIZE, MAP_TILE_SIZE, { map });
+  const navY = cardY + MAP_PREVIEW_HEIGHT / 2 - MAP_NAV_BUTTON_SIZE / 2;
+  const prevX = cardX - MAP_NAV_GAP - MAP_NAV_BUTTON_SIZE;
+  const nextX = cardX + MAP_PREVIEW_WIDTH + MAP_NAV_GAP;
+  uiDrawButton(ctx, {
+    x: prevX,
+    y: navY,
+    w: MAP_NAV_BUTTON_SIZE,
+    h: MAP_NAV_BUTTON_SIZE,
+    label: '‹', // ‹
+    hovered: Boolean(hoverRegion) && hoverRegion.id === 'mapselect:prev',
   });
+  uiRegisterRegion('mapselect:prev', prevX, navY, MAP_NAV_BUTTON_SIZE, MAP_NAV_BUTTON_SIZE, {});
+  uiDrawButton(ctx, {
+    x: nextX,
+    y: navY,
+    w: MAP_NAV_BUTTON_SIZE,
+    h: MAP_NAV_BUTTON_SIZE,
+    label: '›', // ›
+    hovered: Boolean(hoverRegion) && hoverRegion.id === 'mapselect:next',
+  });
+  uiRegisterRegion('mapselect:next', nextX, navY, MAP_NAV_BUTTON_SIZE, MAP_NAV_BUTTON_SIZE, {});
+
+  const labelY = cardY + MAP_PREVIEW_HEIGHT + 14;
+  ctx.fillStyle = '#f0f0f0';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(map.name, logicalWidth / 2, labelY);
+  ctx.fillStyle = '#888';
+  ctx.font = '12px sans-serif';
+  ctx.fillText(
+    `${mapCarouselIndex + 1} of ${maps.length}${map.builtin ? '' : ' — Custom'}`,
+    logicalWidth / 2,
+    labelY + 22
+  );
 
   const backWidth = 120;
-  const backY = startY + (Math.ceil(maps.length / columns) || 1) * (MAP_TILE_SIZE + MAP_TILE_GAP) + 10;
+  const backY = labelY + 50;
   uiDrawButton(ctx, {
     x: logicalWidth / 2 - backWidth / 2,
     y: backY,
@@ -2349,6 +2390,8 @@ function getTooltipLines(region) {
 
   if (region.id.startsWith('mapselect:')) {
     if (region.id === 'mapselect:back') return ['Back to the main menu.'];
+    if (region.id === 'mapselect:prev') return ['Previous map.'];
+    if (region.id === 'mapselect:next') return ['Next map.'];
     const map = region.data.map;
     return [map.name, map.builtin ? 'Built-in map' : 'Custom map'];
   }
@@ -2510,6 +2553,14 @@ function activateRegion(region) {
     gameState = 'menu';
     return;
   }
+  if (region.id === 'mapselect:prev') {
+    mapCarouselIndex -= 1; // wraps/clamps back into range at the top of renderMapSelect()
+    return;
+  }
+  if (region.id === 'mapselect:next') {
+    mapCarouselIndex += 1;
+    return;
+  }
   if (region.id.startsWith('mapselect:')) {
     selectedMap = region.data.map;
     gameState = 'modeSelect';
@@ -2603,6 +2654,23 @@ canvas.addEventListener('click', (event) => {
   const region = uiHitTest(x, y);
   if (region) activateRegion(region);
 });
+
+// Mouse wheel over the map-select carousel steps through the list one map
+// at a time — desktop convenience alongside the arrow buttons (which do
+// the same thing and work everywhere, including touch). Deliberately
+// listens anywhere on the mapSelect screen, not just while hovering the
+// card itself, since there's nothing else on that screen a wheel could
+// plausibly mean. { passive: false } + preventDefault so the browser
+// doesn't also try to scroll/zoom the page on a wheel/trackpad gesture.
+canvas.addEventListener(
+  'wheel',
+  (event) => {
+    if (gameState !== 'mapSelect') return;
+    event.preventDefault();
+    mapCarouselIndex += event.deltaY > 0 ? 1 : -1;
+  },
+  { passive: false }
+);
 
 // Touch equivalent of mouse hover + click. There's no mousemove-before-tap
 // on touch, so hover doesn't apply — instead, a press-and-hold on a panel

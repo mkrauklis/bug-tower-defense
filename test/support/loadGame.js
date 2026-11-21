@@ -231,6 +231,9 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getLogicalWidth: () => logicalWidth,
       getLogicalHeight: () => logicalHeight,
       getWindow: () => window,
+      renderMapSelect,
+      getMapCarouselIndex: () => mapCarouselIndex,
+      setMapCarouselIndex: (value) => { mapCarouselIndex = value; },
     };
     `,
     context

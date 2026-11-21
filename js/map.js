@@ -3,7 +3,7 @@
 // has an id, display name, its own path waypoints, its own terrain theme
 // (which owns the decorative rendering — trees/bushes for forest, puddles/
 // lily pads/mangroves for marsh), and can be rendered full-size or as a
-// small icon (see renderMapIcon) for the map-select screen.
+// bigger map-select preview (see renderMapPreview) with full decor.
 //
 // Gameplay (combat/towers/waves/economy) doesn't vary by map — only the
 // path shape and terrain differ. Everything else in the game (enemies.js's
@@ -1253,8 +1253,9 @@ const TUNDRA_PATH_COLORS = { outline: '#2e3d47', fill: '#7fa3b8' };
 
 // ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
-// renderer taking that map's own `decor` object. renderMap()/renderMapIcon()
-// below both dispatch through this rather than special-casing map ids.
+// renderer taking that map's own `decor` object. renderMap()/
+// renderMapPreview() below both dispatch through this rather than
+// special-casing map ids.
 // ---------------------------------------------------------------------------
 
 const TERRAIN_THEMES = {
@@ -1294,8 +1295,8 @@ const TERRAIN_THEMES = {
 // Fills the world background for the active theme — a flat
 // ctx.fillRect(theme.background) for every terrain except Whirlpool,
 // which supplies its own renderBackground (the radial vignette) instead.
-// Shared by renderMap() and renderMapIcon() so both stay in sync without
-// duplicating this dispatch.
+// Shared by renderMap() and renderMapPreview() so both stay in sync
+// without duplicating this dispatch.
 function fillThemeBackground(ctx, theme, width, height) {
   if (theme.renderBackground) {
     theme.renderBackground(ctx, width, height);
@@ -1474,40 +1475,54 @@ function renderMap(ctx, canvas, time = 0) {
   theme.renderDecor(ctx, activeMap.decor, time);
 }
 
-// A mini version of a map's real rendering, drawn into an arbitrary
-// `size` x `size` box — same "render a small real version of the actual
-// output" convention already used for tower shop icons and lab tool
-// thumbnails elsewhere. Decor is deliberately skipped at this scale: tiny
-// trees/puddles just read as noise at icon size (the terrain color + path
-// shape alone already read clearly), the same call already made for lab
-// tool thumbnails that don't survive shrinking.
-function renderMapIcon(ctx, map, x, y, size) {
+// The map-select carousel's own big preview (direct request: "much bigger
+// map preview images... actually render that map's real terrain and
+// detail... basically a proper screenshot-quality look," preferring
+// "reusing the actual map-drawing code, just bigger" over hand-drawn
+// preview art). Draws FULL decor, unlike the old small map-select tile
+// icon this replaced (that one skipped decor entirely — tiny trees/
+// puddles just read as noise at icon size — and stretched non-uniformly
+// to fill a square tile, both fine for a 40px icon but not for something
+// this size): preserves the world's real 3:2 aspect ratio instead (a
+// single uniform scale), so nothing looks distorted at this much larger,
+// more scrutinized size. Letterboxes (centers within `width`x`height`
+// without stretching) if the box's own aspect ratio doesn't exactly
+// match 960:640.
+function renderMapPreview(ctx, map, x, y, width, height, time = 0) {
   const theme = TERRAIN_THEMES[map.terrain];
+  const scale = Math.min(width / MAP_WORLD_WIDTH, height / MAP_WORLD_HEIGHT);
+  const drawWidth = MAP_WORLD_WIDTH * scale;
+  const drawHeight = MAP_WORLD_HEIGHT * scale;
+  const offsetX = x + (width - drawWidth) / 2;
+  const offsetY = y + (height - drawHeight) / 2;
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x, y, size, size);
+  ctx.rect(x, y, width, height);
   ctx.clip();
 
-  ctx.translate(x, y);
-  ctx.scale(size / MAP_WORLD_WIDTH, size / MAP_WORLD_HEIGHT);
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(scale, scale);
 
   fillThemeBackground(ctx, theme, MAP_WORLD_WIDTH, MAP_WORLD_HEIGHT);
+  if (theme.renderWaterEffects) theme.renderWaterEffects(ctx, MAP_WORLD_WIDTH, MAP_WORLD_HEIGHT, time);
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   // Same all-outlines-then-all-fills ordering as renderMap(), and for the
-  // same reason — see its comment.
+  // same reason — see its own comment.
   map.paths.forEach((path) => {
     ctx.strokeStyle = map.pathColors.outline;
-    ctx.lineWidth = map.pathWidth + 14; // a touch thicker than real scale so it doesn't vanish when shrunk
+    ctx.lineWidth = map.pathWidth + 10;
     strokeMapPath(ctx, path);
   });
   map.paths.forEach((path) => {
     ctx.strokeStyle = map.pathColors.fill;
-    ctx.lineWidth = map.pathWidth + 4;
+    ctx.lineWidth = map.pathWidth;
     strokeMapPath(ctx, path);
   });
+
+  theme.renderDecor(ctx, map.decor, time);
 
   ctx.restore();
 }
