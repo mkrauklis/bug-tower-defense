@@ -193,8 +193,6 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getSelectedShopItem: () => selectedShopItem,
       setSelectedShopItem: (item) => { selectedShopItem = item; },
       SHOP_ITEMS, getShopItemCost, isTowerPlacementBlocked, getTowerVisualSize,
-      getStrongestDiscountPercentAt, getShopItemCostAt,
-      getConeflowerTier4Count: () => coneflowerTier4Count,
       STARTING_MONEY,
       getRound: () => round,
       getGameSpeed: () => gameSpeed,

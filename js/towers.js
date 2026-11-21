@@ -59,37 +59,41 @@ const TOWER_TYPES = {
         name: 'Fire Path',
         upgrades: [
           {
+            // 2nd balance pass (direct request: "make towers not
+            // overpowered for their price" — a fresh, broader pass than
+            // the one-time fix the comment on Molten Core below
+            // describes). A $/DPS survey across every tower/path found
+            // Fire Path still the single cheapest DPS in the game by a
+            // wide margin even after that earlier nerf: Spark's own
+            // attack-speed DOUBLING, stacking with Molten Core's own
+            // SEPARATE speed boost right below (2.67x combined) on top of
+            // this path's full 8x damage-multiplier chain (same chain
+            // Solar Path's own 6x already carries), produced close to
+            // 2x Solar's and 2.5x Storm's DPS for a comparable spend.
+            // Softened from a flat halving (2x speed) to a 25% speedup
+            // (1.25x) — Spark still reads as "noticeably snappier," just
+            // not a second full damage axis stacked on top of the
+            // existing 8x damage chain.
             name: 'Spark',
-            description: 'Attack speed doubles; sunflower becomes slightly smaller and gains a small flame on its head.',
+            description: 'Attack speed increases 25%; sunflower becomes slightly smaller and gains a small flame on its head.',
             cost: 50,
-            effects: { attackIntervalMultiplier: 0.5, sizeMultiplier: 0.8, flame: 'small' },
+            effects: { attackIntervalMultiplier: 0.8, sizeMultiplier: 0.8, flame: 'small' },
           },
           {
             // No name given in the spec — picked to fit the magma-puddle
             // mechanic this upgrade introduces (the sunflower's building
             // internal heat, about to start erupting).
             name: 'Molten Core',
-            description:
-              'Sunflower turns more orange; attack speed increases further (2.67x from base); damage doubles; ' +
-              'periodically spits a magma puddle that burns bugs standing in it.',
+            description: 'Sunflower turns more orange; damage doubles; periodically spits a magma puddle that burns bugs standing in it.',
             cost: 300,
             effects: {
               color: '#ff7043',
-              // Balance pass (direct request — see getRoundScaling()'s own
-              // comment in enemies.js for the full writeup): this used to
-              // be another flat 0.5x (a second full speed-doubling, on top
-              // of Spark's own), combining with this path's three separate
-              // damageMultiplier:2 tiers (8x total) for a ~32x DPS
-              // multiplier from base before the puddle/orbit AoE are even
-              // counted — dramatically ahead of Solar Path's ~6x and Storm
-              // Path's ~2.5x for comparable total cost, the clearest
-              // single outlier found while reviewing all 4 towers' paths.
-              // Softened to 0.75x (interval chain becomes 0.5 * 0.75 =
-              // 0.375, i.e. 2.67x speed instead of 4x) — still the
-              // fastest-attacking Sunflower path by a wide margin once the
-              // puddle/orbit AoE are added back in, just no longer in a
-              // different league entirely.
-              attackIntervalMultiplier: 0.75,
+              // This tier's own attackIntervalMultiplier (a SECOND speed
+              // boost on top of Spark's) was removed entirely in the 2nd
+              // balance pass above — see Spark's own comment for the full
+              // reasoning. The path's damage already doubles 3 separate
+              // times (here, Flamewall, Wildfire); it doesn't also need a
+              // second speed axis stacked alongside that chain.
               damageMultiplier: 2,
               // Baseline numbers, not balanced/tuned: a puddle every 5s,
               // lasting 2.5s, dealing 12 dmg/s to anything standing in its
@@ -221,27 +225,37 @@ const TOWER_TYPES = {
           {
             name: 'Puncture',
             description:
-              'A second vine grows, each now bristling with more thorns; rose grows 25% bigger; damage doubles ' +
-              '(the base attack and every vine alike).',
+              'A second vine grows, each now bristling with more thorns; rose grows 25% bigger; base attack damage ' +
+              'doubles; each vine now hits for 4.',
             cost: 500,
-            effects: { addVines: 1, moreThorns: true, sizeMultiplier: 1.25, damageMultiplier: 2 },
+            // 2nd balance pass (direct request: "make towers not
+            // overpowered for their price") — see purchaseUpgrade()'s own
+            // comment on effects.vineDamage for the full reasoning. Vine
+            // damage now grows on its own explicit, much gentler curve
+            // (2 -> 4 -> 6 -> 8) instead of compounding with this path's
+            // own damageMultiplier chain the way it used to (which would
+            // have put it at 16/vine here, 8x the original).
+            effects: { addVines: 1, moreThorns: true, sizeMultiplier: 1.25, damageMultiplier: 2, vineDamage: 4 },
           },
           {
             name: 'Overgrowth',
             description:
-              'Three more vines grow (5 total); rose grows 50% bigger; vines reach twice as far; damage doubles again.',
+              'Three more vines grow (5 total); rose grows 50% bigger; vines reach twice as far; base attack ' +
+              'damage doubles again; each vine now hits for 6.',
             cost: 1250,
             // vineRangeMultiplier is a real mechanical range boost for the
             // vines specifically (not just a visual flourish) — judgment
             // call per the brief, since "how far the vines reach" reads as
             // gameplay-relevant once there's an actual attack tied to them.
-            effects: { addVines: 3, sizeMultiplier: 1.5, vineRangeMultiplier: 2, damageMultiplier: 2 },
+            effects: { addVines: 3, sizeMultiplier: 1.5, vineRangeMultiplier: 2, damageMultiplier: 2, vineDamage: 6 },
           },
           {
             name: 'Vigorous',
-            description: 'Three more vines grow (8 total); the stem grows taller; damage doubles once more.',
+            description:
+              'Three more vines grow (8 total); the stem grows taller; base attack damage doubles once more; ' +
+              'each vine now hits for 8.',
             cost: 2250,
-            effects: { addVines: 3, tallStem: true, damageMultiplier: 2 },
+            effects: { addVines: 3, tallStem: true, damageMultiplier: 2, vineDamage: 8 },
           },
         ],
       },
@@ -561,196 +575,11 @@ const TOWER_TYPES = {
       },
     ],
   },
-  // A different kind of tower entirely — passive income, no combat. Same
-  // generic 3-path/4-upgrade model as every other tower (mutually
-  // exclusive paths, cost gates, etc.) even though it never attacks:
-  // damage/range/attackInterval are just zeroed out rather than special-
-  // cased away, which is what makes updateTowerAttack() in game.js need
-  // no Coneflower-specific branch at all — a 0 range means
-  // findNearestEnemyInRange() never finds a target, so the attack-firing
-  // branch simply never runs. baseIncomeRate (not part of baseStats,
-  // same reasoning as zombifyChance/aura below being plain top-level
-  // tower fields rather than nested in stats) is the new generic bit:
-  // see createTower()'s incomeRate/incomeTickInterval fields and
-  // updateTowerIncome() in game.js, which pays out every tower's
-  // incomeRate once per incomeTickInterval seconds — Coneflower is just
-  // the first tower to ever set incomeRate to something nonzero, not a
-  // hardcoded special case.
-  //
-  // Income is a discrete per-tick payout (incomeRate dollars, once every
-  // incomeTickInterval seconds), not a smooth per-second accrual — this
-  // is what makes the Overgrowth Path's "X% faster" tiers (below) mean
-  // something concrete (a shorter interval between payouts) rather than
-  // a vague rate bump, and it's also what the tick-synced "+$X" floating
-  // popup (updateTowerIncome()) is actually timed to. For the Quality
-  // Path, which never touches incomeTickInterval (stays at its default
-  // 1), a flat per-tick amount at a 1-second cadence is numerically
-  // identical to the "$X/sec" language its own descriptions use.
-  coneflower: {
-    name: 'Coneflower',
-    baseStats: {
-      damage: 0,
-      size: 16,
-      color: '#b06bc4',
-      range: 0,
-      attackInterval: 999999,
-    },
-    baseIncomeRate: 2, // $ per tick (every incomeTickInterval seconds) while a wave is active
-    upgradePaths: [
-      {
-        name: 'Quality Path',
-        upgrades: [
-          {
-            name: 'Quality Control',
-            description: 'Grows taller and brighter; income becomes $5/sec (replaces the base rate, not additive).',
-            cost: 600,
-            effects: { sizeMultiplier: 1.2, glow: '#e0b0ff', income: 5 },
-          },
-          {
-            name: 'High Standard',
-            description: 'Grows larger still and sprouts two extra stems; income becomes $12/sec.',
-            cost: 1500,
-            effects: { sizeMultiplier: 1.3, extraStems: true, income: 12 },
-          },
-          {
-            name: 'Quality Market',
-            description: 'Grows taller again and the flower turns gold; income becomes $20/sec.',
-            cost: 4500,
-            effects: { sizeMultiplier: 1.2, color: '#ffd54f', income: 20 },
-          },
-          {
-            name: 'Perfect Condition',
-            description:
-              'The flower turns ruby red and sheds a faint red mist drifting down from it; income becomes $35/sec.',
-            cost: 8000,
-            effects: { color: '#c62828', redMist: true, income: 35 },
-          },
-        ],
-      },
-      // User's exact tier wording (quoted in each description) was fairly
-      // terse/informal — judgment calls made to turn it into concrete
-      // numbers, documented here rather than re-litigated per tier below:
-      // plant count doubles tier over tier (1 -> 2 -> 4 -> 8), except the
-      // last tier which is explicitly additive ("3 more grow", not
-      // "double again") -> 11 total. Only the first tier states a cash
-      // amount ("3 cash"), so perPlantCash is set once, there, and never
-      // touched again — later tiers only ever mention speed. Total
-      // incomeRate is always perPlantCash * numPlants (recomputed
-      // whenever either changes, see purchaseUpgrade()), so this path's
-      // growing payout comes from growing the plant count, not from
-      // repeatedly bumping the per-plant rate. Each tier's "X% faster"
-      // compounds on the current incomeTickInterval (tower.stats-style
-      // multiplicative stacking, same convention as Sunflower/Rose's own
-      // self-buff paths — deliberately NOT the Mushroom-aura/zombifyChance
-      // REPLACE convention, since the user's wording reads as each tier
-      // adding its own further speedup on top of the last, not restating
-      // an absolute new interval).
-      {
-        name: 'Overgrowth Path',
-        upgrades: [
-          {
-            name: 'Overgrowth',
-            description: 'The flower doubles into 2 flowers, each worth $3, and the cash tick comes 25% faster.',
-            cost: 300,
-            effects: { plantMultiplier: 2, perPlantCash: 3, incomeTickIntervalMultiplier: 0.75 },
-          },
-          {
-            name: 'Splurge',
-            description: 'The number of plants doubles again (4 total) and the cash tick comes 30% faster still.',
-            cost: 850,
-            effects: { plantMultiplier: 2, incomeTickIntervalMultiplier: 0.7 },
-          },
-          {
-            name: 'Surplus',
-            description: 'The number of plants doubles again (8 total) and the cash tick comes 25% faster still.',
-            cost: 2000,
-            effects: { plantMultiplier: 2, incomeTickIntervalMultiplier: 0.75 },
-          },
-          {
-            name: 'Plantation',
-            description:
-              'The plant grows taller and 3 more spring up (11 total); the cash tick comes 50% faster still.',
-            cost: 10000, // balance tweak (direct request): was $5000
-            effects: { addPlants: 3, incomeTickIntervalMultiplier: 0.5, tallPlant: true },
-          },
-        ],
-      },
-      // Coupons Path (direct request): a discount-aura path, mutually
-      // exclusive with Quality/Overgrowth like every other tower's 3
-      // paths. User's exact tier wording was informal/terse, same as
-      // Overgrowth Path above — judgment calls made here, not
-      // re-litigated per tier below:
-      // - Discount applies only to the PLACEMENT cost of a new tower
-      //   bought within discountRadius (150px, set once at tier 1 and
-      //   never restated), same scoping as the existing Coneflower-
-      //   tier-4 cost-doubling feature ("placement cost only, never
-      //   upgrade costs") — not stated explicitly for this path, but kept
-      //   consistent with that established convention rather than
-      //   guessed fresh.
-      // - Non-stacking: the user only explicitly said "doesn't stack" at
-      //   tier 4, but applied here across the WHOLE path (a tower in
-      //   range of several Coupons-path Coneflowers gets the single
-      //   strongest discount, not a sum) for consistency with Mushroom's
-      //   existing Enable Path aura, which is non-stacking the same way
-      //   at every tier, not just its last. Flagged in the commit message
-      //   in case "only tier 4 is non-stacking" (implying 1-3 DO stack)
-      //   was actually meant.
-      // - Cash/sec is a flat absolute value per tier (3/5/7/10), replacing
-      //   the previous tier's rate — the Quality Path's own `income`
-      //   effect convention, reused unchanged, NOT Overgrowth's plant-
-      //   multiplying mechanism (this path never grows multiple plants).
-      // - Visuals: roots appear at tier 1 (drawConeflowerRoots()) and grow
-      //   longer at tiers 2 and 3; the stem grows at tier 1 and again at
-      //   tier 3; petals grow larger at tier 2 (drawConeflowerHead()'s own
-      //   size, scaled up); "kinda neon" at tier 3 reuses the existing
-      //   generic `glow` effect (same field Quality Path's own tiers set)
-      //   rather than inventing a parallel glow mechanism. All tier-gated
-      //   by chosenPath===2 && upgradesPurchased directly in
-      //   drawConeflower(), the same pattern Mushroom's Infect Path
-      //   already uses for its own tiered art — no extra per-tier boolean
-      //   fields needed on the tower itself.
-      {
-        name: 'Coupons Path',
-        upgrades: [
-          {
-            name: 'Coupons',
-            description:
-              'The flower grows lots of roots and its stem grows longer; towers placed within range cost 5% less; income becomes $3/sec.',
-            cost: 1500,
-            effects: { income: 3, discountPercent: 5, discountRadius: 150 },
-          },
-          {
-            name: 'Cheaper Products',
-            description:
-              'Towers placed within range now cost 10% less (replacing the previous discount, not stacking); income becomes $5/sec; the roots grow longer and the petals grow larger.',
-            cost: 3000,
-            effects: { income: 5, discountPercent: 10 },
-          },
-          {
-            name: 'Discounted',
-            description:
-              'Towers placed within range now cost 15% less; income becomes $7/sec; the stem and roots grow longer again, and the flower takes on a neon glow.',
-            cost: 7500,
-            effects: { income: 7, discountPercent: 15, glow: '#ff2fd6' },
-          },
-          {
-            name: 'Dealership',
-            description:
-              "Towers placed within range now cost 25% less; income becomes $10/sec. This discount never stacks with another Coupons-path Coneflower's own.",
-            cost: 12500,
-            effects: { income: 10, discountPercent: 25 },
-          },
-        ],
-      },
-    ],
-  },
   // Corpse Flower (direct request): a brand-new 5th base tower, $750 to
-  // place, 10 damage/sec baseline. Like every other tower it has 3
-  // mutually-exclusive paths, but only the first (Hazard Path) has been
-  // designed so far — the user is adding the other two in later follow-
-  // ups, same one-path-at-a-time pattern Mushroom's and Coneflower's own
-  // paths already arrived in, so paths 2/3 are left null exactly like
-  // theirs were before their own later tiers landed.
+  // place, 10 damage/sec baseline. All 3 of its mutually-exclusive paths
+  // arrived across separate follow-ups (Hazard, then Acidic Mixture, then
+  // Growth), same one-path-at-a-time pattern Mushroom's own paths used —
+  // each left as null until its own request landed.
   corpseFlower: {
     name: 'Corpse Flower',
     baseStats: {
@@ -896,13 +725,65 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null, // Path 3 — not yet designed
+      // Growth Path (direct request): Corpse Flower's 3rd and final path,
+      // mutually exclusive with Hazard/Acidic Mixture above. Pure damage
+      // scaling with no secondary mechanic of its own (no gas, no acid
+      // projectile) — every tier's own attackDamage is the SAME absolute-
+      // replace key the other two paths use. Grows taller at EVERY tier
+      // (not just tiers 2/4 like Hazard/Acidic — see drawCorpseFlower()'s
+      // own comment for why this path's height formula is a separate,
+      // continuous one), since "makes tower taller" is explicitly in the
+      // user's own wording for 3 of its 4 tiers running, unlike either
+      // other path. Giantness (tier 3) grows two small satellite blooms
+      // next to the main one — "grows more stems with flowers," read
+      // literally as more (smaller) complete flowers, not just more
+      // petals on the one head (that's Acidic Mixture's own tier 3/4
+      // trait, drawCorpseFlowerHead's extraPetalCount) — reuses
+      // drawCorpseFlowerHead() directly at a smaller scale rather than a
+      // new function. Color turns pink at tier 2 ("Growth Spurt") and
+      // purple at tier 4 ("Titan Arum") — the real Titan Arum is the
+      // actual common name for the corpse flower species this tower is
+      // modeled on, so naming the final, biggest tier after it is a
+      // direct nod, not a coincidence. Growth Spurt (tier 2) is also the
+      // only tier that touches range (the generic rangeMultiplier effect,
+      // same as every other tower's own range-boosting tiers).
+      {
+        name: 'Growth Path',
+        upgrades: [
+          {
+            name: 'Sproutful',
+            description: 'Corpse Flower grows taller; base attack damage becomes 25/sec.',
+            cost: 1500,
+            effects: { attackDamage: 25 },
+          },
+          {
+            name: 'Growth Spurt',
+            description:
+              'Corpse Flower grows taller and its flower turns pink; range increases 40%; base attack damage becomes 45/sec.',
+            cost: 4000,
+            effects: { attackDamage: 45, color: '#d81b94', rangeMultiplier: 1.4 },
+          },
+          {
+            name: 'Giantness',
+            description:
+              'Corpse Flower grows taller still and sprouts two more stems, each with its own small flower; base attack damage becomes 70/sec.',
+            cost: 8500,
+            effects: { attackDamage: 70 },
+          },
+          {
+            name: 'Titan Arum',
+            description:
+              "Corpse Flower's flowers all turn purple and it deals a lot more damage; base attack damage becomes 120/sec.",
+            cost: 15000,
+            effects: { attackDamage: 120, color: '#6a1b9a' },
+          },
+        ],
+      },
     ],
   },
   // Prodigies (direct request, reworked from an earlier standalone-tower
   // design to an UPGRADE instead): one ultimate, 4th-tier form per base
-  // type (Sunflower/Rose/Mushroom — Coneflower doesn't get one, it's a
-  // different kind of tower entirely). Once a tower of one of these 3
+  // type (Sunflower/Rose/Mushroom). Once a tower of one of these 3
   // types reaches tier 4 on its own chosen path, it can be upgraded one
   // more time into this — see getProdigyOption()/activateRegion()'s
   // 'prodigy-upgrade' branch in game.js, which replaces the tower in
@@ -913,17 +794,25 @@ const TOWER_TYPES = {
   // as every other tower, just all 3 slots null here. Capped at 1 of each
   // on the field at a time, independently per type (see getProdigyOption()
   // in game.js).
+  // Balance pass (direct request: "make prodigies actually worth the
+  // money by making them deal more damage, attack faster etc"). A
+  // roster-wide $/DPS survey found all 3 Prodigies dealt LESS raw DPS
+  // than the base tower's own best maxed path they replace, for 8-12x
+  // the total investment (path + Prodigy cost combined) — e.g. the old
+  // Sunlit Conductor's 130 dps for $30,000 against a maxed Fire Path
+  // Sunflower's own ~90-130 dps for $3,900. Every Prodigy below got a
+  // real damage AND attack-speed increase (not just one or the other)
+  // so each one now clearly outpaces its own lineage's best maxed path,
+  // the whole point of spending real money on an "ultimate" upgrade.
   sunlitConductor: {
     name: 'The Sunlit Conductor',
     cost: 30000, // the price of the Prodigy UPGRADE itself — see getProdigyOption() in game.js
     baseStats: {
-      damage: 65,
+      damage: 150, // was 65
       size: 32,
       color: '#ffd700',
       range: 200,
-      // Direct request: Prodigies attack 2x faster than the literal "once
-      // a second" spec reading — 65 damage every 0.5s = 130 dps.
-      attackInterval: 0.5,
+      attackInterval: 0.35, // was 0.5 — 150 damage every 0.35s = ~429 dps (was 130)
     },
     baseAttackType: 'ray', // an instant, continuous-reading beam — see createTower()'s own comment
     upgradePaths: [null, null, null],
@@ -932,22 +821,19 @@ const TOWER_TYPES = {
     name: 'The Mangler',
     cost: 45000,
     baseStats: {
-      damage: 40,
+      damage: 100, // was 40
       size: 30,
       color: '#ad1457',
       range: 200,
-      // Direct request: Prodigies attack 2x faster — 40 damage every 0.5s
-      // = 80 dps continuous, same convention as Sunlit Conductor.
-      attackInterval: 0.5,
+      attackInterval: 0.35, // was 0.5 — 100 damage every 0.35s = ~286 dps (was 80)
     },
-    // Every 5s: grabs one random non-boss enemy in range, holds it 1s,
-    // 50 bonus damage — additive on top of the continuous 80 dps above,
-    // not a replacement. The grab's own 5s cadence is untouched by the
-    // 2x attack-speed change — "attack" refers to the base continuous
-    // attack above, not this separate periodic ability. See
-    // updateTowerGrab() in game.js.
-    grabInterval: 5,
-    grabDamage: 50,
+    // Every 3s (was 5s): grabs one random non-boss enemy in range, holds
+    // it 1s, 120 bonus damage (was 50) — additive on top of the
+    // continuous dps above, not a replacement. "attack" in the stats
+    // above refers to the base continuous attack, not this separate
+    // periodic ability. See updateTowerGrab() in game.js.
+    grabInterval: 3, // was 5
+    grabDamage: 120, // was 50
     grabDuration: 1,
     upgradePaths: [null, null, null],
   },
@@ -955,21 +841,21 @@ const TOWER_TYPES = {
     name: 'The Fungal Mess',
     cost: 60000,
     baseStats: {
-      damage: 50,
+      damage: 130, // was 50
       size: 30,
       color: '#4a148c',
       range: 200,
-      // Mushroom's own natural cadence (every 1s, "every hit" per the
-      // spec) would otherwise match TOWER_TYPES.mushroom's own
-      // attackInterval directly — halved on top of that per the later
-      // direct request that all 3 Prodigies attack 2x faster.
-      attackInterval: 0.5,
+      attackInterval: 0.4, // was 0.5 — 130 damage every 0.4s = 325 dps (was 100)
     },
     // 15% chance a killing blow reanimates the victim as a purple
     // zombie instead of it dying outright — see turnIntoPurpleZombie()
     // in enemies.js and resolveProjectile()'s own reanimateChance roll
     // in game.js (the same shape as Decay Path's zombifyChance roll,
     // deliberately a separate chance/flag so the two never collide).
+    // Untouched by this pass — not a raw damage/speed stat, and Mushroom's
+    // own lineage is already weak enough on raw DPS that a damage/speed
+    // buff alone comfortably makes Fungal Mess worth it without also
+    // needing a bigger reanimate chance.
     reanimateChance: 0.15,
     upgradePaths: [null, null, null],
   },
@@ -1121,48 +1007,6 @@ function createTower(typeKey) {
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
-    // Coneflower: $/sec generated while a wave is active (see
-    // updateTowerIncome() in game.js) — 0 for every tower type without a
-    // baseIncomeRate, which is every type except Coneflower today. Not
-    // nested in `stats` for the same reason zombifyChance/aura aren't:
-    // each Quality Path tier replaces this outright rather than scaling
-    // it, same REPLACE convention as those.
-    incomeRate: type.baseIncomeRate || 0, // $ paid out per tick — see updateTowerIncome() in game.js
-    // Seconds between income payouts (and the "+$X" popup, which fires on
-    // the same tick — see updateTowerIncome()/spawnFloatingText() in
-    // game.js). 1 for every tower by default; Coneflower's Overgrowth
-    // Path is the only thing that ever shortens it. incomeTickCooldown
-    // counts down to the next payout, starting at 1 (not 0) so it doesn't
-    // pay out instantly the instant a wave begins — same "don't fire
-    // instantly on purchase/activation" convention puddle/infectStun
-    // already use.
-    incomeTickInterval: 1,
-    incomeTickCooldown: 1,
-    // Coneflower's Overgrowth Path: incomeRate above is always
-    // perPlantCash * numPlants once this path is chosen (recomputed in
-    // purchaseUpgrade() whenever either changes) — these two are tracked
-    // separately rather than just mutating incomeRate directly because
-    // the path's own tiers state "the flower doubles"/"3 more grow" as
-    // plant-count changes, not as income-rate changes; incomeRate is a
-    // derived value, not the thing each tier directly edits. Irrelevant
-    // (stays 1/0) for every tower that never buys into this path.
-    numPlants: 1,
-    perPlantCash: 0,
-    hasTallPlant: false, // Plantation tier only — purely visual (drawConeflower())
-    hasExtraStems: false, // Quality Path's High Standard tier and up — purely visual (drawConeflower())
-    hasRedMist: false, // Quality Path's Perfect Condition tier only — purely visual (drawConeflower())
-    // Coneflower's Coupons Path: the discount (a flat percent, 0-25) this
-    // Coneflower's own aura currently offers towers placed within
-    // discountRadius of it — see getStrongestDiscountPercentAt()/
-    // getShopItemCostAt() in game.js, which read these two fields directly
-    // (not through a nested `aura` object the way Mushroom's Enable Path
-    // does, since there's only ever this one number to track, not a whole
-    // stats bundle). Both 0 for every tower without this path, so the
-    // lookup skips everyone else entirely. discountRadius is set once, on
-    // the path's first tier, and never restated by later tiers (only the
-    // percent itself grows) — see purchaseUpgrade()'s own comment.
-    discountPercent: 0,
-    discountRadius: 0,
     // Corpse Flower's Hazard Path only. hasSpikes is purely visual (tier 1
     // and up, drawCorpseFlower()). gasCloud (tier 2 and up) is a whole-
     // object {radius, damagePerTick, color}, null until then — a
@@ -1228,12 +1072,26 @@ function purchaseUpgrade(tower, pathIndex) {
   const effects = upgrade.effects;
   if (effects.damageMultiplier) {
     tower.stats.damage *= effects.damageMultiplier;
-    // Applies to vine/thorn-shot damage too, same "on top of current"
-    // stacking as the base attack — neither has its own separate
-    // damageMultiplier chain, they just ride along with the tower's.
-    if (tower.vineDamage) tower.vineDamage *= effects.damageMultiplier;
+    // Applies to thorn-shot damage too (Projectile Path), same "on top of
+    // current" stacking as the base attack — it doesn't have its own
+    // separate damageMultiplier chain, it just rides along with the
+    // tower's. Vine damage USED to ride along here the same way, but see
+    // effects.vineDamage below for why that changed in the balance pass.
     if (tower.thornShotDamage) tower.thornShotDamage *= effects.damageMultiplier;
   }
+  // Thorn Path's vine damage: 2nd balance pass (direct request: "make
+  // towers not overpowered for their price"). This used to compound with
+  // the path's own damageMultiplier chain exactly like the base attack
+  // above — fine in isolation, but with 8 separate vines all getting the
+  // SAME full 8x compounding (2x at Puncture, 2x at Overgrowth, 2x at
+  // Vigorous) by tier 4, the vines alone dealt ~128 dps, more than double
+  // the base attack's own 53 — the single worst $/DPS outlier found in
+  // the whole roster (worse than the already-nerfed Sunflower Fire Path).
+  // Switched to an explicit absolute-replace per tier instead (same
+  // convention Corpse Flower's attackDamage/Mushroom's zombifyChance
+  // already use) — each tier still states real growth (2 -> 4 -> 6 -> 8),
+  // just not blind exponential compounding across 8 simultaneous hits.
+  if (effects.vineDamage !== undefined) tower.vineDamage = effects.vineDamage;
   if (effects.sizeMultiplier) tower.stats.size *= effects.sizeMultiplier;
   if (effects.attackIntervalMultiplier) tower.stats.attackInterval *= effects.attackIntervalMultiplier;
   if (effects.color) tower.stats.color = effects.color;
@@ -1342,23 +1200,6 @@ function purchaseUpgrade(tower, pathIndex) {
   // to do with it here beyond leaving it in `effects` for that caller to
   // read.
 
-  // Coneflower's Quality Path: each tier's income REPLACES the previous
-  // tier's outright, same convention as zombifyChance/aura/infectStun
-  // above (the spec gives each tier as an absolute $/sec rate, not a
-  // multiplier) — see updateTowerIncome() in game.js for what actually
-  // reads tower.incomeRate. extraStems/redMist are purely visual
-  // (drawConeflower()).
-  if (effects.income !== undefined) tower.incomeRate = effects.income;
-  if (effects.extraStems) tower.hasExtraStems = true;
-  if (effects.redMist) tower.hasRedMist = true;
-  // Coneflower's Coupons Path: discountPercent REPLACES the previous
-  // tier's outright (each tier states its own absolute new percent, same
-  // convention as income/zombifyChance/aura above), while discountRadius
-  // is only ever set by the path's first tier — later tiers never
-  // mention it again, so there's nothing to overwrite it with.
-  if (effects.discountPercent !== undefined) tower.discountPercent = effects.discountPercent;
-  if (effects.discountRadius !== undefined) tower.discountRadius = effects.discountRadius;
-
   // Corpse Flower's Hazard Path: attackDamage is an absolute replace (see
   // its own TOWER_TYPES comment for why this is a different key from the
   // compounding damageMultiplier every other tower's paths use).
@@ -1379,20 +1220,6 @@ function purchaseUpgrade(tower, pathIndex) {
     tower.acid = effects.acid;
     tower.acidCooldown = ACID_SHOT_INTERVAL; // don't fire instantly on purchase
   }
-
-  // Coneflower's Overgrowth Path: numPlants/perPlantCash each compound or
-  // get set independently (see each field's own comment on createTower()
-  // above), then incomeRate is recomputed from whichever of the two this
-  // purchase actually touched — covers every tier without needing each
-  // one to also restate effects.income itself.
-  if (effects.plantMultiplier) tower.numPlants *= effects.plantMultiplier;
-  if (effects.addPlants) tower.numPlants += effects.addPlants;
-  if (effects.perPlantCash !== undefined) tower.perPlantCash = effects.perPlantCash;
-  if (effects.plantMultiplier || effects.addPlants || effects.perPlantCash !== undefined) {
-    tower.incomeRate = tower.perPlantCash * tower.numPlants;
-  }
-  if (effects.incomeTickIntervalMultiplier) tower.incomeTickInterval *= effects.incomeTickIntervalMultiplier;
-  if (effects.tallPlant) tower.hasTallPlant = true;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -1570,26 +1397,6 @@ function renderTower(ctx, tower, x, y, time) {
         tower.sporeParticles
       );
     }
-  } else if (tower.type === 'coneflower') {
-    drawConeflower(
-      ctx,
-      x,
-      y,
-      size,
-      tower.stats.color,
-      tower.glow,
-      time,
-      flashAmount,
-      tower.hasExtraStems,
-      tower.hasRedMist,
-      tower.numPlants,
-      tower.hasTallPlant,
-      // Coupons Path's own tiered art (roots/petals growing in) is gated
-      // the same way Mushroom's Infect Path already gates its own tiered
-      // species art — chosenPath + upgradesPurchased directly, no extra
-      // per-tier boolean fields needed on the tower itself.
-      tower.chosenPath === 2 ? tower.upgradesPurchased : 0
-    );
   } else if (tower.type === 'corpseFlower') {
     // The gas cloud is drawn first/behind the tower itself — a backdrop
     // the flower sits inside, same "ambient effect renders under the
@@ -1612,7 +1419,10 @@ function renderTower(ctx, tower, x, y, time) {
       tower.chosenPath === 0 ? tower.upgradesPurchased : 0,
       // Acidic Mixture Path's own tiered art (extra petals/drips/height) —
       // same chosenPath + upgradesPurchased gating, just path index 1.
-      tower.chosenPath === 1 ? tower.upgradesPurchased : 0
+      tower.chosenPath === 1 ? tower.upgradesPurchased : 0,
+      // Growth Path's own tiered art (satellite blooms/continuous height)
+      // — same chosenPath + upgradesPurchased gating, just path index 2.
+      tower.chosenPath === 2 ? tower.upgradesPurchased : 0
     );
   } else if (tower.type === 'sunlitConductor') {
     drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
@@ -2390,201 +2200,6 @@ function drawNeurologicalCap(ctx, x, y, size, time) {
   ctx.globalAlpha = 1;
 }
 
-// --- Coneflower (passive income, no combat) --------------------------------
-
-// A ring of narrow pointed petals around a raised, bristly central cone —
-// the cone is the one feature that reads as "coneflower" rather than a
-// generic daisy/sunflower-shaped bloom. Shared between the main flower
-// head and High Standard's extra side stems (isMain just thins out the
-// bristle count on the smaller side heads so they don't look as busy).
-function drawConeflowerHead(ctx, x, y, size, color, isMain) {
-  const petalCount = 10;
-  const darkerColor = shadeColor(color, -15);
-  for (let i = 0; i < petalCount; i += 1) {
-    const angle = (i / petalCount) * Math.PI * 2;
-    ctx.fillStyle = i % 2 === 0 ? color : darkerColor;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    ctx.beginPath();
-    ctx.moveTo(size * 0.2, 0);
-    ctx.quadraticCurveTo(size * 0.75, -size * 0.14, size * 0.95, 0);
-    ctx.quadraticCurveTo(size * 0.75, size * 0.14, size * 0.2, 0);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-
-  ctx.fillStyle = '#6b4423';
-  ctx.beginPath();
-  ctx.ellipse(x, y, size * 0.42, size * 0.38, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = shadeColor('#6b4423', -12);
-  ctx.beginPath();
-  ctx.arc(x, y - size * 0.08, size * 0.3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#4a2f18';
-  const bristleCount = isMain ? 10 : 6;
-  for (let i = 0; i < bristleCount; i += 1) {
-    const angle = (i / bristleCount) * Math.PI * 2 + 0.3;
-    const bx = x + Math.cos(angle) * size * 0.22;
-    const by = y - size * 0.08 + Math.sin(angle) * size * 0.2;
-    ctx.beginPath();
-    ctx.arc(bx, by, size * 0.04, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-// Perfect Condition only: a few faint red motes drifting DOWN from the
-// flower head — deliberately the opposite direction of Mushroom's rising
-// gasColor puffs, so the two don't read as the same effect recolored.
-function drawConeflowerRedMist(ctx, x, y, size, time) {
-  ctx.fillStyle = 'rgba(198, 40, 40, 0.5)';
-  [0, 1, 2].forEach((i) => {
-    const t = (time * 0.35 + i / 3) % 1;
-    const mx = x + Math.sin(time * 0.8 + i * 2) * size * 0.3;
-    const my = y + size * 0.2 + t * size * 1.4;
-    ctx.globalAlpha = 0.5 * (1 - t);
-    ctx.beginPath();
-    ctx.arc(mx, my, size * 0.14 * (1 - t * 0.4), 0, Math.PI * 2);
-    ctx.fill();
-  });
-  ctx.globalAlpha = 1;
-}
-
-// Overgrowth Path (tier 1 and up): the single flower head is replaced by
-// a ring of smaller heads, one per plant — capped at a reasonable visual
-// density (past it, individual heads stop being legible at tower-icon
-// scale anyway). The economy-facing numPlants value itself is never
-// capped, only how many heads actually get drawn — Plantation's real 11
-// plants reads as "a dense little flower bed," not literally 11
-// countable blooms.
-const CONEFLOWER_CLUSTER_VISUAL_CAP = 8;
-
-function drawConeflowerCluster(ctx, x, y, size, color, numPlants) {
-  const count = Math.min(numPlants, CONEFLOWER_CLUSTER_VISUAL_CAP);
-  const headSize = size * (0.62 - Math.min(count, 6) * 0.04);
-  const ringRadius = size * 0.38;
-  for (let i = 0; i < count; i += 1) {
-    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-    const hx = x + Math.cos(angle) * ringRadius;
-    const hy = y + Math.sin(angle) * ringRadius * 0.7;
-    drawConeflowerHead(ctx, hx, hy, headSize, color, false);
-  }
-}
-
-// Coupons Path tier 1 and up: a handful of thin dirt-brown root tendrils
-// fanning out below the stem's base — same drawn-tendril style as Rose's
-// own drawRoseBodyRoots(), just more of them ("lots of roots" per the
-// spec, vs. that one's 4) and growing longer at tiers 2 and 3 rather than
-// via a single longThorns-style boolean, since this path explicitly calls
-// out "longer roots" twice (tiers 2 and 3) rather than once.
-function drawConeflowerRoots(ctx, x, y, groundY, size, tier) {
-  const lengthMultiplier = tier >= 3 ? 1.6 : tier >= 2 ? 1.3 : 1;
-  const spikeLength = size * 0.32 * lengthMultiplier;
-  const angles = [-2.5, -2.0, -1.57, 1.57, 2.0, 2.5]; // fanning down-and-outward on both sides, plus one straight down each
-  ctx.strokeStyle = '#5d4037';
-  ctx.lineWidth = 2;
-  angles.forEach((angle) => {
-    const baseX = x + Math.cos(angle) * size * 0.12;
-    const baseY = groundY - size * 0.05;
-    const tipX = baseX + Math.cos(angle) * spikeLength;
-    const tipY = baseY + Math.sin(angle) * spikeLength * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(baseX, baseY);
-    ctx.quadraticCurveTo(baseX + Math.cos(angle) * spikeLength * 0.5, baseY + spikeLength * 0.1, tipX, tipY);
-    ctx.stroke();
-  });
-}
-
-function drawConeflower(
-  ctx,
-  x,
-  y,
-  size,
-  color,
-  glow,
-  time,
-  flashAmount,
-  hasExtraStems,
-  hasRedMist,
-  numPlants = 1,
-  tallPlant = false,
-  couponTier = 0
-) {
-  // Plantation's "grows taller" and Coupons' own tier-1/tier-3 stem growth
-  // are two independent sources of "taller stem," so they both just
-  // multiply the same base height rather than one replacing the other —
-  // harmless since a tower only ever has one chosen path at a time anyway.
-  const couponStemMultiplier = couponTier >= 3 ? 1.5 : couponTier >= 1 ? 1.25 : 1;
-  const stemHeight = size * 1.3 * (tallPlant ? 1.3 : 1) * couponStemMultiplier;
-  const groundY = y + stemHeight;
-  const sway = Math.sin(time * 1.4 + x * 0.01) * 0.05;
-
-  ctx.save();
-  ctx.translate(x, groundY);
-  ctx.rotate(sway);
-  ctx.translate(-x, -groundY);
-
-  ctx.fillStyle = '#4b7a3a';
-  ctx.strokeStyle = '#2f5522';
-  ctx.lineWidth = 1;
-  ctx.fillRect(x - size * 0.07, y, size * 0.14, stemHeight);
-  ctx.strokeRect(x - size * 0.07, y, size * 0.14, stemHeight);
-
-  // High Standard tier and up: two smaller side stems, each with their
-  // own small flower head, so the plant reads as visibly bushier rather
-  // than just uniformly scaled up.
-  if (hasExtraStems) {
-    [-1, 1].forEach((side) => {
-      const stemX = x + side * size * 0.45;
-      const stemTopY = y + stemHeight * 0.25;
-      ctx.strokeStyle = '#4b7a3a';
-      ctx.lineWidth = Math.max(1.5, size * 0.08);
-      ctx.beginPath();
-      ctx.moveTo(x, groundY);
-      ctx.quadraticCurveTo(x + side * size * 0.3, groundY - stemHeight * 0.4, stemX, stemTopY);
-      ctx.stroke();
-      drawConeflowerHead(ctx, stemX, stemTopY, size * 0.45, color, false);
-    });
-  }
-
-  ctx.fillStyle = '#4b7a3a';
-  ctx.beginPath();
-  ctx.ellipse(x - size * 0.3, y + stemHeight * 0.55, size * 0.26, size * 0.1, -0.4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(x + size * 0.3, y + stemHeight * 0.75, size * 0.26, size * 0.1, 0.4, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Never actually pulses today (Coneflower has no attack, so
-  // flashAmount is always 0) but kept for the same structural reason
-  // every other tower's draw function keeps it: free consistency, no
-  // cost if it's a no-op.
-  ctx.translate(x, y);
-  ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
-  ctx.translate(-x, -y);
-
-  if (glow) {
-    ctx.shadowColor = glow;
-    ctx.shadowBlur = 20;
-  }
-
-  if (numPlants > 1) {
-    drawConeflowerCluster(ctx, x, y, size, color, numPlants);
-  } else {
-    // Cheaper Products tier and up: "larger flower petals" — Coupons Path
-    // never multiplies numPlants, so this is the only path that ever
-    // scales the single head's own size up rather than adding more heads.
-    const headSize = couponTier >= 2 ? size * 1.2 : size;
-    drawConeflowerHead(ctx, x, y, headSize, color, true);
-  }
-  if (hasRedMist) drawConeflowerRedMist(ctx, x, y, size, time);
-  if (couponTier >= 1) drawConeflowerRoots(ctx, x, y, groundY, size, couponTier);
-
-  ctx.restore();
-}
-
 // --- Corpse Flower -------------------------------------------------------
 
 // A persistent, slowly pulsing filled circle plus a dashed outline ring —
@@ -2778,21 +2393,35 @@ function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes, acidTier = 0) {
 }
 
 // Corpse Flower's base tower art: a short stem (growing taller at tiers
-// 2 and 4 of WHICHEVER path is active — Hazard Path's "grows slightly
-// taller"/"grows taller" and Acidic Mixture Path's "grows taller" at both
-// its own tier 2 and tier 4 use the identical cadence, so one shared
-// heightMultiplier covers both; hazardTier/acidTier are mutually
-// exclusive since a tower only ever has one chosenPath, same
-// chosenPath+upgradesPurchased tier-gating Coupons Path and Infect Path
-// already use, no extra per-tier field needed) topped with the Rafflesia
-// head above. The base-tier stem is deliberately short (the real flower
-// is flat/ground-hugging, not a tall stem-and-bloom shape) — the height
-// growth at later tiers still reads clearly relative to this shorter
-// base, it's just no longer tall enough at tier 0 to fight the "ground-
-// hugging" read of the head itself.
-function drawCorpseFlower(ctx, x, y, size, color, glow, time, flashAmount, hasSpikes, hazardTier, acidTier = 0) {
+// 2 and 4 of Hazard/Acidic Mixture Path, whichever is active — both use
+// the identical cadence, so one shared formula covers both; growTier is
+// a separate, continuous formula — Growth Path's own tiers 1-3 all say
+// "taller" outright, unlike either other path's occasional restating —
+// hazardTier/acidTier/growthTier are mutually exclusive since a tower
+// only ever has one chosenPath, same chosenPath+upgradesPurchased tier-
+// gating Coupons Path and Infect Path already use, no extra per-tier
+// field needed) topped with the Rafflesia head above. The base-tier stem
+// is deliberately short (the real flower is flat/ground-hugging, not a
+// tall stem-and-bloom shape) — the height growth at later tiers still
+// reads clearly relative to this shorter base, it's just no longer tall
+// enough at tier 0 to fight the "ground-hugging" read of the head itself.
+function drawCorpseFlower(
+  ctx,
+  x,
+  y,
+  size,
+  color,
+  glow,
+  time,
+  flashAmount,
+  hasSpikes,
+  hazardTier,
+  acidTier = 0,
+  growthTier = 0
+) {
   const pathTier = Math.max(hazardTier, acidTier);
-  const heightMultiplier = pathTier >= 4 ? 1.5 : pathTier >= 2 ? 1.2 : 1;
+  const heightMultiplier =
+    growthTier > 0 ? 1 + growthTier * 0.15 : pathTier >= 4 ? 1.5 : pathTier >= 2 ? 1.2 : 1;
   const stemHeight = size * 0.3 * heightMultiplier;
   const groundY = y + stemHeight;
   const sway = Math.sin(time * 1 + x * 0.009) * 0.04;
@@ -2815,6 +2444,22 @@ function drawCorpseFlower(ctx, x, y, size, color, glow, time, flashAmount, hasSp
   if (glow) {
     ctx.shadowColor = glow;
     ctx.shadowBlur = 20;
+  }
+
+  // Growth Path tier 3+ ("Giantness," "grows more stems with flowers"):
+  // two small satellite blooms, each a full (smaller) Rafflesia head in
+  // its own right — read literally as more complete flowers growing in,
+  // not just more petals on the one head (that's Acidic Mixture's own
+  // trait — see drawCorpseFlowerHead's extraPetalCount). Drawn before the
+  // main head so the main one still reads as the focal point on top.
+  if (growthTier >= 3) {
+    [-1, 1].forEach((side) => {
+      ctx.save();
+      ctx.translate(x + side * size * 1.3, y + size * 0.3);
+      ctx.scale(0.45, 0.45);
+      drawCorpseFlowerHead(ctx, 0, 0, size, color, false);
+      ctx.restore();
+    });
   }
 
   drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes, acidTier);

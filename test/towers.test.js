@@ -76,22 +76,26 @@ test('Solar Path stacks damage multiplicatively as specified (5 -> 10 -> 15 -> 3
   assert.equal(tower.fireMark, true); // Precision Rays' face mark
 });
 
-test('Fire Path stacks attack interval, size, and damage as specified', () => {
+test('Fire Path stacks attack interval, size, and damage as specified (2nd balance pass numbers)', () => {
   const game = loadGameContext();
   const tower = game.createTower('sunflower');
   const baseInterval = tower.stats.attackInterval;
   const baseSize = tower.stats.size;
 
   game.purchaseUpgrade(tower, 1); // Spark
-  assert.equal(tower.stats.attackInterval, baseInterval * 0.5);
+  // 2nd balance pass (direct request: "make towers not overpowered for
+  // their price") — softened from a flat 0.5x (full doubling) to 0.8x
+  // (a 25% speedup); see this tier's own comment in towers.js for the
+  // full roster $/DPS survey that motivated it.
+  assert.equal(tower.stats.attackInterval, baseInterval * 0.8);
   assert.equal(tower.stats.size, baseSize * 0.8);
   assert.equal(tower.flame, 'small');
 
   game.purchaseUpgrade(tower, 1); // Molten Core
-  // 0.75x, not another 0.5x — balance pass, softened so Fire Path isn't
-  // dramatically ahead of Solar/Storm's DPS-per-dollar; see this tier's
-  // own comment in towers.js for the full before/after math.
-  assert.equal(tower.stats.attackInterval, baseInterval * 0.5 * 0.75);
+  // Molten Core's own attackIntervalMultiplier was removed entirely in
+  // the 2nd balance pass (it used to stack a SECOND speed boost on top
+  // of Spark's own) — interval stays exactly what Spark alone set.
+  assert.equal(tower.stats.attackInterval, baseInterval * 0.8);
   assert.equal(tower.stats.damage, 10);
   assert.ok(tower.puddle);
 
@@ -157,7 +161,7 @@ test('createTower(\'rose\') returns Rose\'s own base stats with no vines yet', (
   assert.equal(tower.vineDamage, 0);
 });
 
-test('Rose\'s Thorn Path grows vine count 1 -> 2 -> 5 -> 8, scaling damage and size alongside the base attack', () => {
+test('Rose\'s Thorn Path grows vine count 1 -> 2 -> 5 -> 8 and size alongside the base attack, but vine damage on its own gentler 2/4/6/8 curve (balance pass)', () => {
   const game = loadGameContext();
   const tower = game.createTower('rose');
   const baseDamage = tower.stats.damage; // 2
@@ -175,26 +179,26 @@ test('Rose\'s Thorn Path grows vine count 1 -> 2 -> 5 -> 8, scaling damage and s
   assert.equal(tower.moreThorns, true);
   assert.ok(Math.abs(tower.stats.size - baseSize * 1.1 * 1.25) < 1e-9);
   assert.equal(tower.stats.damage, baseDamage * 2);
-  assert.equal(tower.vineDamage, 2 * 2); // vine damage rides the same multiplier as the base attack
+  // Balance pass (direct request): vine damage used to ride the exact
+  // same multiplier as the base attack — with 8 vines all getting that
+  // same 8x compounding by tier 4, vines alone dealt more dps than the
+  // base attack, the worst $/DPS outlier in the whole roster. Vine
+  // damage now grows on its own explicit, absolute-replace curve
+  // instead (see purchaseUpgrade()'s own comment on effects.vineDamage).
+  assert.equal(tower.vineDamage, 4);
 
   game.purchaseUpgrade(tower, 0); // Overgrowth
   assert.equal(tower.vineCount, 5);
   assert.equal(tower.vineRangeMultiplier, 2);
   assert.ok(Math.abs(tower.stats.size - baseSize * 1.1 * 1.25 * 1.5) < 1e-9);
   assert.equal(tower.stats.damage, baseDamage * 2 * 2);
-  assert.equal(tower.vineDamage, 2 * 2 * 2);
+  assert.equal(tower.vineDamage, 6);
 
   game.purchaseUpgrade(tower, 0); // Vigorous
   assert.equal(tower.vineCount, 8);
   assert.equal(tower.tallStem, true);
   assert.equal(tower.stats.damage, baseDamage * 2 * 2 * 2);
-  assert.equal(tower.vineDamage, 2 * 2 * 2 * 2);
-  // Both the base attack and every vine get hit by the exact same x2/x2/x2
-  // multiplier chain — they just started from different base numbers
-  // (tower.stats.damage from TOWER_TYPES.rose.baseStats, vineDamage from
-  // Thorns' own `vine.damage`), so they stay in that same ratio rather than
-  // converging to one number.
-  assert.equal(tower.stats.damage / tower.vineDamage, baseDamage / 2);
+  assert.equal(tower.vineDamage, 8);
 });
 
 test('Projectile Path (Poke) boosts damage 1.5x with no visible effect from the vine-length note', () => {

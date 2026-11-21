@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const { loadFullGameContext } = require('./support/loadGame');
 
 // Corpse Flower (direct request): a brand-new 5th base tower, $750, 10
-// damage/sec baseline. Only its first path (Hazard Path) has been
-// designed so far — paths 2/3 arrive in later follow-ups, same one-at-a-
-// time pattern Mushroom's/Coneflower's own paths already used. Hazard
+// damage/sec baseline. This file covers its base stats and Hazard Path
+// (path 1) specifically — see test/corpse-flower-acid-path.test.js and
+// test/corpse-flower-growth-path.test.js for its other two paths. Hazard
 // Path's own attackDamage is an ABSOLUTE replace per tier (20/25/30/45),
 // a different convention from the compounding damageMultiplier every
 // other tower's paths use — see towers.js's own comment on why. Tiers 2+
@@ -44,12 +44,12 @@ test('Corpse Flower costs $750 and deals 10 damage/sec baseline, with no gas clo
   assert.equal(tower.hasSpikes, false);
 });
 
-test('only paths 2 and 3 are undesigned — Hazard Path (path 1) is real', () => {
+test('all 3 of Corpse Flower\'s paths are real', () => {
   const game = loadFullGameContext();
   const tower = game.createTower('corpseFlower');
   assert.ok(game.getAvailableUpgrade(tower, 0)); // Hazard Path
-  assert.equal(game.getAvailableUpgrade(tower, 1), null); // not yet designed
-  assert.equal(game.getAvailableUpgrade(tower, 2), null); // not yet designed
+  assert.ok(game.getAvailableUpgrade(tower, 1)); // Acidic Mixture Path
+  assert.ok(game.getAvailableUpgrade(tower, 2)); // Growth Path
 });
 
 // --- Hazard Path tiers -------------------------------------------------

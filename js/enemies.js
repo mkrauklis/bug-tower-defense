@@ -471,10 +471,10 @@ function getActiveRoster() {
 // Threshold calibration — pulled every attacking path's real per-hit
 // damage at each of its own 4 tiers from towers.js (Sunflower's Solar/
 // Fire/Storm, Rose's Thorn/Root/Projectile, Mushroom's Decay; Enable
-// Path buffs OTHER towers rather than the Mushroom's own hit, Infect
-// Path deals no damage at all, and Coneflower never attacks — none of
-// those three have a "per-hit damage" to calibrate against, so they're
-// excluded from this comparison on purpose, not an oversight):
+// Path buffs OTHER towers rather than the Mushroom's own hit, and Infect
+// Path deals no damage at all — neither has a "per-hit damage" to
+// calibrate against, so they're excluded from this comparison on
+// purpose, not an oversight):
 //   tier1 hits: Solar 10, Fire 5, Storm 5, Thorn 4, Root 6, Projectile 6, Decay 3
 //   tier2 hits: Solar 15, Fire 10, Storm 5, Thorn 8, Root 12, Projectile 6, Decay 3
 //   tier3 hits: Solar 30, Fire 20, Storm 5, Thorn 16, Root 24, Projectile 6, Decay 7.5
@@ -755,10 +755,9 @@ function getTotalWaveSize(round) {
 //
 // bounty (generateWave() below) scales by this exact same multiplier, on
 // both regular enemies and bosses, so a kill's reward keeps pace with how
-// much tankier that enemy actually is at this round AND on this map — see
-// this function's own history above for why that matters (Coneflower's
-// passive income would otherwise float free of either axis of
-// difficulty). The one acknowledged side effect: the INDIVIDUAL per-type
+// much tankier that enemy actually is at this round AND on this map,
+// rather than staying flat while the enemy itself keeps getting harder to
+// kill. The one acknowledged side effect: the INDIVIDUAL per-type
 // health re-tune this same pass also applied directly to every regular
 // roster entry's own stored health (see each roster's own comment) was
 // NOT mirrored onto bounty — a re-tuned enemy is tankier per dollar

@@ -226,54 +226,11 @@ const SHOP_ITEMS = [
   { typeKey: 'sunflower', name: 'Sunflower', cost: 50 }, // was 25
   { typeKey: 'rose', name: 'Rose', cost: 90 }, // was 45
   { typeKey: 'mushroom', name: 'Mushroom', cost: 150 }, // was 75
-  { typeKey: 'coneflower', name: 'Coneflower', cost: 500 }, // was 250
   { typeKey: 'corpseFlower', name: 'Corpse Flower', cost: 750 }, // direct request — a brand-new 5th base tower
 ];
 
-// Coneflower-specific, on top of the doubling above: every time ANY
-// Coneflower on the map reaches tier 4 on either of its paths, the
-// placement cost of every FUTURE Coneflower purchase doubles again,
-// globally, for the rest of the run (see the upgrade-purchase handler in
-// activateRegion() below, which increments this). A running multiplier
-// rather than a flat per-tower cost, specifically to make spamming many
-// maxed-out Coneflowers for runaway income increasingly expensive — it
-// does NOT touch upgrade costs, only the shop price of a brand new one.
-let coneflowerTier4Count = 0;
-
 function getShopItemCost(item) {
-  if (item.typeKey === 'coneflower') return item.cost * 2 ** coneflowerTier4Count;
   return item.cost;
-}
-
-// Coneflower's Coupons Path: the strongest active placement discount
-// reaching (x, y) right now — "strongest" = highest discountPercent among
-// every Coupons-path Coneflower whose own discountRadius reaches that
-// point, non-stacking (a point in range of several gets the single best
-// discount, not a sum — see towers.js's own comment on why, on the Coupons
-// Path's TOWER_TYPES entry). Read fresh every call, same as every other
-// live aura lookup in this file (getStrongestAuraFor() for Mushroom's
-// Enable Path is the direct precedent) — never cached on any tower.
-function getStrongestDiscountPercentAt(x, y) {
-  let best = 0;
-  towers.forEach((tower) => {
-    if (!tower.discountPercent) return;
-    if (Math.hypot(tower.x - x, tower.y - y) > tower.discountRadius) return;
-    best = Math.max(best, tower.discountPercent);
-  });
-  return best;
-}
-
-// getShopItemCost() above is an item's base price — what the shop tile
-// itself displays, independent of where the player might end up placing
-// it (the tile has no position to check an aura against). This is the
-// REAL price at a specific spot, applying the Coupons Path discount (if
-// any) reaching there — used by the actual placement/affordability checks
-// (handleCanvasTap, the hover-preview buildable check in render()), not by
-// anything that only needs the tile's own listed price.
-function getShopItemCostAt(item, x, y) {
-  const base = getShopItemCost(item);
-  const discountPercent = getStrongestDiscountPercentAt(x, y);
-  return Math.round(base * (1 - discountPercent / 100));
 }
 
 // The Fungal Mess's reanimated purple zombie deals this flat amount when it
@@ -298,8 +255,8 @@ function getProdigyTypeKeyFor(baseTypeKey) {
 // none applies — re-checked fresh every call (not cached), same as every
 // other live UI-gating function in this file. null covers every reason a
 // tower might not have one: it's not maxed yet, its base type doesn't have
-// a Prodigy at all (Coneflower), or that Prodigy is already capped at 1 on
-// the field (independent per type — a maxed Rose never blocks a maxed
+// a Prodigy at all (Corpse Flower), or that Prodigy is already capped at 1
+// on the field (independent per type — a maxed Rose never blocks a maxed
 // Sunflower's own option, and vice versa).
 function getProdigyOption(tower) {
   if (!tower || tower.upgradesPurchased < 4) return null;
@@ -487,15 +444,16 @@ function renderConsumedTowerEffects(ctx) {
   });
 }
 
-// A small, generic floating-text popup system — built for Coneflower's
-// "+$X" income ticks, but deliberately not Coneflower-specific: anything
-// that wants a brief rising/fading label (a future damage number, a
-// bonus-effect callout, etc.) can call spawnFloatingText() too, instead
-// of building its own one-off version of this. Each entry rises a fixed
-// distance and fades out linearly over FLOATING_TEXT_DURATION; `color` is
-// a full ctx.fillStyle-ready string (so callers can pass rgba() directly
-// if they want their own fade curve, though the default alpha fade here
-// covers the common case).
+// A small, generic floating-text popup system — originally built for the
+// (since-removed) Coneflower's "+$X" income ticks, kept as reusable,
+// genuinely generic infrastructure rather than deleted outright: anything
+// that wants a brief rising/fading label (a damage number, a bonus-effect
+// callout, etc.) can call spawnFloatingText() without building its own
+// one-off version of this. Each entry rises a fixed distance and fades
+// out linearly over FLOATING_TEXT_DURATION; `color` is a full
+// ctx.fillStyle-ready string (so callers can pass rgba() directly if they
+// want their own fade curve, though the default alpha fade here covers
+// the common case).
 const FLOATING_TEXT_DURATION = 1;
 const FLOATING_TEXT_RISE = 30; // px risen over its full lifetime
 let floatingTexts = [];
@@ -1073,53 +1031,6 @@ function updateTowerVines(tower, x, y, deltaSeconds) {
   }
 }
 
-// Generic passive-income payout — every tower with a positive incomeRate
-// pays out that many dollars, as a lump sum, once every
-// incomeTickInterval seconds (1 by default; Coneflower's Overgrowth Path
-// is the only thing that ever shortens it — see towers.js's
-// purchaseUpgrade()). A discrete per-tick payout rather than a smooth
-// per-second accrual specifically because Overgrowth Path's "X% faster"
-// tiers need an actual interval to shorten; for every other tower
-// (always a 1-second interval), the end result is the same total $ per
-// real second either way. Deliberately has no Coneflower-specific code:
-// a future income-generating tower just needs its own nonzero incomeRate
-// and this already covers it, Overgrowth-style variable intervals
-// included.
-//
-// Gated on activeEnemies.length > 0 — the exact same condition the manual
-// "Next Round" button's own waveInProgress check already uses (see
-// renderWaveSection()) — so income ticks only while a wave is actually
-// happening: not idle at the menu (MENU_STATES don't call update() at
-// all), not between waves waiting on Next Round, and no separate "paused"
-// check is needed since nothing calls update() while the tab isn't
-// animating anyway. In Sandbox this also means it ticks whenever a
-// manually-spawned test enemy is alive — harmless, given Sandbox's
-// existing "unlimited money, no consequences" philosophy. Horde Mode
-// counts too: this runs before its early-return below, since Horde's
-// enemies are "a wave" just as much as a normal round's are.
-//
-// The "+$X" floating-text popup (spawnFloatingText(), above) fires on
-// the exact same tick as the payout itself — there's no separate cosmetic
-// timer for it, since the payout already has a real discrete event to
-// hang a popup off. Showing it at the tower's own current incomeRate
-// means it stays correct through every upgrade tier automatically.
-function updateTowerIncome(deltaSeconds) {
-  if (activeEnemies.length === 0) return;
-  towers.forEach((tower) => {
-    if (tower.incomeRate <= 0) return;
-    tower.incomeTickCooldown -= deltaSeconds;
-    // A `while`, not an `if` — a long enough deltaSeconds (a lag spike, or
-    // a test driving many seconds in one call) could otherwise cross a
-    // short Overgrowth-Path interval more than once and silently drop a
-    // payout instead of catching up.
-    while (tower.incomeTickCooldown <= 0) {
-      tower.incomeTickCooldown += tower.incomeTickInterval;
-      money += tower.incomeRate;
-      spawnFloatingText(tower.x, tower.y - getTowerVisualSize(tower), `+$${tower.incomeRate}`);
-    }
-  });
-}
-
 function update(deltaSeconds) {
   animationTime += deltaSeconds;
   updateWildlife(wildlife, deltaSeconds);
@@ -1162,7 +1073,6 @@ function update(deltaSeconds) {
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
   updateProjectiles(deltaSeconds);
   updateConsumedTowerEffects(deltaSeconds);
-  updateTowerIncome(deltaSeconds);
   updateFloatingTexts(deltaSeconds);
 
   // Horde Mode has no wave boundary to auto-continue across — it paces
@@ -1259,7 +1169,7 @@ function render() {
 
   if (selectedShopItem && mouseX !== null && isWorldPoint(mouseX, mouseY)) {
     const buildable =
-      canAfford(getShopItemCostAt(selectedShopItem, mouseX, mouseY)) &&
+      canAfford(getShopItemCost(selectedShopItem)) &&
       !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
       !isTowerPlacementBlocked(mouseX, mouseY, selectedShopItem.typeKey);
     ctx.fillStyle = buildable ? 'rgba(76, 175, 80, 0.4)' : 'rgba(229, 57, 53, 0.4)';
@@ -1343,11 +1253,10 @@ function renderShopSection(ctx, x, width, startY) {
   ctx.fillStyle = '#c0ca33';
   ctx.font = '13px sans-serif';
   ctx.textAlign = 'right';
-  // Floored defensively rather than assumed-integer — updateTowerIncome()
-  // pays out in discrete whole-dollar lump sums (not a smooth per-frame
-  // accrual), so `money` should already be a whole number in practice,
-  // but flooring here costs nothing and guards against any future income
-  // source that isn't quite so tidy.
+  // Floored defensively rather than assumed-integer — `money` should
+  // already be a whole number in practice (bounties round to the
+  // nearest dollar), but flooring here costs nothing and guards against
+  // any future source that isn't quite so tidy.
   ctx.fillText(currentMode && currentMode.sandbox ? '∞' : `$${Math.floor(money)}`, x + width, y + 1);
   ctx.textAlign = 'left';
   y += 26;
@@ -1429,24 +1338,6 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
           selectedTower.thornShotPoison ? ', poisons' : ''
         }`
       : 'none';
-    // Shown for every tower (0/'none' for every type but Coneflower today),
-    // same "always listed, defaults to none" convention as every other
-    // stat line here — not hidden behind a type check.
-    // "$X/sec" reads fine at the default 1-second tick interval (the
-    // common case); Overgrowth Path towers shorten that interval, so they
-    // get the literal "$X every Ys" phrasing instead once it's not 1.
-    const incomeText =
-      selectedTower.incomeRate > 0
-        ? selectedTower.incomeTickInterval === 1
-          ? `$${selectedTower.incomeRate}/sec while a wave is active`
-          : `$${selectedTower.incomeRate} every ${selectedTower.incomeTickInterval.toFixed(2)}s while a wave is active`
-        : 'none';
-    // Coneflower's Coupons Path only — same "always listed, defaults to
-    // none" convention as Income above.
-    const discountText =
-      selectedTower.discountPercent > 0
-        ? `${selectedTower.discountPercent}% off towers placed within ${selectedTower.discountRadius}px`
-        : 'none';
     const lines = [
       `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
       `Size: ${selectedTower.stats.size.toFixed(1)}`,
@@ -1458,8 +1349,6 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
       `Vines: ${vineText}`,
       `Roots: ${rootsText}`,
       `Thorn Shot: ${thornShotText}`,
-      `Income: ${incomeText}`,
-      `Discount: ${discountText}`,
     ];
     y = uiDrawTextLines(ctx, lines, x, y, 14, '#ccc', '12px sans-serif') + 8;
   }
@@ -2544,18 +2433,6 @@ function activateRegion(region) {
       money -= upgrade.cost;
       selectedTower.moneySpent += upgrade.cost;
       if (upgrade.effects.consumeTowersInRange) consumeTowersInRange(selectedTower);
-      // Direct request: every time ANY Coneflower reaches tier 4 on
-      // either of its paths (Quality Path's Perfect Condition or
-      // Overgrowth Path's Plantation — upgradesPurchased hitting 4 is
-      // the same signal regardless of which path got it there), the
-      // BASE PLACEMENT cost of buying a brand new Coneflower doubles,
-      // globally, for the rest of the game — see
-      // getConeflowerPlacementCost() below. Meant to stop spamming many
-      // maxed Coneflowers for runaway income, not to discourage maxing
-      // out the one you already have.
-      if (selectedTower.type === 'coneflower' && selectedTower.upgradesPurchased === 4) {
-        coneflowerTier4Count += 1;
-      }
     }
     return;
   }
@@ -2663,7 +2540,7 @@ function findTowerAt(x, y) {
 // instead (see the click/touch handlers).
 function handleCanvasTap(x, y) {
   if (selectedShopItem) {
-    const cost = getShopItemCostAt(selectedShopItem, x, y);
+    const cost = getShopItemCost(selectedShopItem);
     if (!canAfford(cost)) return;
     if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
     if (isTowerPlacementBlocked(x, y, selectedShopItem.typeKey)) return;

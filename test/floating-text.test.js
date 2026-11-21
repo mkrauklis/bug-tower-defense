@@ -3,11 +3,11 @@ const assert = require('node:assert/strict');
 const { loadFullGameContext } = require('./support/loadGame');
 
 // A small, generic floating-text popup system (spawnFloatingText/
-// updateFloatingTexts/renderFloatingTexts, game.js) — built for
-// Coneflower's "+$X" income ticks, but not Coneflower-specific: anything
-// wanting a brief rising/fading label can reuse it. These tests cover the
-// generic helper itself; coneflower-income.test.js covers its specific
-// use there.
+// updateFloatingTexts/renderFloatingTexts, game.js) — originally built
+// for the since-removed Coneflower's "+$X" income ticks, kept as
+// reusable generic infrastructure: anything wanting a brief rising/
+// fading label can call spawnFloatingText(). These tests cover the
+// generic helper itself, independent of any one caller.
 
 test('spawnFloatingText adds an entry with the given position/text/color and a full lifetime remaining', () => {
   const game = loadFullGameContext();

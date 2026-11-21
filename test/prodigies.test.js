@@ -4,8 +4,9 @@ const { loadFullGameContext } = require('./support/loadGame');
 
 // Prodigies (direct request, reworked mid-build from an earlier standalone-
 // tower design into an UPGRADE instead): a 4th, ultimate tier per base
-// type (Sunflower/Rose/Mushroom — explicitly NOT Coneflower). Once a tower
-// reaches tier 4 on its own chosen path, it can be upgraded ONE MORE TIME
+// type (Sunflower/Rose/Mushroom — explicitly NOT Corpse Flower, and NOT
+// the since-removed Coneflower either). Once a tower reaches tier 4 on
+// its own chosen path, it can be upgraded ONE MORE TIME
 // into its Prodigy form, which replaces it in place on the field (same
 // spot, no separate shop purchase/placement) rather than requiring a
 // brand-new tower. Each Prodigy is capped at 1 on the field at a time,
@@ -91,9 +92,9 @@ test('the option names the right Prodigy per base type, at its own real cost', (
   assert.deepEqual(mushroomOption, { typeKey: 'fungalMess', name: 'The Fungal Mess', cost: 60000 });
 });
 
-test('Coneflower never gets a Prodigy option, even fully maxed — it doesn\'t have one', () => {
+test('Corpse Flower never gets a Prodigy option, even fully maxed — it doesn\'t have one', () => {
   const game = loadFullGameContext();
-  const tower = maxedTower(game, 'coneflower');
+  const tower = maxedTower(game, 'corpseFlower');
   assert.equal(game.getProdigyOption(tower), null);
 });
 
@@ -280,36 +281,41 @@ test('the full same-type-destruction step (what activateRegion runs once confirm
   );
 });
 
-// --- The Sunlit Conductor (Sunflower's Prodigy): 130 dps continuous ray --
+// --- The Sunlit Conductor (Sunflower's Prodigy): ~429 dps continuous ray -
+// Balance pass (direct request: "make prodigies actually worth the
+// money"): damage/speed buffed from the original 65 dmg/0.5s (130 dps)
+// so it clearly outpaces a maxed Fire Path Sunflower's own ~90-130 dps.
 
-test('The Sunlit Conductor deals 65 damage per hit via a continuous ray — instant, no projectile travel time', () => {
+test('The Sunlit Conductor deals 150 damage per hit via a continuous ray — instant, no projectile travel time', () => {
   const game = loadFullGameContext();
   const tower = game.createTower('sunlitConductor');
   tower.x = 0;
   tower.y = 0;
   assert.equal(tower.attackType, 'ray');
-  assert.equal(tower.stats.damage, 65);
-  assert.equal(tower.stats.attackInterval, 0.5); // Prodigies attack 2x faster — 65 every 0.5s = 130 dps
+  assert.equal(tower.stats.damage, 150);
+  assert.equal(tower.stats.attackInterval, 0.35); // 150 every 0.35s = ~429 dps
 
   const target = makeTestEnemy({ x: 100, y: 0 });
   game.getActiveEnemies().push(target);
 
   game.updateTowerAttack(tower, tower.x, tower.y, 1 / 60);
 
-  assert.equal(target.health, 100000 - 65); // applied immediately, not carried by a projectile
+  assert.equal(target.health, 100000 - 150); // applied immediately, not carried by a projectile
   assert.equal(game.getProjectiles().length, 0);
 });
 
-// --- The Mangler (Rose's Prodigy): 80 dps continuous + periodic grab -----
+// --- The Mangler (Rose's Prodigy): ~286 dps continuous + periodic grab ---
+// Same balance pass as the Sunlit Conductor above: damage/speed/grab all
+// buffed from the original 40 dmg/0.5s (80 dps) + 50-dmg/5s grab.
 
-test('The Mangler\'s base attack deals 40 damage per second as an ordinary thrown projectile', () => {
+test('The Mangler\'s base attack deals 100 damage per second as an ordinary thrown projectile', () => {
   const game = loadFullGameContext();
   const tower = game.createTower('mangler');
   tower.x = 0;
   tower.y = 0;
   assert.equal(tower.attackType, 'projectile'); // no baseAttackType override — same delivery as every base tower
-  assert.equal(tower.stats.damage, 40);
-  assert.equal(tower.stats.attackInterval, 0.5); // Prodigies attack 2x faster — 40 every 0.5s = 80 dps
+  assert.equal(tower.stats.damage, 100);
+  assert.equal(tower.stats.attackInterval, 0.35); // 100 every 0.35s = ~286 dps
 
   const target = makeTestEnemy({ x: 100, y: 0 });
   game.getActiveEnemies().push(target);
@@ -317,14 +323,14 @@ test('The Mangler\'s base attack deals 40 damage per second as an ordinary throw
   game.updateTowerAttack(tower, tower.x, tower.y, 1 / 60);
   for (let i = 0; i < 30; i += 1) game.updateProjectiles(1 / 60);
 
-  assert.equal(target.health, 100000 - 40);
+  assert.equal(target.health, 100000 - 100);
 });
 
 test('The Mangler never grabs instantly — grabCooldown starts at the full interval', () => {
   const game = loadFullGameContext();
   const tower = game.createTower('mangler');
-  assert.equal(tower.grabInterval, 5);
-  assert.equal(tower.grabDamage, 50);
+  assert.equal(tower.grabInterval, 3);
+  assert.equal(tower.grabDamage, 120);
   assert.equal(tower.grabDuration, 1);
   assert.equal(tower.grabCooldown, tower.grabInterval);
 });
@@ -376,10 +382,14 @@ test('the grab\'s bonus damage is additive on top of the continuous attack, not 
 
   for (let i = 0; i < 30; i += 1) game.updateProjectiles(1 / 60); // let the main attack's projectile land too
 
-  assert.equal(target.health, 100000 - tower.grabDamage - tower.stats.damage); // 50 + 40 = 90 total
+  assert.equal(target.health, 100000 - tower.grabDamage - tower.stats.damage); // 120 + 100 = 220 total
 });
 
-// --- The Fungal Mess (Mushroom's Prodigy): 50/hit + reanimation ----------
+// --- The Fungal Mess (Mushroom's Prodigy): 325 dps + reanimation ---------
+// Same balance pass: damage/speed buffed from the original 50 dmg/0.5s
+// (100 dps) — Mushroom's own lineage (Decay Path) is the weakest in the
+// roster on raw DPS, so this buff alone makes Fungal Mess a clear win
+// without also needing a bigger reanimateChance.
 
 function makeReanimatingFungalMess(game, chance) {
   const tower = game.createTower('fungalMess');
@@ -387,11 +397,11 @@ function makeReanimatingFungalMess(game, chance) {
   return tower;
 }
 
-test('The Fungal Mess deals 50 damage per hit at 2x Mushroom\'s normal cadence, and has its real 15% reanimateChance by default', () => {
+test('The Fungal Mess deals 130 damage per hit at its own faster cadence, and has its real 15% reanimateChance by default', () => {
   const game = loadFullGameContext();
   const tower = game.createTower('fungalMess');
-  assert.equal(tower.stats.damage, 50);
-  assert.equal(tower.stats.attackInterval, 0.5); // Prodigies attack 2x faster — 50 every 0.5s = 100 dps
+  assert.equal(tower.stats.damage, 130);
+  assert.equal(tower.stats.attackInterval, 0.4); // 130 every 0.4s = 325 dps
   assert.equal(tower.attackType, 'projectile');
   assert.equal(tower.reanimateChance, 0.15);
 });

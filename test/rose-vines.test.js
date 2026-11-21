@@ -97,7 +97,7 @@ test('multiple vines can all hit the same single nearby enemy in one tick', () =
   tower.x = 0;
   tower.y = 0;
   game.purchaseUpgrade(tower, 0); // Thorns (1 vine)
-  game.purchaseUpgrade(tower, 0); // Puncture (2 vines total, damage x2)
+  game.purchaseUpgrade(tower, 0); // Puncture (2 vines total, vine damage 2 -> 4)
   tower.attackCooldown = 999;
 
   const target = makeTestEnemy({ x: 50, y: 0 });
