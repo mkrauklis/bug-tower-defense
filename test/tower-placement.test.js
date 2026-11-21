@@ -84,10 +84,10 @@ test('the placement-collision check applies in Sandbox mode too, not just normal
   assert.equal(game.getTowers().length, 1);
 });
 
-test('base placement costs were doubled for all 4 towers', () => {
+test('base placement costs were doubled for all 4 original towers, plus Corpse Flower\'s own $750', () => {
   const game = loadFullGameContext();
   const costs = Object.fromEntries(game.SHOP_ITEMS.map((item) => [item.typeKey, item.cost]));
-  assert.deepEqual(costs, { sunflower: 50, rose: 90, mushroom: 150, coneflower: 500 });
+  assert.deepEqual(costs, { sunflower: 50, rose: 90, mushroom: 150, coneflower: 500, corpseFlower: 750 });
 });
 
 test('starting money is $75', () => {

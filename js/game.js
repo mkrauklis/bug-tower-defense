@@ -174,6 +174,7 @@ const SHOP_ITEMS = [
   { typeKey: 'rose', name: 'Rose', cost: 90 }, // was 45
   { typeKey: 'mushroom', name: 'Mushroom', cost: 150 }, // was 75
   { typeKey: 'coneflower', name: 'Coneflower', cost: 500 }, // was 250
+  { typeKey: 'corpseFlower', name: 'Corpse Flower', cost: 750 }, // direct request — a brand-new 5th base tower
 ];
 
 // Coneflower-specific, on top of the doubling above: every time ANY
@@ -694,7 +695,26 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.hasThornShot) updateTowerThornShot(tower, x, y, deltaSeconds);
   if (tower.infectStun) updateTowerInfectStun(tower, x, y, deltaSeconds);
   if (tower.grabInterval > 0) updateTowerGrab(tower, x, y, deltaSeconds);
+  if (tower.gasCloud) updateTowerGasCloud(tower, x, y, deltaSeconds);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
+}
+
+// Corpse Flower's Hazard Path (tier 2+) gas cloud: every
+// GAS_CLOUD_TICK_INTERVAL (towers.js — a fixed 0.2s, never itself changed
+// per tier), damages every enemy currently standing within the cloud's
+// own radius — completely independent of the tower's normal attack/
+// targeting (no findNearestEnemyInRange, no cooldown shared with
+// attackCooldown): a persistent AoE zone, not a second shot. A new,
+// reusable mechanic (distinct from Mushroom's non-damaging buff/debuff
+// aura) — any future tower wanting the same "always-on damage zone
+// centered on itself" behavior just needs its own gasCloud/
+// gasCloudCooldown fields (see createTower() in towers.js).
+function updateTowerGasCloud(tower, x, y, deltaSeconds) {
+  tower.gasCloudCooldown -= deltaSeconds;
+  if (tower.gasCloudCooldown > 0) return;
+  tower.gasCloudCooldown = GAS_CLOUD_TICK_INTERVAL;
+
+  getEnemiesInRadius(x, y, tower.gasCloud.radius).forEach((enemy) => damageEnemy(enemy, tower.gasCloud.damagePerTick));
 }
 
 // The Mangler (Rose's Prodigy) only: every grabInterval seconds, grabs one

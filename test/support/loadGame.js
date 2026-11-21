@@ -224,6 +224,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getConsumedTowerEffects: () => consumedTowerEffects,
       getProdigyOption, getProdigyTypeKeyFor,
       PRODIGY_BASE_TYPE, updateTowerGrab, turnIntoPurpleZombie,
+      updateTowerGasCloud, GAS_CLOUD_TICK_INTERVAL,
     };
     `,
     context

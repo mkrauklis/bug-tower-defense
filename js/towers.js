@@ -744,6 +744,85 @@ const TOWER_TYPES = {
       },
     ],
   },
+  // Corpse Flower (direct request): a brand-new 5th base tower, $750 to
+  // place, 10 damage/sec baseline. Like every other tower it has 3
+  // mutually-exclusive paths, but only the first (Hazard Path) has been
+  // designed so far — the user is adding the other two in later follow-
+  // ups, same one-path-at-a-time pattern Mushroom's and Coneflower's own
+  // paths already arrived in, so paths 2/3 are left null exactly like
+  // theirs were before their own later tiers landed.
+  corpseFlower: {
+    name: 'Corpse Flower',
+    baseStats: {
+      damage: 10,
+      size: 26, // big and fleshy — see drawCorpseFlower()
+      color: '#7a2e3a', // a deep maroon, the real corpse flower's own color
+      range: 160,
+      attackInterval: 1, // 10 damage once a second = 10 dps baseline, the literal spec
+    },
+    upgradePaths: [
+      {
+        name: 'Hazard Path',
+        upgrades: [
+          {
+            name: 'Hazard',
+            description: 'Corpse Flower turns more green and grows spikes; base attack damage becomes 20/sec.',
+            cost: 1500,
+            // attackDamage is an ABSOLUTE replace, same convention as
+            // income/zombifyChance/aura below — the spec states each
+            // tier's own new damage outright ("it deals 20 damage now"),
+            // not a multiplier on the last. Deliberately a different key
+            // from the existing damageMultiplier (which COMPOUNDS) so the
+            // two conventions never get confused with each other.
+            effects: { attackDamage: 20, hasSpikes: true, color: '#5a7a3a' },
+          },
+          {
+            name: 'Pre-caution',
+            description:
+              'Corpse Flower turns completely green and grows slightly taller; a deadly gas now circles it, dealing 3 damage every 0.2s (15 dps) to anything standing inside it — independent of, and on top of, its own attack, which becomes 25/sec.',
+            cost: 4000,
+            // gasCloud is a whole-object REPLACE (same convention as
+            // puddle/aura/infectStun above) — a persistent, always-on
+            // AoE damage zone centered on the tower itself, distinct
+            // from its own attack/range. See updateTowerGasCloud() in
+            // game.js; GAS_CLOUD_TICK_INTERVAL (this file) is the fixed
+            // 0.2s cadence every tier shares — only damagePerTick/radius/
+            // color change tier to tier, never the interval itself.
+            effects: {
+              attackDamage: 25,
+              color: '#3d6b2e',
+              gasCloud: { radius: 70, damagePerTick: 3, color: 'rgba(124, 179, 66, 0.4)' },
+            },
+          },
+          {
+            name: 'Eminent Chamber',
+            description:
+              'Corpse Flower glows, and the gas around it grows and now deals 5 damage every 0.2s (25 dps); its own attack becomes 30/sec.',
+            cost: 8500,
+            effects: {
+              attackDamage: 30,
+              glow: '#8bc34a',
+              gasCloud: { radius: 100, damagePerTick: 5, color: 'rgba(124, 179, 66, 0.4)' },
+            },
+          },
+          {
+            name: 'Gas Leak',
+            description:
+              'Corpse Flower grows taller, turns yellow, and glows more; its gas turns bright yellow and now deals 7 damage every 0.2s (35 dps); its own attack becomes 45/sec.',
+            cost: 15000,
+            effects: {
+              attackDamage: 45,
+              color: '#c9a227',
+              glow: '#ffeb3b',
+              gasCloud: { radius: 100, damagePerTick: 7, color: 'rgba(255, 235, 59, 0.45)' },
+            },
+          },
+        ],
+      },
+      null, // Path 2 — not yet designed
+      null, // Path 3 — not yet designed
+    ],
+  },
   // Prodigies (direct request, reworked from an earlier standalone-tower
   // design to an UPGRADE instead): one ultimate, 4th-tier form per base
   // type (Sunflower/Rose/Mushroom — Coneflower doesn't get one, it's a
@@ -831,6 +910,12 @@ const PRODIGY_BASE_TYPE = {
   mangler: 'rose',
   fungalMess: 'mushroom',
 };
+
+// Corpse Flower's Hazard Path gas cloud (and any future tower's own gas-
+// cloud-style mechanic) always ticks on this fixed cadence — only a
+// tier's damagePerTick/radius/color ever change, never the interval
+// itself (see each tier's own effects.gasCloud in TOWER_TYPES above).
+const GAS_CLOUD_TICK_INTERVAL = 0.2;
 
 function createTower(typeKey) {
   const type = TOWER_TYPES[typeKey];
@@ -993,6 +1078,18 @@ function createTower(typeKey) {
     // percent itself grows) — see purchaseUpgrade()'s own comment.
     discountPercent: 0,
     discountRadius: 0,
+    // Corpse Flower's Hazard Path only. hasSpikes is purely visual (tier 1
+    // and up, drawCorpseFlower()). gasCloud (tier 2 and up) is a whole-
+    // object {radius, damagePerTick, color}, null until then — a
+    // persistent, always-on AoE damage zone centered on the tower,
+    // distinct from its own attack entirely (see updateTowerGasCloud() in
+    // game.js, and GAS_CLOUD_TICK_INTERVAL above for the fixed cadence it
+    // ticks on). gasCloudCooldown counts down to the next tick the same
+    // "don't fire instantly on purchase" way every other periodic effect
+    // in this file already does.
+    hasSpikes: false,
+    gasCloud: null,
+    gasCloudCooldown: 0,
     // The Mangler (Rose's Prodigy) only: every grabInterval seconds,
     // grabs one random non-boss enemy in range for grabDamage bonus
     // damage, holding it immobilized for grabDuration — on top of (not
@@ -1166,6 +1263,16 @@ function purchaseUpgrade(tower, pathIndex) {
   // mention it again, so there's nothing to overwrite it with.
   if (effects.discountPercent !== undefined) tower.discountPercent = effects.discountPercent;
   if (effects.discountRadius !== undefined) tower.discountRadius = effects.discountRadius;
+
+  // Corpse Flower's Hazard Path: attackDamage is an absolute replace (see
+  // its own TOWER_TYPES comment for why this is a different key from the
+  // compounding damageMultiplier every other tower's paths use).
+  if (effects.attackDamage !== undefined) tower.stats.damage = effects.attackDamage;
+  if (effects.hasSpikes) tower.hasSpikes = true;
+  if (effects.gasCloud) {
+    tower.gasCloud = effects.gasCloud;
+    tower.gasCloudCooldown = GAS_CLOUD_TICK_INTERVAL; // don't fire instantly on purchase
+  }
 
   // Coneflower's Overgrowth Path: numPlants/perPlantCash each compound or
   // get set independently (see each field's own comment on createTower()
@@ -1376,6 +1483,27 @@ function renderTower(ctx, tower, x, y, time) {
       // species art — chosenPath + upgradesPurchased directly, no extra
       // per-tier boolean fields needed on the tower itself.
       tower.chosenPath === 2 ? tower.upgradesPurchased : 0
+    );
+  } else if (tower.type === 'corpseFlower') {
+    // The gas cloud is drawn first/behind the tower itself — a backdrop
+    // the flower sits inside, same "ambient effect renders under the
+    // tower's own body" convention the Prodigies' own backdrops
+    // (drawRotatingSun, drawManglerVines, drawFungalMessMist) already use.
+    if (tower.gasCloud) drawGasCloud(ctx, x, y, tower.gasCloud.radius, tower.gasCloud.color, time);
+    drawCorpseFlower(
+      ctx,
+      x,
+      y,
+      size,
+      tower.stats.color,
+      tower.glow,
+      time,
+      flashAmount,
+      tower.hasSpikes,
+      // Hazard Path's own tiered height growth is gated the same way
+      // Coupons Path's (above) and Infect Path's own tiered art are —
+      // chosenPath + upgradesPurchased directly, no extra per-tier field.
+      tower.chosenPath === 0 ? tower.upgradesPurchased : 0
     );
   } else if (tower.type === 'sunlitConductor') {
     drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
@@ -2344,6 +2472,125 @@ function drawConeflower(
   }
   if (hasRedMist) drawConeflowerRedMist(ctx, x, y, size, time);
   if (couponTier >= 1) drawConeflowerRoots(ctx, x, y, groundY, size, couponTier);
+
+  ctx.restore();
+}
+
+// --- Corpse Flower -------------------------------------------------------
+
+// A persistent, slowly pulsing filled circle plus a dashed outline ring —
+// the Hazard Path's gas cloud (tier 2+), a genuinely new reusable mechanic
+// (a tower-centered, always-on AoE damage zone, independent of the
+// tower's own attack — see updateTowerGasCloud() in game.js) distinct
+// from every existing aura/puddle/pulse visual in this file: unlike
+// Mushroom's auraRingRadius (a thin dashed ring only, no fill, and it
+// doesn't deal damage itself), Sunflower's puddle (spawned at a target's
+// location and expires), or Storm Path's shockwave (a single brief
+// expanding/fading pulse), this one sits fixed on the tower and is
+// visibly, continuously "there" the whole time it's active.
+function drawGasCloud(ctx, x, y, radius, color, time) {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.2);
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.18 + pulse * 0.1;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 6]);
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// The bulbous, mottled "head" (really a spathe wrapped around a central
+// spadix, like a real corpse flower) — blotchy darker patches for the
+// mottling, a frilly folded edge around the rim, and (Hazard Path tier 1
+// and up) a ring of small triangular spikes poking out past that edge.
+function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.6, size * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(color, -20);
+  [[-0.2, -0.15], [0.25, 0.1], [-0.1, 0.3], [0.15, -0.3]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.ellipse(x + dx * size, y + dy * size, size * 0.18, size * 0.13, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = shadeColor(color, 12);
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(size * 0.3, 0);
+    ctx.quadraticCurveTo(size * 0.75, -size * 0.18, size * 0.85, 0);
+    ctx.quadraticCurveTo(size * 0.75, size * 0.18, size * 0.3, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (hasSpikes) {
+    ctx.fillStyle = shadeColor(color, -32);
+    for (let i = 0; i < 8; i += 1) {
+      const angle = (i / 8) * Math.PI * 2 + 0.3;
+      const bx = x + Math.cos(angle) * size * 0.58;
+      const by = y + Math.sin(angle) * size * 0.52;
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(0, -size * 0.08);
+      ctx.lineTo(size * 0.22, 0);
+      ctx.lineTo(0, size * 0.08);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+// Corpse Flower's base tower art: a thick fleshy stem (growing taller at
+// Hazard Path tiers 2 and 4 — "grows slightly taller"/"grows taller" —
+// via hazardTier, the same chosenPath+upgradesPurchased tier-gating
+// Coupons Path and Infect Path already use, no extra per-tier field
+// needed) topped with the mottled head above.
+function drawCorpseFlower(ctx, x, y, size, color, glow, time, flashAmount, hasSpikes, hazardTier) {
+  const heightMultiplier = hazardTier >= 4 ? 1.5 : hazardTier >= 2 ? 1.2 : 1;
+  const stemHeight = size * 0.9 * heightMultiplier;
+  const groundY = y + stemHeight;
+  const sway = Math.sin(time * 1 + x * 0.009) * 0.04;
+
+  ctx.save();
+  ctx.translate(x, groundY);
+  ctx.rotate(sway);
+  ctx.translate(-x, -groundY);
+
+  ctx.fillStyle = '#4a3a2a';
+  ctx.strokeStyle = '#2e2318';
+  ctx.lineWidth = 1;
+  ctx.fillRect(x - size * 0.1, y, size * 0.2, stemHeight);
+  ctx.strokeRect(x - size * 0.1, y, size * 0.2, stemHeight);
+
+  ctx.translate(x, y);
+  ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
+  ctx.translate(-x, -y);
+
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 20;
+  }
+
+  drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes);
 
   ctx.restore();
 }

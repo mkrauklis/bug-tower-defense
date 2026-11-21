@@ -88,6 +88,6 @@ test('starting money, base tower costs, and Coneflower placement cost all reflec
   assert.equal(game.STARTING_MONEY, 75);
   assert.deepEqual(
     Object.fromEntries(game.SHOP_ITEMS.map((item) => [item.typeKey, item.cost])),
-    { sunflower: 50, rose: 90, mushroom: 150, coneflower: 500 }
+    { sunflower: 50, rose: 90, mushroom: 150, coneflower: 500, corpseFlower: 750 }
   );
 });
