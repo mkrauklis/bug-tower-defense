@@ -39,39 +39,59 @@ const BASE_SPEED = 60; // px/second
 // global Set shared across every map — without the terrain prefix,
 // "boss-tier-1" would silently mean two different bosses depending which
 // map you were on when you earned it.
-// Every enemy type's health across every map, doubled a second time
-// (direct request, second pass): a straight 2x on each type's own
-// currently-stored base health value — regular enemies, bosses, the
-// shared armored beetles, and the snakes all included ("enemies" with no
-// exclusion stated). Speed, bounty, and armorThreshold are explicitly
-// untouched, so every "round(X/2)"-style bounty comment below (and on
-// MARSH_ROSTER/SAVANAH_ROSTER) now describes the OLD, pre-this-pass
-// health, not the current value — expected drift from this pass, not a
-// bug, the same way the bosses' own bounty comments already read
-// "unchanged" against their first 2x. Bosses already got their own 2x
-// earlier (see each bossTypes' own comment) — this stacks on top of that
-// rather than replacing it, so bosses end up ~4x their original
-// pre-either-buff values. Flagged back to the user in case that
-// compounding wasn't intended.
+// Every enemy type's health across every map was doubled a second time in
+// an earlier pass (a straight 2x on each type's own then-current stored
+// health — see git history). Bosses/armored beetles ended up ~4x their
+// original pre-either-buff values from that; this file's rosters below
+// reflect all of that history already baked in.
+//
+// Third balance pass (direct request, broader again: "make the game
+// overall harder, ramp up difficulty faster, AND give each map a felt
+// difficulty gap"): see getRoundScaling()'s own comment for the two
+// systemic levers this pass added (a steeper, front-loaded round curve;
+// a per-map difficulty-tier multiplier) — those alone make every map
+// harder sooner without touching a single stored number here. On TOP of
+// that, this pass also individually re-tuned every REGULAR roster
+// entry's own stored health/speed below (tier1 ×1.4 health/×1.15 speed,
+// tier2 ×1.25/×1.08, tier3 ×1.15/unchanged speed) — a tiered rather than
+// flat bump, deliberately weighted toward the EARLY tiers specifically
+// because "the early game drags on too easy" was the pass's own stated
+// problem, and tier3 enemies already arrive late enough (round 51+) to
+// get the full force of the steeper round curve by the time a player
+// meets them. Bosses' and the shared armored beetles' own stored health
+// were deliberately left untouched by this individual re-tune (per the
+// request's own "don't touch bosses'/armored thresholds unless they
+// clearly need to move too" — they're still hit by both new systemic
+// multipliers at spawn time regardless, same mechanism as every other
+// enemy, just not re-tuned a second way on top of that). Bounty was left
+// untouched on every individually-re-tuned enemy too — see
+// getRoundScaling()'s own comment for why that's an acknowledged,
+// deliberate side effect rather than a miss. One exception to "speed
+// unchanged on tier3": none of tier3 here needed a change since the
+// user's own original snake numbers already read as intentional.
 const FOREST_ROSTER = {
   enemyTypes: {
     // Bounties follow the file's established ~HP/2 convention (rounded),
     // with Ant bumped from the literal round(2/2)=1 up to 2 so the
     // cheapest enemy in the game is never worth nothing — same exception
-    // the original Ant entry made before the roster was replaced.
-    ant: { name: 'Ant', speedMultiplier: 0.7, health: 4, color: '#8d6e63', radius: 7, bounty: 2 },
-    fireAnt: { name: 'Fire Ant', speedMultiplier: 0.9, health: 6, color: '#d84315', radius: 8, bounty: 2 }, // round(3/2)=2 against the pre-2nd-doubling health of 3
-    armoredAnt: { name: 'Armored Ant', speedMultiplier: 0.6, health: 20, color: '#4e342e', radius: 10, bounty: 5 },
-    babyBeetle: { name: 'Baby Beetle', speedMultiplier: 0.7, health: 50, color: '#558b2f', radius: 9, bounty: 13 },
-    dungBeetle: { name: 'Dung Beetle', speedMultiplier: 0.6, health: 90, color: '#3e2723', radius: 10, bounty: 23 },
-    tigerBeetle: { name: 'Tiger Beetle', speedMultiplier: 0.8, health: 100, color: '#2e7d32', radius: 9, bounty: 25 },
+    // the original Ant entry made before the roster was replaced. Health/
+    // speed below are tier1's ×1.4/×1.15 re-tune (see this file's own
+    // top-level comment); bounty intentionally untouched.
+    ant: { name: 'Ant', speedMultiplier: 0.8, health: 6, color: '#8d6e63', radius: 7, bounty: 2 },
+    fireAnt: { name: 'Fire Ant', speedMultiplier: 1.0, health: 8, color: '#d84315', radius: 8, bounty: 2 },
+    armoredAnt: { name: 'Armored Ant', speedMultiplier: 0.7, health: 28, color: '#4e342e', radius: 10, bounty: 5 },
+    // Tier2's ×1.25/×1.08 re-tune.
+    babyBeetle: { name: 'Baby Beetle', speedMultiplier: 0.76, health: 63, color: '#558b2f', radius: 9, bounty: 13 },
+    dungBeetle: { name: 'Dung Beetle', speedMultiplier: 0.65, health: 113, color: '#3e2723', radius: 10, bounty: 23 },
+    tigerBeetle: { name: 'Tiger Beetle', speedMultiplier: 0.86, health: 125, color: '#2e7d32', radius: 9, bounty: 25 },
     // Snakes (direct request): Deep Forest's first tier-3 roster — well
-    // above the ant/beetle lines' own HP (2-50), exactly the "clearly
-    // belongs later" gap orderTier3's existing every-5-rounds-starting-
-    // after-round-50 cadence was already built for (round 51/56/61/66,
-    // one new snake each), so they slot in as its 4 entries rather than
-    // needing any new unlock machinery. Health/speed are the user's exact
-    // numbers; bounty follows the roster's own ~HP/2 convention. Armored
+    // above the ant/beetle lines' own HP, exactly the "clearly belongs
+    // later" gap orderTier3's existing every-5-rounds-starting-after-
+    // round-50 cadence was already built for (round 51/56/61/66, one new
+    // snake each), so they slot in as its 4 entries rather than needing
+    // any new unlock machinery. Health below is tier3's own ×1.15
+    // re-tune (speed/bounty unchanged — the user's original numbers
+    // already read as intentional, no reason to touch them). Armored
     // Snake is the one judgment call: given the armor-gate mechanic
     // (armorThreshold, see damageEnemy()) by name-thematic request, but
     // calibrated as a light, early nod to it rather than a real forcing
@@ -81,28 +101,30 @@ const FOREST_ROSTER = {
     // through untouched; it unlocks at round 61, a full 14 rounds before
     // Carapace Beetle's own round-75/threshold-8 debut, so it reads as a
     // preview of the mechanic, not a repeat of it.
-    gardenerSnake: { name: 'Gardener Snake', speedMultiplier: 0.8, health: 300, color: '#558b2f', radius: 9, bounty: 75 },
-    bananaSnake: { name: 'Banana Snake', speedMultiplier: 0.7, health: 450, color: '#fdd835', radius: 10, bounty: 113 },
+    gardenerSnake: { name: 'Gardener Snake', speedMultiplier: 0.8, health: 345, color: '#558b2f', radius: 9, bounty: 75 },
+    bananaSnake: { name: 'Banana Snake', speedMultiplier: 0.7, health: 518, color: '#fdd835', radius: 10, bounty: 113 },
     armoredSnake: {
       name: 'Armored Snake',
       speedMultiplier: 0.5,
-      health: 700,
+      health: 805,
       color: '#6d7a5a',
       radius: 11,
       bounty: 175,
       armorThreshold: 5,
     },
-    anaconda: { name: 'Anaconda', speedMultiplier: 0.4, health: 900, color: '#1b3a1b', radius: 13, bounty: 225 },
+    anaconda: { name: 'Anaconda', speedMultiplier: 0.4, health: 1035, color: '#1b3a1b', radius: 13, bounty: 225 },
   },
-  // Boss health doubled across every map (direct request) — a straight
+  // Boss health doubled across every map in an earlier pass — a straight
   // 2x multiplier on each boss's own health only, not a redesign; bounty/
   // speed/radius are untouched, so bounty no longer lands at the usual
   // ~round(HP/2) convention for these four (that's expected, not a bug).
-  // A second, later across-the-board doubling pass (see this file's
-  // top-level comment on FOREST_ROSTER) applies on top of THIS one for
-  // every enemy including these bosses — the values below already have
-  // both multipliers baked in (~4x the enemy's original pre-either-buff
-  // health).
+  // A second, later across-the-board doubling pass applied on top of
+  // THIS one for every enemy including these bosses (~4x the enemy's
+  // original pre-either-buff health, baked into the values below) — and
+  // per this file's own top-level comment, the THIRD pass's individual
+  // re-tune deliberately skipped bosses entirely (they still get hit by
+  // both of that pass's systemic multipliers — the steeper round curve
+  // and the per-map difficulty tier — at spawn time, same as always).
   bossTypes: {
     1: { name: 'Queen Ant', speedMultiplier: 0.5, health: 200, color: '#6d4c41', radius: 20, bounty: 25 }, // was 50, then 100, then this
     2: { name: 'Longhorn Beetle', speedMultiplier: 0.6, health: 400, color: '#5d4037', radius: 22, bounty: 50 }, // was 100, then 200, then this
@@ -115,18 +137,24 @@ const FOREST_ROSTER = {
   orderTier3: ['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda'],
 };
 
+// Third balance pass (see FOREST_ROSTER's own top-level comment for the
+// full writeup): tier1 ×1.4 health/×1.15 speed, tier2 ×1.25/×1.08 — with
+// one deliberate exception below (Frog Larva's speed).
 const MARSH_ROSTER = {
   enemyTypes: {
-    tadpole: { name: 'Tadpole', speedMultiplier: 0.5, health: 10, color: '#5a7a3a', radius: 7, bounty: 3 }, // round(5/2)=3 against the pre-2nd-doubling health of 5
-    froglet: { name: 'Froglet', speedMultiplier: 0.7, health: 20, color: '#66bb6a', radius: 8, bounty: 5 },
+    tadpole: { name: 'Tadpole', speedMultiplier: 0.58, health: 14, color: '#5a7a3a', radius: 7, bounty: 3 },
+    froglet: { name: 'Froglet', speedMultiplier: 0.8, health: 28, color: '#66bb6a', radius: 8, bounty: 5 },
     // Notably slow/tanky relative to the other two tier-1 types — direct
-    // from spec, not a typo: a 0.2x speed, 23 HP (pre-2nd-doubling) enemy
-    // this early acts as a "soak damage, buys the other two time to get
-    // past" road-bump.
-    frogLarva: { name: 'Frog Larva', speedMultiplier: 0.2, health: 46, color: '#c5c87a', radius: 11, bounty: 12 }, // round(11.5)=12 against the pre-2nd-doubling health of 23
-    appleSnail: { name: 'Apple Snail', speedMultiplier: 0.4, health: 100, color: '#d4a017', radius: 9, bounty: 25 },
-    slug: { name: 'Slug', speedMultiplier: 0.5, health: 150, color: '#bf7e4a', radius: 10, bounty: 38 }, // round(37.5)=38 against the pre-2nd-doubling health of 75
-    assassinSnail: { name: 'Assassin Snail', speedMultiplier: 0.6, health: 170, color: '#6d4c23', radius: 9, bounty: 43 }, // round(42.5)=43 against the pre-2nd-doubling health of 85
+    // from spec, not a typo: a deliberately slow, tanky enemy this early
+    // acts as a "soak damage, buys the other two time to get past"
+    // road-bump. Its speed is the one enemy in this whole re-tune pass
+    // deliberately left out of the tier1 speed bump — bumping its
+    // signature slowness would have undercut the exact trait the spec
+    // called out by name; only its health got the tier1 health re-tune.
+    frogLarva: { name: 'Frog Larva', speedMultiplier: 0.2, health: 64, color: '#c5c87a', radius: 11, bounty: 12 },
+    appleSnail: { name: 'Apple Snail', speedMultiplier: 0.43, health: 125, color: '#d4a017', radius: 9, bounty: 25 },
+    slug: { name: 'Slug', speedMultiplier: 0.54, health: 188, color: '#bf7e4a', radius: 10, bounty: 38 },
+    assassinSnail: { name: 'Assassin Snail', speedMultiplier: 0.65, health: 213, color: '#6d4c23', radius: 9, bounty: 43 },
   },
   // Boss health doubled (direct request) — see Deep Forest's bossTypes
   // comment above for the same scope note, including the later
@@ -157,37 +185,39 @@ const MARSH_ROSTER = {
 // future enemy (on any map) opts into the same mechanic just by setting
 // these two numbers on its own entry — see updateEnemies()'s tunnel-timer
 // block and createEnemyInstance() below for the rest of the mechanic.
+// Third balance pass (see FOREST_ROSTER's own top-level comment for the
+// full writeup): tier1 ×1.4 health/×1.15 speed, tier2 ×1.25/×1.08.
 const SAVANAH_ROSTER = {
   enemyTypes: {
-    sandLion: { name: 'Sand Lion', speedMultiplier: 0.7, health: 12, color: '#d2a24c', radius: 8, bounty: 3 },
+    sandLion: { name: 'Sand Lion', speedMultiplier: 0.8, health: 17, color: '#d2a24c', radius: 8, bounty: 3 },
     sandworm: {
       name: 'Sandworm',
-      speedMultiplier: 0.6,
-      health: 30,
+      speedMultiplier: 0.7,
+      health: 42,
       color: '#b8926a',
       radius: 8,
-      bounty: 8, // round(7.5)=8 against the pre-2nd-doubling health of 15
+      bounty: 8,
       tunnelInterval: 3,
       tunnelDuration: 2,
     },
-    desertAnt: { name: 'Desert Ant', speedMultiplier: 1, health: 50, color: '#9c5a2e', radius: 7, bounty: 13 }, // round(12.5)=13 against the pre-2nd-doubling health of 25
+    desertAnt: { name: 'Desert Ant', speedMultiplier: 1.15, health: 70, color: '#9c5a2e', radius: 7, bounty: 13 },
     giantLubberGrasshopper: {
       name: 'Giant Lubber Grasshopper',
-      speedMultiplier: 0.5,
-      health: 120,
+      speedMultiplier: 0.54,
+      health: 150,
       color: '#2b2a1f',
       radius: 11,
       bounty: 30,
     },
     desertPrayingMantis: {
       name: 'Desert Praying Mantis',
-      speedMultiplier: 0.9,
-      health: 100,
+      speedMultiplier: 0.97,
+      health: 125,
       color: '#a9a265',
       radius: 9,
       bounty: 25,
     },
-    kissingBug: { name: 'Kissing Bug', speedMultiplier: 0.8, health: 150, color: '#2e1f1a', radius: 8, bounty: 38 }, // round(37.5)=38 against the pre-2nd-doubling health of 75
+    kissingBug: { name: 'Kissing Bug', speedMultiplier: 0.86, health: 188, color: '#2e1f1a', radius: 8, bounty: 38 },
     // Scorpions (direct request): Savanah's first tier-3 roster — same
     // "an empty orderTier3 slot was already there waiting" fit the Deep
     // Forest snakes found, so this needed the same zero engine changes,
@@ -204,13 +234,16 @@ const SAVANAH_ROSTER = {
     // threshold 6 blocks only the very weakest tier-1 hits, clearly under
     // Carapace Beetle's own threshold 8, and it unlocks at round 66, 9
     // rounds before Carapace Beetle's round-75 debut.
-    stripedScorpion: { name: 'Striped Scorpion', speedMultiplier: 0.8, health: 160, color: '#b8946a', radius: 8, bounty: 80 },
-    duneScorpion: { name: 'Dune Scorpion', speedMultiplier: 0.6, health: 220, color: '#c9a876', radius: 9, bounty: 110 },
-    redScorpion: { name: 'Red Scorpion', speedMultiplier: 0.7, health: 320, color: '#a13a2a', radius: 9, bounty: 160 },
+    // Health below is tier3's own ×1.15 re-tune (speed/bounty/armor
+    // unchanged — same "already intentional, no reason to touch" call as
+    // Deep Forest's snakes).
+    stripedScorpion: { name: 'Striped Scorpion', speedMultiplier: 0.8, health: 184, color: '#b8946a', radius: 8, bounty: 80 },
+    duneScorpion: { name: 'Dune Scorpion', speedMultiplier: 0.6, health: 253, color: '#c9a876', radius: 9, bounty: 110 },
+    redScorpion: { name: 'Red Scorpion', speedMultiplier: 0.7, health: 368, color: '#a13a2a', radius: 9, bounty: 160 },
     emperorScorpion: {
       name: 'Emperor Scorpion',
       speedMultiplier: 0.45,
-      health: 450,
+      health: 518,
       color: '#2a2420',
       radius: 13,
       bounty: 225,
@@ -267,17 +300,23 @@ const SAVANAH_ROSTER = {
 // curve. Bounty follows the same ~HP/2 convention as every other roster,
 // computed directly against these numbers (no stale pre-doubling drift to
 // account for, again because this is new content).
+//
+// Third balance pass (see FOREST_ROSTER's own top-level comment for the
+// full writeup): tier1 ×1.4 health/×1.15 speed, tier2 ×1.25/×1.08, tier3
+// ×1.15 health/unchanged speed. Whirlpool is also Hard-tier under the new
+// per-map multiplier (getRoundScaling()), so these individually-re-tuned
+// numbers compound with that at spawn time — intentional, not a miss.
 const OCEAN_ROSTER = {
   enemyTypes: {
-    seaCucumber: { name: 'Sea Cucumber', speedMultiplier: 0.3, health: 8, color: '#6b5a3a', radius: 8, bounty: 4 },
-    urchin: { name: 'Urchin', speedMultiplier: 0.4, health: 15, color: '#2a1a3a', radius: 9, bounty: 8 }, // round(7.5)=8
-    clownFish: { name: 'Clown Fish', speedMultiplier: 0.9, health: 12, color: '#ff7a33', radius: 7, bounty: 6 },
-    starfish: { name: 'Starfish', speedMultiplier: 0.3, health: 90, color: '#d9622b', radius: 10, bounty: 45 },
-    seahorse: { name: 'Seahorse', speedMultiplier: 0.35, health: 110, color: '#c9a04a', radius: 8, bounty: 55 },
-    horseshoeCrab: { name: 'Horseshoe Crab', speedMultiplier: 0.3, health: 170, color: '#4a4030', radius: 11, bounty: 85 },
-    stingray: { name: 'Stingray', speedMultiplier: 0.6, health: 250, color: '#6a7f8a', radius: 13, bounty: 125 },
-    tuna: { name: 'Tuna', speedMultiplier: 1.1, health: 320, color: '#395a78', radius: 10, bounty: 160 }, // the fastest regular enemy on this map — real tuna are famously quick
-    marlin: { name: 'Marlin', speedMultiplier: 1, health: 400, color: '#1f3a5c', radius: 11, bounty: 200 },
+    seaCucumber: { name: 'Sea Cucumber', speedMultiplier: 0.35, health: 11, color: '#6b5a3a', radius: 8, bounty: 4 },
+    urchin: { name: 'Urchin', speedMultiplier: 0.46, health: 21, color: '#2a1a3a', radius: 9, bounty: 8 },
+    clownFish: { name: 'Clown Fish', speedMultiplier: 1.0, health: 17, color: '#ff7a33', radius: 7, bounty: 6 },
+    starfish: { name: 'Starfish', speedMultiplier: 0.32, health: 112, color: '#d9622b', radius: 10, bounty: 45 },
+    seahorse: { name: 'Seahorse', speedMultiplier: 0.38, health: 138, color: '#c9a04a', radius: 8, bounty: 55 },
+    horseshoeCrab: { name: 'Horseshoe Crab', speedMultiplier: 0.32, health: 212, color: '#4a4030', radius: 11, bounty: 85 },
+    stingray: { name: 'Stingray', speedMultiplier: 0.6, health: 288, color: '#6a7f8a', radius: 13, bounty: 125 },
+    tuna: { name: 'Tuna', speedMultiplier: 1.1, health: 368, color: '#395a78', radius: 10, bounty: 160 }, // the fastest regular enemy on this map — real tuna are famously quick, unchanged by the tier3 re-tune
+    marlin: { name: 'Marlin', speedMultiplier: 1, health: 460, color: '#1f3a5c', radius: 11, bounty: 200 },
   },
   bossTypes: {
     1: { name: 'Reef Shark', speedMultiplier: 0.6, health: 250, color: '#6e7c82', radius: 16, bounty: 125 },
@@ -521,33 +560,76 @@ function getTotalWaveSize(round) {
 // keeps adding MORE towers on top of that as rounds go on. Player power
 // compounds; the old enemy curve didn't — it grows additively while
 // player investment grows multiplicatively, so no matter how far a run
-// goes, the gap only widens in the player's favor. The fix is to make
+// goes, the gap only widens in the player's favor. The fix was to make
 // enemy health compound too: a fixed 3.5% COMPOUNDING increase every
-// single round (not bucketed by 3), i.e. healthMultiplier = 1.035^(round-1).
-// This lands close to the old curve's round-25 value (2.28x new vs 1.8x
-// old — a modest, not jarring, early-game bump) but diverges hard from
-// there: 5.49x at round 50 (old: 2.6x) and 29.0x at round 100 (old:
-// 4.3x) — roughly 6-7x tougher than before by the deep late-game, which
-// is where the flat-feeling plateau actually lived.
+// single round, i.e. healthMultiplier = 1.035^(round-1).
+//
+// Second balance pass (direct request, broader than the first): "the
+// game doesn't get hard SOON enough" — the 3.5% curve above, while a
+// real fix for the late-game plateau, still left round 1 at exactly 1x
+// and only reached 2.28x by round 25, which read as a long, easy ramp-up
+// before anything resembling real pressure showed up. Two changes:
+//   1. A flat BASE_HEALTH_MULTIPLIER (1.5x) applied at every round,
+//      including round 1 — so the very first enemies a player ever faces
+//      are already tougher, not just "the curve eventually gets there."
+//   2. The per-round compound rate itself raised from 3.5% to 4.5%
+//      (HEALTH_GROWTH_PER_ROUND) — a real ~29% faster per-round ramp, not
+//      just a bigger constant multiplied on top of the old rate.
+// Together: round 1 is 1.5x tougher than the original pre-either-pass
+// baseline (was 1.0x); round 25 is 1.5 * 1.045^24 ≈ 4.42x (was 2.28x,
+// ~1.9x harder); round 50 ≈ 12.97x (was 5.49x, ~2.4x harder); round 100 ≈
+// 117.0x (was 29.0x, ~4.0x harder). The ratio climbs smoothly from ~2x to
+// ~4x harder-than-before rather than jumping unevenly, so early rounds
+// feel the "reach real challenge sooner" push most directly while late
+// rounds still end up substantially harder too, not just proportionally
+// equal. (Sanity-checked against the starting economy: a single base
+// Sunflower, $50, can still kill a round-1 base-tier enemy in ~1 second
+// under the new numbers — the early game got harder, not unfair.)
+//
+// Per-map difficulty tiers (direct request, this same pass): Deep Forest
+// = Easy, Marshland/Savanah = Medium, Whirlpool = Hard — a flat
+// multiplier per TERRAIN (MAP_DIFFICULTY_MULTIPLIER below, keyed the same
+// way TERRAIN_THEMES/MAP_ROSTERS already are) folded into this exact same
+// function, "the same lever, not hand-tuned per enemy" the request itself
+// suggested — every regular enemy, boss, and armored beetle on a given
+// map gets hit by its own map's multiplier uniformly, with zero changes
+// needed in generateWave() below (it already reads everything through
+// this one function). Picked from the request's own suggested ranges:
+// Easy stays at 1x (a true baseline, nothing extra), Medium 1.3x, Hard
+// 1.8x — enough that the SAME round on Whirlpool is unmistakably harder
+// than Deep Forest (a straight 1.8x/1.0x = 1.8x health/bounty gap at any
+// equivalent round), without Hard being so extreme it reads as a
+// different game rather than a harder version of the same one.
 //
 // bounty (generateWave() below) scales by this exact same multiplier, on
-// both regular enemies and bosses, so a kill's reward keeps pace with
-// how much tankier that enemy actually is at this round — the old code
-// left bounty flat forever, which (combined with Coneflower's passive,
-// difficulty-independent income) let the player's economy float
-// completely free of how hard the current round actually was. Boss
-// health/bounty get the same treatment too (previously bosses never
-// scaled with round at all, not even the old linear curve — every boss
-// fight from its first designed round onward, round 25 or round 250
-// alike, used identical stats. getBossForRound() already falls back to
-// the strongest *designed* tier once round outgrows the roster, so this
-// is what makes a round-75 rematch of a round-50 boss actually hit
-// harder than the original fight, instead of being a verbatim replay).
-const HEALTH_GROWTH_PER_ROUND = 1.035;
+// both regular enemies and bosses, so a kill's reward keeps pace with how
+// much tankier that enemy actually is at this round AND on this map — see
+// this function's own history above for why that matters (Coneflower's
+// passive income would otherwise float free of either axis of
+// difficulty). The one acknowledged side effect: the INDIVIDUAL per-type
+// health re-tune this same pass also applied directly to every regular
+// roster entry's own stored health (see each roster's own comment) was
+// NOT mirrored onto bounty — a re-tuned enemy is tankier per dollar
+// earned than before, a deliberate (if modest) economic tightening in
+// the same "make it harder" spirit, not an oversight. Bosses' and the
+// shared armored beetles' own stored health were deliberately left
+// untouched by that individual re-tune (they still get hit by both
+// multipliers below, same as always) — see FOREST_ROSTER's own comment
+// for why.
+const HEALTH_GROWTH_PER_ROUND = 1.045;
+const BASE_HEALTH_MULTIPLIER = 1.5;
+
+const MAP_DIFFICULTY_MULTIPLIER = {
+  forest: 1, // Easy
+  marsh: 1.3, // Medium
+  desert: 1.3, // Medium
+  ocean: 1.8, // Hard
+};
 
 function getRoundScaling(round) {
+  const mapMultiplier = MAP_DIFFICULTY_MULTIPLIER[getActiveMap().terrain] ?? 1;
   return {
-    healthMultiplier: HEALTH_GROWTH_PER_ROUND ** (round - 1),
+    healthMultiplier: BASE_HEALTH_MULTIPLIER * HEALTH_GROWTH_PER_ROUND ** (round - 1) * mapMultiplier,
   };
 }
 

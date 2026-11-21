@@ -26,22 +26,47 @@ test('getTotalWaveSize scales from 5 at round 1 up to 25 at round 25, then keeps
   assert.equal(game.getTotalWaveSize(10000), 50); // ceilinged, not unbounded
 });
 
-test('getRoundScaling compounds 3.5% EVERY round (not bucketed), so it grows past any flat-every-3-rounds curve', () => {
+test('getRoundScaling compounds 4.5% EVERY round on top of a 1.5x base (3rd balance pass), so round 1 is already harder than baseline', () => {
   const game = loadGameContext();
-  assert.equal(game.getRoundScaling(1).healthMultiplier, 1);
+  // Deep Forest (Easy, map multiplier 1x) is the default active map, so
+  // this is exactly BASE_HEALTH_MULTIPLIER on its own at round 1 — no
+  // longer a 1x no-op the way the pre-3rd-pass curve left it, which was
+  // the whole point of adding a flat base multiplier: even the very first
+  // enemies a player faces are tougher now, not just "the curve eventually
+  // gets there."
+  assert.equal(game.getRoundScaling(1).healthMultiplier, 1.5);
   assert.ok(game.getRoundScaling(10).healthMultiplier > game.getRoundScaling(1).healthMultiplier);
-  // Unlike the old "+10% every 3 rounds" bucketed curve, round 2 must
-  // already be strictly ahead of round 1 — no 2-round-long flat plateau.
+  // Round 2 must already be strictly ahead of round 1 — no flat plateau.
   assert.ok(game.getRoundScaling(2).healthMultiplier > game.getRoundScaling(1).healthMultiplier);
 
-  // Balance pass: this is the actual root-cause fix for "difficulty
-  // doesn't escalate late-game" — compounding growth, not linear, so it
-  // diverges sharply the further a run goes. Spot-check the exact curve.
-  assert.ok(Math.abs(game.getRoundScaling(25).healthMultiplier - 1.035 ** 24) < 1e-9);
-  assert.ok(Math.abs(game.getRoundScaling(100).healthMultiplier - 1.035 ** 99) < 1e-9);
+  // Compounding growth, not linear, so it diverges sharply the further a
+  // run goes. Spot-check the exact curve (1.5 base x 4.5% compounding).
+  assert.ok(Math.abs(game.getRoundScaling(25).healthMultiplier - 1.5 * 1.045 ** 24) < 1e-9);
+  assert.ok(Math.abs(game.getRoundScaling(100).healthMultiplier - 1.5 * 1.045 ** 99) < 1e-9);
   // Round 100 should be dramatically harder than round 25 — not just a
-  // little, which is exactly what the old linear curve got wrong.
+  // little, which is exactly what a linear curve would get wrong.
   assert.ok(game.getRoundScaling(100).healthMultiplier / game.getRoundScaling(25).healthMultiplier > 10);
+});
+
+test('getRoundScaling applies a per-map difficulty-tier multiplier: Deep Forest Easy, Marsh/Savanah Medium, Whirlpool Hard', () => {
+  const game = loadGameContext();
+  const forestMultiplier = game.getRoundScaling(10).healthMultiplier; // Easy, 1x
+
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  const marshMultiplier = game.getRoundScaling(10).healthMultiplier; // Medium, 1.3x
+
+  game.setActiveMap(game.MAP_TYPES.savanah);
+  const savanahMultiplier = game.getRoundScaling(10).healthMultiplier; // Medium, 1.3x
+
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+  const whirlpoolMultiplier = game.getRoundScaling(10).healthMultiplier; // Hard, 1.8x
+
+  assert.ok(Math.abs(marshMultiplier / forestMultiplier - 1.3) < 1e-9);
+  assert.ok(Math.abs(savanahMultiplier / forestMultiplier - 1.3) < 1e-9);
+  assert.ok(Math.abs(whirlpoolMultiplier / forestMultiplier - 1.8) < 1e-9);
+  assert.equal(marshMultiplier, savanahMultiplier); // both Medium, identical multiplier
+  assert.ok(whirlpoolMultiplier > marshMultiplier); // Hard is unmistakably harder than Medium
+  assert.ok(marshMultiplier > forestMultiplier); // Medium is unmistakably harder than Easy
 });
 
 test('getActiveRoster defaults to the Forest roster (Deep Forest is the default active map)', () => {
@@ -85,8 +110,13 @@ test('generateWave(1) on Deep Forest is just Ant, scaled to the round-1 baseline
   assert.equal(wave.length, 1);
   assert.equal(wave[0].enemyKey, 'ant');
   assert.equal(wave[0].count, 5); // WAVE_SIZE_AT_ROUND_1, undivided (1 unlocked type)
-  assert.equal(wave[0].health, 4); // Ant's base HP, doubled from 2 (direct request, every enemy's health — see FOREST_ROSTER's own comment); round 1 has no round-scaling yet
-  assert.equal(wave[0].bounty, 2);
+  // Round 1 is no longer a scaling no-op under the 3rd balance pass's new
+  // base multiplier (see getRoundScaling()'s own comment) — computed via
+  // the real function rather than hardcoded, so this doesn't go stale the
+  // next time either constant gets retuned.
+  const scaling = game.getRoundScaling(1).healthMultiplier;
+  assert.equal(wave[0].health, Math.round(game.FOREST_ROSTER.enemyTypes.ant.health * scaling));
+  assert.equal(wave[0].bounty, Math.round(game.FOREST_ROSTER.enemyTypes.ant.bounty * scaling));
 });
 
 test('every 25th round is a boss wave, keyed and prefixed with the active map\'s own terrain', () => {
@@ -220,30 +250,43 @@ test('every map\'s boss health was doubled, then doubled again (direct request) 
   assert.equal(savanahRoster.bossTypes[1].radius, 21);
 });
 
-test('every regular (non-boss) enemy type\'s health was doubled across every map, speed/bounty/armor untouched', () => {
+test('every regular (non-boss) enemy type\'s health/speed reflects the 3rd balance pass\'s tiered re-tune (tier1 x1.4/x1.15, tier2 x1.25/x1.08, tier3 x1.15/unchanged), bounty/armor untouched', () => {
   const game = loadGameContext();
   assert.deepEqual(
     Object.fromEntries(Object.entries(game.FOREST_ROSTER.enemyTypes).map(([key, type]) => [key, type.health])),
     {
-      ant: 4, fireAnt: 6, armoredAnt: 20, babyBeetle: 50, dungBeetle: 90, tigerBeetle: 100,
-      gardenerSnake: 300, bananaSnake: 450, armoredSnake: 700, anaconda: 900,
+      ant: 6, fireAnt: 8, armoredAnt: 28, babyBeetle: 63, dungBeetle: 113, tigerBeetle: 125,
+      gardenerSnake: 345, bananaSnake: 518, armoredSnake: 805, anaconda: 1035,
     }
   );
 
   game.setActiveMap(game.MAP_TYPES.marshland);
   assert.deepEqual(
     Object.fromEntries(Object.entries(game.getActiveRoster().enemyTypes).map(([key, type]) => [key, type.health])),
-    { tadpole: 10, froglet: 20, frogLarva: 46, appleSnail: 100, slug: 150, assassinSnail: 170 }
+    { tadpole: 14, froglet: 28, frogLarva: 64, appleSnail: 125, slug: 188, assassinSnail: 213 }
   );
 
   game.setActiveMap(game.MAP_TYPES.savanah);
   assert.deepEqual(
     Object.fromEntries(Object.entries(game.getActiveRoster().enemyTypes).map(([key, type]) => [key, type.health])),
-    { sandLion: 12, sandworm: 30, desertAnt: 50, giantLubberGrasshopper: 120, desertPrayingMantis: 100, kissingBug: 150 }
+    {
+      sandLion: 17, sandworm: 42, desertAnt: 70, giantLubberGrasshopper: 150, desertPrayingMantis: 125, kissingBug: 188,
+      stripedScorpion: 184, duneScorpion: 253, redScorpion: 368, emperorScorpion: 518,
+    }
   );
 
-  // Speed/bounty/armorThreshold spot checks — untouched by this pass.
-  assert.equal(game.FOREST_ROSTER.enemyTypes.ant.speedMultiplier, 0.7);
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(game.getActiveRoster().enemyTypes).map(([key, type]) => [key, type.health])),
+    {
+      seaCucumber: 11, urchin: 21, clownFish: 17, starfish: 112, seahorse: 138, horseshoeCrab: 212,
+      stingray: 288, tuna: 368, marlin: 460,
+    }
+  );
+
+  // Tier1's own speed re-tune (x1.15) — a couple of spot checks.
+  assert.equal(game.FOREST_ROSTER.enemyTypes.ant.speedMultiplier, 0.8);
+  // Bounty/armorThreshold are untouched by this individual re-tune.
   assert.equal(game.FOREST_ROSTER.enemyTypes.ant.bounty, 2);
   assert.equal(game.FOREST_ROSTER.enemyTypes.armoredSnake.armorThreshold, 5);
 });

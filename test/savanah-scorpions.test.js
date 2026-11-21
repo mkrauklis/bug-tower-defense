@@ -105,7 +105,7 @@ test('getSpawnEntryForEnemyKey resolves every scorpion to its real, unscaled sta
   game.setActiveMap(game.MAP_TYPES.savanah);
   const entry = game.getSpawnEntryForEnemyKey('emperorScorpion');
   assert.equal(entry.name, 'Emperor Scorpion');
-  assert.equal(entry.health, 450);
+  assert.equal(entry.health, 518); // the pre-3rd-pass 450, raised by tier3's ×1.15 re-tune
   assert.equal(entry.isBoss, false);
 });
 

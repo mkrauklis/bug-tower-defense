@@ -13,26 +13,26 @@ test('each snake has the user\'s exact speed, with bounty following the roster\'
   const game = loadGameContext();
   const { enemyTypes } = game.FOREST_ROSTER;
 
-  // Health values here are the user's original 150/225/350/450, doubled
-  // once by the later across-the-board "every enemy's health" pass (direct
-  // request — see FOREST_ROSTER's own comment in enemies.js); bounty was
-  // deliberately left unchanged by that pass, so it still reflects the
-  // pre-doubling health.
+  // Health values here reflect the 3rd balance pass's tier3 re-tune
+  // (×1.15 on top of everything before it — see FOREST_ROSTER's own
+  // comment in enemies.js); speed/bounty were deliberately left
+  // unchanged by that pass (tier3's own speed numbers already read as
+  // intentional).
   assert.deepEqual(
     { speed: enemyTypes.gardenerSnake.speedMultiplier, health: enemyTypes.gardenerSnake.health, bounty: enemyTypes.gardenerSnake.bounty },
-    { speed: 0.8, health: 300, bounty: 75 }
+    { speed: 0.8, health: 345, bounty: 75 }
   );
   assert.deepEqual(
     { speed: enemyTypes.bananaSnake.speedMultiplier, health: enemyTypes.bananaSnake.health, bounty: enemyTypes.bananaSnake.bounty },
-    { speed: 0.7, health: 450, bounty: 113 }
+    { speed: 0.7, health: 518, bounty: 113 }
   );
   assert.deepEqual(
     { speed: enemyTypes.armoredSnake.speedMultiplier, health: enemyTypes.armoredSnake.health, bounty: enemyTypes.armoredSnake.bounty },
-    { speed: 0.5, health: 700, bounty: 175 }
+    { speed: 0.5, health: 805, bounty: 175 }
   );
   assert.deepEqual(
     { speed: enemyTypes.anaconda.speedMultiplier, health: enemyTypes.anaconda.health, bounty: enemyTypes.anaconda.bounty },
-    { speed: 0.4, health: 900, bounty: 225 }
+    { speed: 0.4, health: 1035, bounty: 225 }
   );
 });
 
