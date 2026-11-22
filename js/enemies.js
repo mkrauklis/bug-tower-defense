@@ -112,7 +112,13 @@ const FOREST_ROSTER = {
       bounty: 175,
       armorThreshold: 5,
     },
-    anaconda: { name: 'Anaconda', speedMultiplier: 0.4, health: 1035, color: '#1b3a1b', radius: 13, bounty: 225 },
+    // radius bumped 13 -> 19 (direct follow-up: "noticeably larger and way
+    // longer... clearly bigger than the other Deep Forest snakes") — health/
+    // speedMultiplier/bounty deliberately untouched, this is visual-only.
+    // See MILLIPEDE_BODY's own anaconda entry below for the matching
+    // "way longer" body-segment bump; radius alone only controls how big
+    // the HEAD reads, not how many segments trail behind it.
+    anaconda: { name: 'Anaconda', speedMultiplier: 0.4, health: 1035, color: '#1b3a1b', radius: 19, bounty: 225 },
   },
   // Boss health doubled across every map in an earlier pass — a straight
   // 2x multiplier on each boss's own health only, not a redesign; bounty/
@@ -4136,7 +4142,16 @@ const MILLIPEDE_BODY = {
   gardenerSnake: { segmentCount: 4, spacingFactor: 1.1, segmentDrawFn: drawGardenerSnakeSegment },
   bananaSnake: { segmentCount: 5, spacingFactor: 1.1, segmentDrawFn: drawBananaSnakeSegment },
   armoredSnake: { segmentCount: 6, spacingFactor: 1.05, segmentDrawFn: drawArmoredSnakeSegment },
-  anaconda: { segmentCount: 8, spacingFactor: 1.0, segmentDrawFn: drawAnacondaSegment },
+  // segmentCount 8 -> 14 and spacingFactor 1.0 -> 1.1 (same follow-up as
+  // the radius bump above): combined with the bigger radius, total
+  // head-to-tail length goes from 13*1.0*8=104px to 19*1.1*14≈293px, a
+  // ~2.8x longer body — "way longer," not just a bigger head. No change
+  // needed to the trail-following math itself (renderMillipedeBody/
+  // getTrailPointAtDistance/recordTrailPoint's own maxPoints calc) — it
+  // already derives everything from these two numbers plus enemy.radius,
+  // so the longer body tracks waypoints/corners exactly as correctly as
+  // every other snake already does, just over a longer arc length.
+  anaconda: { segmentCount: 14, spacingFactor: 1.1, segmentDrawFn: drawAnacondaSegment },
   'marsh-boss-tier-3': { segmentCount: 7, spacingFactor: 1.0, segmentDrawFn: drawElectricEelSegment },
 };
 const DEFAULT_MILLIPEDE_BODY = { segmentCount: 5, spacingFactor: 1.3 };

@@ -54,6 +54,10 @@ function loadGameContext() {
       getMapPaths: () => MAP_PATHS,
       getActiveEnemies: () => activeEnemies,
       MILLIPEDE_FAMILY_KEYS, recordTrailPoint, getTrailPointAtDistance,
+      // Anaconda-is-way-bigger follow-up: lets a test assert directly on
+      // the per-type segment-count/spacing numbers rather than only
+      // inferring them indirectly through trail-length side effects.
+      MILLIPEDE_BODY,
       MAP_TYPES, getActiveMap, setActiveMap,
       PRODIGY_BASE_TYPE, turnIntoPurpleZombie,
       // New export: lets a test actually call a specific enemy's own draw
@@ -217,6 +221,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getHordeSpawnTimer: () => hordeSpawnTimer,
       MAP_ROSTERS, FOREST_ROSTER, MARSH_ROSTER, getActiveRoster, generateWave,
       listAllMaps,
+      // Anaconda-is-way-bigger follow-up: needed so a test using the full
+      // context (for spawnSingleEnemy/getActiveEnemies) can also drive
+      // recordTrailPoint directly and assert on MILLIPEDE_BODY's own
+      // per-type numbers, same as loadGameContext's lighter export above.
+      recordTrailPoint, MILLIPEDE_BODY,
       MAP_TYPES, getActiveMap, setActiveMap,
       // TERRAIN_THEMES/renderMap are new exports (Caves' own animated
       // flowing-water path effect, a direct follow-up request) — needed

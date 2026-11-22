@@ -128,3 +128,82 @@ test('a non-snake enemy still gets no trail array', () => {
   game.spawnSingleEnemy(entry);
   assert.equal(game.getActiveEnemies()[0].trail, null);
 });
+
+// --- The Anaconda is deliberately way bigger/longer than the other 3 ----
+// Direct follow-up request: "make the Anaconda noticeably larger and way
+// longer... clearly bigger than the other Deep Forest snakes." Purely a
+// render-size change — health/speedMultiplier/bounty/armorThreshold are
+// already covered untouched by the tests above. radius drives how big the
+// HEAD reads; MILLIPEDE_BODY's own segmentCount/spacingFactor drive how
+// long the trailing BODY reads — both were bumped, since "larger" and
+// "way longer" are two separate asks. Verified live in the built-in
+// browser this session too (this session finally had one): spawned all 4
+// snakes side by side in Sandbox, fast-forwarded the Anaconda through the
+// map's first corner, and confirmed visually it's dramatically bigger/
+// longer than the other 3 and tracks the turn with no clipping/floating
+// — the trail-following math itself (renderMillipedeBody/
+// getTrailPointAtDistance) already handled that generically for every
+// snake, so there was nothing to fix there, only these 2 numbers to tune.
+
+test('the Anaconda\'s own radius is noticeably bigger than every other Deep Forest snake\'s', () => {
+  const game = loadGameContext();
+  const { enemyTypes } = game.FOREST_ROSTER;
+  assert.ok(enemyTypes.anaconda.radius > enemyTypes.armoredSnake.radius);
+  assert.ok(enemyTypes.anaconda.radius > enemyTypes.bananaSnake.radius);
+  assert.ok(enemyTypes.anaconda.radius > enemyTypes.gardenerSnake.radius);
+  assert.equal(enemyTypes.anaconda.radius, 19); // was 13 — a regression guard, not a magic-number fetish
+});
+
+test('the Anaconda\'s own body is way longer (segmentCount * spacingFactor) than every other Deep Forest snake\'s', () => {
+  const game = loadGameContext();
+  const bodyLength = (key) => game.MILLIPEDE_BODY[key].segmentCount * game.MILLIPEDE_BODY[key].spacingFactor;
+  const anacondaLength = bodyLength('anaconda');
+  assert.ok(anacondaLength > bodyLength('armoredSnake'));
+  assert.ok(anacondaLength > bodyLength('bananaSnake'));
+  assert.ok(anacondaLength > bodyLength('gardenerSnake'));
+  assert.equal(game.MILLIPEDE_BODY.anaconda.segmentCount, 14); // was 8
+});
+
+test('the Anaconda keeps its own distinct segment-drawing function (not a generic fallback)', () => {
+  const game = loadGameContext();
+  assert.equal(typeof game.MILLIPEDE_BODY.anaconda.segmentDrawFn, 'function');
+});
+
+test('a spawned Anaconda\'s trail buffer caps out noticeably bigger than before the size bump (recordTrailPoint scales automatically off radius/segmentCount/spacingFactor)', () => {
+  const game = loadFullGameContext();
+  const entry = game.getSpawnEntryForEnemyKey('anaconda');
+  game.spawnSingleEnemy(entry);
+  const anaconda = game.getActiveEnemies()[0];
+  anaconda.x = 0;
+  anaconda.y = 0;
+
+  // Walk it in a straight line far enough to fill and start trimming its
+  // own trail buffer, then confirm the cap matches the new, bigger numbers
+  // (14 segments * 19 radius * 1.1 spacing / 4px-per-point + 4 == 78) —
+  // more than double the pre-bump cap (8 * 13 * 1.0 / 4 + 4 == 30).
+  for (let i = 0; i < 400; i += 1) {
+    anaconda.x += 4; // comfortably past TRAIL_POINT_SPACING each step
+    game.recordTrailPoint(anaconda);
+  }
+  assert.equal(anaconda.trail.length, 78);
+});
+
+test('an ordinary tower can still find and damage an Anaconda normally — the bigger body/radius does not break targeting or hit-detection', () => {
+  const game = loadFullGameContext();
+  const entry = game.getSpawnEntryForEnemyKey('anaconda');
+  game.spawnSingleEnemy(entry);
+  const anaconda = game.getActiveEnemies()[0];
+  anaconda.x = 100;
+  anaconda.y = 100;
+  anaconda.spawned = true; // spawnSingleEnemy() always creates it unspawned (spawnDelay hasn't ticked down yet via updateEnemies) — same fixture convention makeTestEnemy() helpers elsewhere already set explicitly, so targeting isn't testing the spawn-delay countdown itself.
+
+  const tower = game.createTower('sunflower');
+  tower.x = 100;
+  tower.y = 100;
+
+  game.updateTowerAttack(tower, tower.x, tower.y, tower.stats.attackInterval);
+  assert.equal(tower.target, anaconda);
+
+  for (let i = 0; i < 60; i += 1) game.updateProjectiles(1 / 60);
+  assert.ok(anaconda.health < anaconda.maxHealth);
+});
