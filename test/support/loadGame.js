@@ -211,6 +211,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       MAP_ROSTERS, FOREST_ROSTER, MARSH_ROSTER, getActiveRoster, generateWave,
       listAllMaps,
       MAP_TYPES, getActiveMap, setActiveMap,
+      // TERRAIN_THEMES/renderMap are new exports (Caves' own animated
+      // flowing-water path effect, a direct follow-up request) — needed
+      // to actually exercise theme.renderPathEffects/renderDecor through
+      // the real rendering entry point rather than just checking data.
+      TERRAIN_THEMES, renderMap,
       getMapPaths: () => MAP_PATHS,
       getSelectedMap: () => selectedMap,
       setSelectedMap: (map) => { selectedMap = map; },

@@ -11,6 +11,14 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 // shape/difficulty-tier judgment calls (only 2 boss tiers, Medium not
 // Hard). A single-path map, like Deep Forest/Marshland/Whirlpool/
 // Volcanic.
+//
+// A direct follow-up request (relayed the same way) darkened the water
+// path (it originally read "too bright/light") and added an animated
+// flowing-water overlay (renderCavesPathEffects, map.js, via the new
+// optional theme.renderPathEffects hook), plus retuned the cave floor's
+// own background color to coordinate with the amber-brown formations
+// instead of clashing against them — see CAVES_PATH_COLORS' own comment
+// in map.js for the full writeup.
 
 test('caves is registered in MAP_TYPES with the expected shape — a single path', () => {
   const game = loadGameContext();
@@ -209,4 +217,45 @@ test('Blind Cavefish\'s spawn entry carries no special traits (just a plain, tou
   const { enemyTypes, bossTypes } = game.getActiveRoster();
   Object.values(enemyTypes).forEach((type) => assert.equal(type.armorThreshold || 0, 0));
   Object.values(bossTypes).forEach((type) => assert.equal(type.armorThreshold || 0, 0));
+});
+
+// --- Follow-up: darker flowing water + a coordinated cave-rock floor ------
+
+test('Caves\' water path is a dark, moody teal now — not the original bright glowing cyan', () => {
+  const game = loadGameContext();
+  const { pathColors } = game.MAP_TYPES.caves;
+  assert.equal(pathColors.fill, '#1b5560');
+  assert.equal(pathColors.outline, '#070f10');
+});
+
+test('Caves\' background no longer clashes against its own warm amber-brown stalactite/stalagmite formations', () => {
+  const game = loadGameContext();
+  const theme = game.TERRAIN_THEMES.caves;
+  // The original cool blue-black background this follow-up replaced.
+  assert.notEqual(theme.background, '#070709');
+  // Still near-black (the request's own original ask), just warm-toned —
+  // every channel low, but red/green (the warm end) no lower than blue.
+  const r = parseInt(theme.background.slice(1, 3), 16);
+  const g = parseInt(theme.background.slice(3, 5), 16);
+  const b = parseInt(theme.background.slice(5, 7), 16);
+  assert.ok(r <= 40 && g <= 40 && b <= 40, `expected a near-black background, got ${theme.background}`);
+  assert.ok(r >= b, 'expected a warm (not cool/blue-tinted) near-black background');
+});
+
+test('Caves has its own animated path-flow effect; every other map is untouched by it', () => {
+  const game = loadGameContext();
+  assert.equal(typeof game.TERRAIN_THEMES.caves.renderPathEffects, 'function');
+  ['forest', 'marsh', 'desert', 'ocean', 'tundra', 'volcano'].forEach((terrain) => {
+    assert.equal(game.TERRAIN_THEMES[terrain].renderPathEffects, undefined);
+  });
+});
+
+test('rendering the Caves map (including its animated path-flow overlay) never throws, at several different animation times', () => {
+  const game = loadFullGameContext();
+  game.setActiveMap(game.MAP_TYPES.caves);
+  const canvas = game.getCanvas();
+  const ctx = canvas.getContext('2d');
+  [0, 1.3, 5, 12.75].forEach((time) => {
+    assert.doesNotThrow(() => game.renderMap(ctx, canvas, time), `renderMap threw at time=${time}`);
+  });
 });

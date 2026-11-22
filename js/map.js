@@ -1485,12 +1485,22 @@ function renderVolcanicDecor(ctx, decor, time = 0) {
 // The one genuinely new idea here: the request specifically asked for the
 // PATH ITSELF to be a flowing water channel the enemies walk/swim
 // through — "visually distinct from Marshland's puddle/pond water" (that
-// request's own words) — so CAVES_PATH_COLORS below is a bright glowing
-// cyan-teal fill, unlike every other map's solid-ground path (dirt/
+// request's own words) — so CAVES_PATH_COLORS below is its own dark,
+// cool teal fill, unlike every other map's solid-ground path (dirt/
 // magma/ice/sand) and unlike Marshland's own muddy-green puddles (those
 // are still just decor, not the path). A single path (like Deep Forest/
 // Marshland/Whirlpool/Volcanic), not two like Savanah/Tundra — nothing in
 // the request asked for a second path.
+//
+// A direct follow-up request (user feedback: the path originally read
+// "too bright/light," and wanted it to actually look like flowing water
+// rather than a flat fill) darkened CAVES_PATH_COLORS below and added
+// renderCavesPathEffects — an animated overlay of moving ripple bands and
+// current highlight streaks, via the new optional theme.renderPathEffects
+// hook (see TERRAIN_THEMES' own comment and renderMap()/
+// renderMapPreview()'s own calls to it) — the same "new, OPTIONAL hook,
+// every other theme is unaffected" pattern renderWaterEffects already
+// established for Whirlpool's own drifting caustics.
 // ---------------------------------------------------------------------------
 
 const CAVES_WAYPOINTS = [
@@ -1504,13 +1514,16 @@ const CAVES_WAYPOINTS = [
   { x: 860, y: 220 }, // ends at the crystal pool goal, on-canvas
 ];
 
-// A dark, wet-rock outline around a bright glowing cyan-teal fill — the
-// literal "flowing water path" the request asked for, deliberately far
-// brighter than Whirlpool's own muted ocean-floor teal (WHIRLPOOL_PATH_
-// COLORS) so it reads as genuinely lit/glowing against this map's
-// near-black cave floor, the same "path is the brightest thing on the
-// map" role Volcanic's own magma path plays.
-const CAVES_PATH_COLORS = { outline: '#0a1518', fill: '#2fb8c9' };
+// A near-black, wet-rock outline around a dark, moody teal fill —
+// REVISED on direct follow-up request ("make the water path darker, it
+// currently reads too bright/light") from an original brighter cyan
+// ('#2fb8c9') that read as too light against the cave floor. Still
+// clearly a cool-toned water color (distinct from the warm amber-brown
+// cave floor/formations below), just a deep, dim teal now rather than a
+// glowing bright one — renderCavesPathEffects below is what actually
+// carries the "glowing/flowing" read now, layered on top of this darker
+// base rather than the flat fill alone trying to do both jobs at once.
+const CAVES_PATH_COLORS = { outline: '#070f10', fill: '#1b5560' };
 
 // Hand-placed clear of CAVES_WAYPOINTS above (checked segment-by-segment
 // against every leg, same convention as every other terrain's decor).
@@ -1663,6 +1676,40 @@ function renderCavesDecor(ctx, decor, time = 0) {
   drawCaveWaterPool(ctx, decor.goal.x, decor.goal.y, decor.goal.size, time);
 }
 
+// Direct follow-up request: give the water path an actual "flowing"
+// read instead of a flat fill — drawn on top of the path's own darker
+// base fill (CAVES_PATH_COLORS above), after it, same layering order
+// Whirlpool's own caustics use over its background. Two animated dashed
+// strokes along the exact same path geometry strokeMapPath already
+// builds (so the effect follows every turn correctly, not just straight
+// runs): a broad, soft, slow-moving band for a gentle undulating-current
+// look, plus a narrower, brighter, faster-moving streak that reads as
+// the water's own flow direction — `ctx.lineDashOffset`, continuously
+// animated by `time`, is what actually "marches" each dash pattern along
+// the path every frame, the standard canvas technique for this. Takes
+// `paths`/`pathWidth` directly (not a `decor` object, unlike
+// renderDecor) since this needs the map's own path geometry, which decor
+// functions never otherwise touch.
+function renderCavesPathEffects(ctx, paths, pathWidth, time = 0) {
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  ctx.strokeStyle = 'rgba(90, 210, 220, 0.22)';
+  ctx.lineWidth = pathWidth * 0.75;
+  ctx.setLineDash([pathWidth * 1.1, pathWidth * 0.9]);
+  ctx.lineDashOffset = -time * 24;
+  paths.forEach((path) => strokeMapPath(ctx, path));
+
+  ctx.strokeStyle = 'rgba(190, 250, 255, 0.55)';
+  ctx.lineWidth = Math.max(2, pathWidth * 0.14);
+  ctx.setLineDash([pathWidth * 0.5, pathWidth * 1.6]);
+  ctx.lineDashOffset = -time * 70;
+  paths.forEach((path) => strokeMapPath(ctx, path));
+
+  ctx.restore();
+}
+
 // ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/
@@ -1711,7 +1758,17 @@ const TERRAIN_THEMES = {
   // background," lit almost entirely by the glowing crystals themselves)
   // — a flat fill is enough, same as every other dark theme above; the
   // crystals/formations/water-path are what actually carry the lighting.
-  caves: { background: '#070709', renderDecor: renderCavesDecor },
+  // REVISED on direct follow-up request: the original '#070709' had a
+  // cool blue-black cast that clashed against the warm amber-brown
+  // stalactite/stalagmite formations (CAVES_FORMATIONS/drawCaveFormation
+  // above) — retuned to a warm near-black instead, so the floor and the
+  // formations now read as one cohesive cave-rock palette rather than two
+  // different color families sharing a scene. `renderPathEffects` is a
+  // new, optional hook (same pattern `renderWaterEffects`/
+  // `renderBackground` above already established — every other theme is
+  // unaffected) that layers an animated flowing-water look on top of the
+  // path's own fill — see renderCavesPathEffects' own comment above.
+  caves: { background: '#100b07', renderDecor: renderCavesDecor, renderPathEffects: renderCavesPathEffects },
 };
 
 // Fills the world background for the active theme — a flat
@@ -1932,6 +1989,7 @@ function renderMap(ctx, canvas, time = 0) {
     ctx.lineWidth = MAP_PATH_WIDTH;
     strokeMapPath(ctx, path);
   });
+  if (theme.renderPathEffects) theme.renderPathEffects(ctx, MAP_PATHS, MAP_PATH_WIDTH, time);
 
   theme.renderDecor(ctx, activeMap.decor, time);
 }
@@ -1982,6 +2040,7 @@ function renderMapPreview(ctx, map, x, y, width, height, time = 0) {
     ctx.lineWidth = map.pathWidth;
     strokeMapPath(ctx, path);
   });
+  if (theme.renderPathEffects) theme.renderPathEffects(ctx, map.paths, map.pathWidth, time);
 
   theme.renderDecor(ctx, map.decor, time);
 
