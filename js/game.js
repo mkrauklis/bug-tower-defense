@@ -798,6 +798,12 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
 
   tower.target = findNearestEnemyInRange(x, y, tower.stats.range * auraRangeMultiplier);
   tower.attackFlash = Math.max(0, tower.attackFlash - deltaSeconds);
+  // grabFlash/killFlash (make-Prodigies-cooler follow-up, towers.js): same
+  // "just happened" pulse shape as attackFlash above, decremented here
+  // alongside it since updateTowerAttack already runs for every tower
+  // every frame regardless of type.
+  tower.grabFlash = Math.max(0, tower.grabFlash - deltaSeconds);
+  tower.killFlash = Math.max(0, tower.killFlash - deltaSeconds);
 
   tower.attackCooldown = Math.max(0, tower.attackCooldown - deltaSeconds);
   if (tower.target && tower.attackCooldown <= 0) {
@@ -943,6 +949,11 @@ function updateTowerGrab(tower, x, y, deltaSeconds) {
   const victim = eligible[Math.floor(random() * eligible.length)];
   damageEnemy(victim, tower.grabDamage, tower);
   victim.immobilizedRemaining = Math.max(victim.immobilizedRemaining, tower.grabDuration);
+  // grabFlash (make-Prodigies-cooler follow-up, towers.js): The Mangler's
+  // own vines visibly lunge/flash right as a grab actually lands, not just
+  // when a grab is attempted and whiffs (the `eligible.length === 0` return
+  // above skips this, same guard the damage/immobilize above already use).
+  tower.grabFlash = GRAB_FLASH_DURATION;
 }
 
 // Mushroom's Infect Path (all 4 tiers): once a second, independently roll

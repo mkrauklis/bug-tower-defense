@@ -1518,8 +1518,17 @@ function getEnemiesInRadius(x, y, radius) {
 // forcing a dubious attribution.
 function damageEnemy(enemy, amount, sourceTower) {
   if (enemy.armorThreshold > 0 && amount < enemy.armorThreshold) return;
+  const wasAlive = enemy.health > 0;
   enemy.health -= amount;
-  if (sourceTower) sourceTower.totalDamageDealt += amount;
+  if (sourceTower) {
+    sourceTower.totalDamageDealt += amount;
+    // killFlash (make-Prodigies-cooler follow-up, towers.js): a generic
+    // "just landed a killing blow" visual pulse, same shape as attackFlash.
+    // Guarded by wasAlive so it only fires once, right at the actual kill —
+    // not on every later DoT tick against an already-dead enemy still
+    // waiting on this frame's removal sweep.
+    if (wasAlive && enemy.health <= 0) sourceTower.killFlash = KILL_FLASH_DURATION;
+  }
 }
 
 // `sourceTower` (same new optional argument as damageEnemy above) is stashed

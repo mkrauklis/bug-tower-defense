@@ -235,6 +235,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getConsumedTowerEffects: () => consumedTowerEffects,
       getProdigyOption, getProdigyTypeKeyFor,
       PRODIGY_BASE_TYPE, updateTowerGrab, turnIntoPurpleZombie,
+      // Make-Prodigies-cooler follow-up: the two new generic flash-timer
+      // durations (towers.js) — exported so tests can assert against the
+      // named constant rather than a magic number that'd go stale silently
+      // if either duration is ever retuned.
+      GRAB_FLASH_DURATION, KILL_FLASH_DURATION,
       updateTowerGasCloud, GAS_CLOUD_TICK_INTERVAL,
       updateTowerAcidShot, spawnAcidProjectile, ACID_SHOT_INTERVAL,
       updateTowerGasRing, updateTowerBloom, spawnBloomAcidProjectile, BLOOM_OPEN_DURATION,

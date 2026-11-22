@@ -1239,6 +1239,15 @@ function createTower(typeKey) {
     attackCooldown: 0, // seconds until this tower can attack again
     target: null, // the enemy it's currently aiming at, if any
     attackFlash: 0, // seconds left of the "just fired" visual pulse
+    // Generic, like attackFlash above — seconds left of a "just landed a
+    // killing blow" visual pulse, set by damageEnemy() in enemies.js
+    // whenever a hit it's crediting to sourceTower brings the victim's
+    // health to 0 or below. 0 for every tower that never reads it (every
+    // base tower, and 3 of the 4 Prodigies) — only The Fungal Mess's own
+    // draw function (make-Prodigies-cooler follow-up) currently reacts to
+    // it, but it's kept generic here rather than Fungal-Mess-specific in
+    // case a future tower wants the same "something just died" flourish.
+    killFlash: 0,
     // Corpse Flower's Hazard Path only. hasSpikes is purely visual (tier 1
     // and up, drawCorpseFlower()). gasCloud (tier 2 and up) is a whole-
     // object {radius, damagePerTick, color}, null until then — a
@@ -1303,6 +1312,12 @@ function createTower(typeKey) {
     grabDamage: type.grabDamage || 0,
     grabDuration: type.grabDuration || 0,
     grabCooldown: type.grabInterval || 0,
+    // Same "just fired" pulse shape as attackFlash above, but for the grab
+    // specifically (make-Prodigies-cooler follow-up) — The Mangler's own
+    // vines visibly lunge/flash right as a grab actually lands, distinct
+    // from its separate continuous-attack flash. 0 for every tower without
+    // a grabInterval of its own.
+    grabFlash: 0,
     // The Fungal Mess (Mushroom's Prodigy) only: chance, on a killing
     // blow, that the victim reanimates as a purple zombie instead of
     // dying outright — a completely separate state from Decay Path's
@@ -1754,9 +1769,9 @@ function renderTower(ctx, tower, x, y, time) {
   } else if (tower.type === 'sunlitConductor') {
     drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
   } else if (tower.type === 'mangler') {
-    drawMangler(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
+    drawMangler(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount, tower.grabFlash);
   } else if (tower.type === 'fungalMess') {
-    drawFungalMess(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
+    drawFungalMess(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount, tower.killFlash);
   } else if (tower.type === 'amorphophallusTitanum') {
     // The gas ring is drawn first/behind the flower itself — same
     // "ambient effect renders under the tower's own body" convention
@@ -1931,6 +1946,13 @@ function renderTowerGroundEffects(ctx, tower) {
 
 // How long the "just fired" pulse lasts.
 const ATTACK_FLASH_DURATION = 0.15;
+// Same shape as ATTACK_FLASH_DURATION above, for The Mangler's own grab
+// lunge flourish (grabFlash) and the generic post-kill pulse (killFlash) —
+// both make-Prodigies-cooler additions. A grab lands far less often than a
+// normal attack (every grabInterval seconds, not every attackInterval), so
+// its own flash is deliberately longer-lived to actually be noticeable.
+const GRAB_FLASH_DURATION = 0.3;
+const KILL_FLASH_DURATION = 0.4;
 
 function drawSunflower(ctx, x, y, size, color, glow, time, flashAmount) {
   const stemHeight = size * 1.3;
@@ -3011,11 +3033,84 @@ function drawIcicleRing(ctx, x, y, size, time) {
 }
 
 // --- Prodigies ---------------------------------------------------------
+// Make-Prodigies-cooler follow-up (direct request): per the user's own
+// earlier reports, every Prodigy mostly reused its base tower's own tier-4
+// body plus one quiet backdrop decoration — not wrong, but not reading as
+// a genuinely "ultimate" form either. drawProdigyAura() below is the one
+// new element shared by all 4 (a consistent "this is a legendary singleton"
+// signal, so players learn to recognize it at a glance rather than
+// re-learning a different rarity cue per tower); everything else below is
+// bespoke per Prodigy — an attack-reactive flourish distinct from its own
+// plain tier-4 attack pulse, and a busier/bigger silhouette than "tier-4,
+// just scaled up."
+
+// Shared "legendary" aura every Prodigy gets on top of its own unique
+// flourish below: a thin rotating gold/white ring plus a handful of
+// slowly twinkling diamond sparkles orbiting just outside the tower's own
+// body. Deliberately simple shapes (a handful of arcs/lines per tower,
+// no particle system) since every Prodigy on the field redraws this
+// every frame, and at most 4 of them can ever be on the field at once.
+function drawProdigyAura(ctx, x, y, size, time) {
+  const ringRadius = size * 1.55;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(time * 0.3);
+  ctx.strokeStyle = 'rgba(255, 245, 200, 0.55)';
+  ctx.lineWidth = Math.max(1.5, size * 0.04);
+  ctx.setLineDash([size * 0.25, size * 0.35]);
+  ctx.beginPath();
+  ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  const sparkleCount = 5;
+  for (let i = 0; i < sparkleCount; i += 1) {
+    const angle = time * 0.7 + (i / sparkleCount) * Math.PI * 2;
+    const dist = ringRadius * (0.85 + 0.15 * Math.sin(time * 2 + i * 1.3));
+    const sx = x + Math.cos(angle) * dist;
+    const sy = y + Math.sin(angle) * dist;
+    const twinkle = 0.4 + 0.6 * Math.max(0, Math.sin(time * 3 + i * 2));
+    ctx.save();
+    ctx.globalAlpha = twinkle;
+    ctx.fillStyle = '#fff8dc';
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - size * 0.07);
+    ctx.lineTo(sx + size * 0.045, sy);
+    ctx.lineTo(sx, sy + size * 0.07);
+    ctx.lineTo(sx - size * 0.045, sy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
 
 // A large, slowly spinning sun disc with radiating rays, drawn BEHIND the
 // sunflower it belongs to (called before drawSunflower below) — the one
-// feature the spec calls for beyond "giant sunflower."
-function drawRotatingSun(ctx, x, y, radius, time) {
+// feature the spec calls for beyond "giant sunflower." `flashAmount` (new)
+// makes the whole corona visibly lunge outward right as it fires — the
+// requested "rays that pulse/extend on attack" — and the new counter-
+// rotating outer ray layer (thinner, more numerous, spinning the other
+// way) is what makes this read as a true ultimate corona rather than a
+// bigger copy of the base Sunflower's own halo.
+function drawRotatingSun(ctx, x, y, radius, time, flashAmount = 0) {
+  const burst = 1 + flashAmount * 0.6;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-time * 0.25);
+  ctx.strokeStyle = 'rgba(255, 245, 180, 0.3)';
+  ctx.lineWidth = Math.max(1, radius * 0.02);
+  const outerRayCount = 20;
+  for (let i = 0; i < outerRayCount; i += 1) {
+    const angle = (i / outerRayCount) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * radius * 0.7, Math.sin(angle) * radius * 0.7);
+    ctx.lineTo(Math.cos(angle) * radius * 1.25 * burst, Math.sin(angle) * radius * 1.25 * burst);
+    ctx.stroke();
+  }
+  ctx.restore();
+
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(time * 0.5);
@@ -3026,8 +3121,8 @@ function drawRotatingSun(ctx, x, y, radius, time) {
     ctx.rotate((i / rayCount) * Math.PI * 2);
     ctx.beginPath();
     ctx.moveTo(0, -radius * 0.5);
-    ctx.lineTo(radius * 0.1, -radius * 1.15);
-    ctx.lineTo(-radius * 0.1, -radius * 1.15);
+    ctx.lineTo(radius * 0.1, -radius * 1.15 * burst);
+    ctx.lineTo(-radius * 0.1, -radius * 1.15 * burst);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -3040,58 +3135,70 @@ function drawRotatingSun(ctx, x, y, radius, time) {
   ctx.fill();
 }
 
-// Sunflower's Prodigy ($30,000, direct request): just the shared
-// drawSunflower() body — already exactly "a sunflower," nothing about
-// its own shape needs to change — with the rotating sun behind it as the
-// one new visual element.
+// Sunflower's Prodigy ($30,000, direct request): the shared drawSunflower()
+// body — already exactly "a sunflower," nothing about its own shape needs
+// to change — with the rotating sun behind it as the one new visual
+// element, plus the shared legendary aura on top.
 function drawSunlitConductor(ctx, x, y, size, color, glow, time, flashAmount) {
-  drawRotatingSun(ctx, x, y, size * 1.6, time);
+  drawRotatingSun(ctx, x, y, size * 1.6, time, flashAmount);
   drawSunflower(ctx, x, y, size, color, glow, time, flashAmount);
+  drawProdigyAura(ctx, x, y, size, time);
 }
 
-// A handful of long, independently swaying vines, each ending in a
+// A handful of long, independently writhing vines, each ending in a
 // small bud — purely decorative here (The Mangler's real grab mechanic
 // is a plain damage/immobilize roll, not a per-vine simulation), but
 // visually read as "the thing that's doing the grabbing" per the spec.
-function drawManglerVines(ctx, x, y, size, time) {
-  const vineCount = 4;
+// Two things beyond the original version: a 2nd, independently-phased
+// sway term partway along each vine's own length (so each one reads as
+// genuinely writhing/idling even between grabs, not swinging as one
+// rigid rod), and a `grabFlash` reaction (new, make-Prodigies-cooler
+// follow-up) — right as a grab actually lands, every vine visibly lunges
+// longer and flashes bright, fading back over GRAB_FLASH_DURATION, giving
+// the grab its own distinct on-attack flourish rather than only the
+// victim showing it got hit.
+function drawManglerVines(ctx, x, y, size, time, grabFlash = 0) {
+  const vineCount = 6;
+  const lunge = grabFlash / GRAB_FLASH_DURATION; // 1 right as it grabs, fading to 0
   for (let i = 0; i < vineCount; i += 1) {
     const baseAngle = (i / vineCount) * Math.PI * 2;
     const sway = Math.sin(time * 1.8 + i * 1.7) * 0.6;
-    const len = size * 1.3;
+    const midSway = Math.sin(time * 2.6 + i * 2.3) * 0.35;
+    const len = size * (1.3 + lunge * 0.5);
     const startAngle = baseAngle;
     const endAngle = baseAngle + sway;
+    const midAngle = baseAngle + sway * 0.5 + midSway;
     const startX = x + Math.cos(startAngle) * size * 0.3;
     const startY = y + Math.sin(startAngle) * size * 0.3 * 0.6;
+    const midX = x + Math.cos(midAngle) * len * 0.55;
+    const midY = y + Math.sin(midAngle) * len * 0.55 * 0.6;
     const endX = x + Math.cos(endAngle) * len;
     const endY = y + Math.sin(endAngle) * len * 0.6;
-    const ctrlAngle = endAngle + Math.PI / 2;
-    const ctrlX = (startX + endX) / 2 + Math.cos(ctrlAngle) * size * 0.3;
-    const ctrlY = (startY + endY) / 2 + Math.sin(ctrlAngle) * size * 0.3 * 0.6;
 
-    ctx.strokeStyle = '#2e7d32';
+    ctx.strokeStyle = lunge > 0 ? shadeColor('#c2185b', lunge * 40) : '#2e7d32';
     ctx.lineWidth = Math.max(2, size * 0.1);
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(startX, startY);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+    ctx.quadraticCurveTo(midX, midY, endX, endY);
     ctx.stroke();
 
     ctx.fillStyle = '#c2185b';
     ctx.beginPath();
-    ctx.arc(endX, endY, size * 0.09, 0, Math.PI * 2);
+    ctx.arc(endX, endY, size * (0.09 + lunge * 0.05), 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
 // Rose's Prodigy ($45,000, direct request): the shared drawRose() body
 // with tallStem forced on ("an extra-long stem" per the spec) plus the
-// swinging vines above — drawn first/behind, same "rooted appendages
+// writhing vines above — drawn first/behind, same "rooted appendages
 // render under the bloom" convention the regular vine-growing Thorn
-// Path already follows.
-function drawMangler(ctx, x, y, size, color, glow, time, flashAmount) {
-  drawManglerVines(ctx, x, y, size, time);
+// Path already follows — plus the shared legendary aura on top.
+function drawMangler(ctx, x, y, size, color, glow, time, flashAmount, grabFlash) {
+  drawManglerVines(ctx, x, y, size, time, grabFlash);
   drawRose(ctx, x, y, size, color, glow, time, flashAmount, true, false, 0, false);
+  drawProdigyAura(ctx, x, y, size, time);
 }
 
 // A ring of soft, slowly rotating purple fog blobs circling the whole
@@ -3101,17 +3208,24 @@ function drawMangler(ctx, x, y, size, color, glow, time, flashAmount) {
 // drifting flecks (tight orbit near the cap only): this one visibly
 // sweeps around the tower's full body, flattened into an ellipse so it
 // reads as mist swirling at ground level rather than steam off the cap.
-function drawFungalMessMist(ctx, x, y, size, time) {
-  const mistCount = 4;
-  const radius = size * 1.1;
+// `killFlash` (new, make-Prodigies-cooler follow-up) makes the whole
+// swirl visibly billow outward and flash brighter/faster right after a
+// killing blow, fading back over KILL_FLASH_DURATION — the requested
+// "pulse when it kills something," reusing the mist that's already this
+// tower's own signature instead of adding a separate effect.
+function drawFungalMessMist(ctx, x, y, size, time, killFlash = 0) {
+  const kill = killFlash / KILL_FLASH_DURATION; // 1 right after a kill, fading to 0
+  const mistCount = 6;
+  const radius = size * (1.1 + kill * 0.35);
   for (let i = 0; i < mistCount; i += 1) {
-    const angle = time * 0.5 + (i / mistCount) * Math.PI * 2;
+    const angle = time * (0.5 + kill * 0.6) + (i / mistCount) * Math.PI * 2;
     const mx = x + Math.cos(angle) * radius;
     const my = y + Math.sin(angle) * radius * 0.5;
     const pulse = 0.5 + 0.5 * Math.sin(time * 2 + i);
-    ctx.fillStyle = `rgba(171, 71, 182, ${0.18 + pulse * 0.12})`;
+    const alpha = Math.min(0.9, 0.18 + pulse * 0.12 + kill * 0.35);
+    ctx.fillStyle = `rgba(171, 71, 182, ${alpha})`;
     ctx.beginPath();
-    ctx.arc(mx, my, size * (0.28 + pulse * 0.08), 0, Math.PI * 2);
+    ctx.arc(mx, my, size * (0.28 + pulse * 0.08 + kill * 0.1), 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -3124,15 +3238,16 @@ function drawFungalMessMist(ctx, x, y, size, time) {
 // small sprouts clustered tight around its own base/stem — close enough
 // to read as growing FROM it, not as separate same-size neighbors the
 // way an earlier version of this tower drew its cluster — plus the
-// circling mist above, drawn first/behind everything.
-function drawFungalMess(ctx, x, y, size, color, glow, time, flashAmount) {
-  drawFungalMessMist(ctx, x, y, size, time);
+// circling mist above, drawn first/behind everything, and the shared
+// legendary aura on top.
+function drawFungalMess(ctx, x, y, size, color, glow, time, flashAmount, killFlash) {
+  drawFungalMessMist(ctx, x, y, size, time, killFlash);
   drawMushroom(ctx, x, y, size, color, glow, time, flashAmount, 1, false, null, 1, false, 0, true);
 
   // The tiny sprouts are drawn LAST, on top of the main mushroom, at a
   // radius that pokes out just past its stem base — so they read as
   // growing out of its body instead of being hidden behind it.
-  const sproutCount = 5;
+  const sproutCount = 6;
   for (let i = 0; i < sproutCount; i += 1) {
     const angle = (i / sproutCount) * Math.PI * 2 + 0.4;
     const dist = size * 0.62;
@@ -3140,6 +3255,8 @@ function drawFungalMess(ctx, x, y, size, color, glow, time, flashAmount) {
     const sy = y + size * 0.65 + Math.sin(angle) * dist * 0.3;
     drawMushroom(ctx, sx, sy, size * 0.22, shadeColor(color, i % 2 === 0 ? 20 : -10), null, time, 0, 1, false, null, 1, false, 0, false);
   }
+
+  drawProdigyAura(ctx, x, y, size, time);
 }
 
 // Amorphophallus titanum's own "gas ring" (direct request: "it will have
@@ -3277,6 +3394,29 @@ function drawTitanSpadix(ctx, x, y, size, bloomGlow) {
   }
 }
 
+// A quick burst of pale sparks at the spadix's own tip, scaled by
+// flashAmount — the ordinary base-attack flourish (make-Prodigies-cooler
+// follow-up), deliberately distinct from bloomGlow's slow red pulse above
+// (bloomGlow marks the separate, much rarer bloom/acid ability; this one
+// fires on every ordinary hit, same cadence attackFlash already pulses
+// the whole tower's own scale on).
+function drawTitanSpark(ctx, x, y, size, flashAmount) {
+  if (flashAmount <= 0) return;
+  const tipY = y - size * 3.2;
+  ctx.save();
+  ctx.globalAlpha = flashAmount * 0.9;
+  ctx.fillStyle = '#fff176';
+  const sparkCount = 5;
+  for (let i = 0; i < sparkCount; i += 1) {
+    const angle = (i / sparkCount) * Math.PI * 2;
+    const dist = size * (0.3 + flashAmount * 0.5);
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(angle) * dist, tipY + Math.sin(angle) * dist * 0.5, size * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawAmorphophallusTitanum(ctx, x, y, size, color, glow, time, flashAmount, bloomProgress = 0) {
   // bloomProgress counts down from its own fixed visual window (see
   // BLOOM_OPEN_DURATION in game.js) — normalized here to a 0-1 glow/
@@ -3304,6 +3444,9 @@ function drawAmorphophallusTitanum(ctx, x, y, size, color, glow, time, flashAmou
   drawTitanBase(ctx, x, y, size);
   drawTitanSpathe(ctx, x, y, size, color, openness);
   drawTitanSpadix(ctx, x, y, size, bloomGlow);
+  drawTitanSpark(ctx, x, y, size, flashAmount);
 
   ctx.restore();
+
+  drawProdigyAura(ctx, x, y, size, time);
 }
