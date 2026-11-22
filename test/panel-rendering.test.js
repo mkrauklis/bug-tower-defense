@@ -71,6 +71,23 @@ test('rendering the panel after buying into each Mushroom path never throws', ()
   });
 });
 
+test('rendering the panel after buying each Arctic Willow Brittle Path tier never throws', () => {
+  const game = loadFullGameContext();
+  const arcticWillow = game.createTower('arcticWillow');
+  game.setSelectedTower(arcticWillow);
+  const ctx = createStubCtx();
+
+  assert.doesNotThrow(() => game.renderUI(ctx)); // before any purchase
+
+  for (let tier = 0; tier < 4; tier += 1) {
+    game.purchaseUpgrade(arcticWillow, 1); // Brittle Path
+    assert.doesNotThrow(
+      () => game.renderUI(ctx),
+      `renderUI threw after buying Brittle Path tier ${tier + 1} (hasBrittleStems=${arcticWillow.hasBrittleStems}, hasIceCubes=${arcticWillow.hasIceCubes})`
+    );
+  }
+});
+
 test('rendering the panel works for every tower type with no upgrades bought', () => {
   ['sunflower', 'rose', 'mushroom'].forEach((type) => {
     const game = loadFullGameContext();

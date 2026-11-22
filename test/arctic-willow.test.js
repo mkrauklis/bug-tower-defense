@@ -6,10 +6,12 @@ const { loadFullGameContext } = require('./support/loadGame');
 // — a willow catkin, not a round flower head like every other base
 // tower): a brand-new 6th base tower, $80, 3 damage/sec baseline ("3
 // damage every second," the same literal phrasing Mushroom's own base
-// stats already use). Only its first path (Frosted Path, named after its
-// own first tier "Frosted" — not named as a whole by the user) has been
-// designed so far; the other two are left null, same "arrives across
-// separate follow-ups" pattern Corpse Flower's own 3 paths used.
+// stats already use). Its first path (Frosted Path, named after its own
+// first tier "Frosted" — not named as a whole by the user) was designed
+// first; a later direct follow-up request designed its 2nd path, Brittle
+// Path (see test/arctic-willow-brittle-path.test.js), mutually exclusive
+// with Frosted Path. The 3rd path is still left null, same "arrives
+// across separate follow-ups" pattern Corpse Flower's own 3 paths used.
 //
 // Frosted Path is a crowd-control path: every tier states its own real
 // but modest damage increase (read as a compounding damageMultiplier,
@@ -49,11 +51,14 @@ test('Arctic Willow costs $80 and deals 3 damage/sec baseline, with no Frosted P
   assert.equal(tower.hasIcicleRing, false);
 });
 
-test('only Frosted Path (path 0) is designed so far — the other 2 paths are undesigned', () => {
+// Brittle Path (path 1) was designed by a later direct follow-up request
+// — see test/arctic-willow-brittle-path.test.js for its own dedicated
+// coverage. Only the 3rd path is still undesigned.
+test('Frosted Path (path 0) and Brittle Path (path 1) are both designed; the 3rd path still isn\'t', () => {
   const game = loadFullGameContext();
   const tower = game.createTower('arcticWillow');
   assert.ok(game.getAvailableUpgrade(tower, 0)); // Frosted Path
-  assert.equal(game.getAvailableUpgrade(tower, 1), null);
+  assert.ok(game.getAvailableUpgrade(tower, 1)); // Brittle Path
   assert.equal(game.getAvailableUpgrade(tower, 2), null);
 });
 

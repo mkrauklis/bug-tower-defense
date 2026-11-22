@@ -857,7 +857,96 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null,
+      // Brittle Path (direct follow-up request): Arctic Willow's 2nd
+      // path, mutually exclusive with Frosted Path above (the existing
+      // chosenPath lock already handles that generically — no new code
+      // needed). Named after its own first tier, Brittle, same "pick a
+      // name matching the convention" treatment Frosted Path's own name
+      // got. A hard-CC/burst path rather than Frosted Path's gentler
+      // stacking slow: every ordinary hit applies a FULL freeze (a
+      // complete stop, not a percentage slow) for a flat 1 second — the
+      // request's own explicit instruction to reuse the existing full-
+      // stop/stun machinery (immobilizedRemaining/infectedRemaining,
+      // enemies.js) rather than build a 2nd parallel one, so this is a
+      // 3rd field in that same "any of these blocks movement" shape
+      // (frozenRemaining), not a reuse of either existing field (each
+      // already has its own distinct visual, and conflating this with
+      // Mushroom's own Infect Path would wrongly tint a frozen enemy
+      // green). While frozen, the enemy also takes freeze.tickDamage
+      // every 0.25s (4 ticks across the 1s freeze) — a genuinely new
+      // mechanic (Infect Path's own stun deals no damage at all), see
+      // applyFreeze()/the frozenTick timer in enemies.js. Since Arctic
+      // Willow's own attackInterval is exactly 1s (matching the freeze's
+      // own duration), a tower that keeps targeting the same enemy can
+      // effectively perma-freeze a single target forever — a deliberate
+      // reading of the numbers given, not a coincidence to balance away;
+      // this path's whole identity is "lock down one tough enemy," the
+      // opposite of Frosted Path's many-enemies crowd-control.
+      //
+      // Base attack damage is an absolute replace each tier (5 -> 6 -> 9
+      // -> 12, same convention Corpse Flower's own attackDamage/Mushroom's
+      // zombifyChance already use), not a compounding multiplier like
+      // Frosted Path — the user gave literal numbers every tier here,
+      // unlike Frosted Path's own "a little more damage" wording.
+      //
+      // Visuals reuse 3 already-generic effect fields outright rather
+      // than inventing new ones: `color` for "turn purple"/"even more
+      // purple" (tiers 1/2, the same mechanism Frostbite's own "turns
+      // light blue" already uses), `sizeMultiplier` for "grow bigger"
+      // (tiers 1/2/4 — tier 3 never mentions size, so it's left out that
+      // tier only), and `glow` for "start glowing purple" (tier 3 only —
+      // tier 4 repeats the same wording, read as the SAME glow
+      // continuing rather than a 2nd glow effect layered on top, per the
+      // request's own "same glow as tier3, just bigger again"; drawing
+      // this via tower.glow's existing shadowColor/shadowBlur hookup in
+      // drawArcticWillow(), already wired in but never fed a value until
+      // now). hasBrittleStems (tier 2, "grows new stems with plants")
+      // and hasIceCubes (tier 3, "ice cubes on its body") are the only 2
+      // genuinely new visual traits, drawn by drawArcticWillow()/
+      // drawArcticWillowCatkin() respectively.
+      {
+        name: 'Brittle Path',
+        upgrades: [
+          {
+            name: 'Brittle',
+            description:
+              'Arctic Willow turns slightly purple and grows bigger. Enemies hit are fully frozen for 1 second, ' +
+              'taking 2 damage every quarter-second while frozen, and the base attack now deals 5 damage.',
+            cost: 50,
+            effects: { color: '#b39ddb', sizeMultiplier: 1.15, freeze: { duration: 1, tickDamage: 2 }, attackDamage: 5 },
+          },
+          {
+            name: 'Super-brittle',
+            description:
+              'Arctic Willow turns even more purple and bigger, and grows new stems with plants. The freeze now ' +
+              'deals 4 damage every quarter-second, and the base attack deals 6 damage.',
+            cost: 250,
+            effects: {
+              color: '#8e5fc9',
+              sizeMultiplier: 1.15,
+              hasBrittleStems: true,
+              freeze: { duration: 1, tickDamage: 4 },
+              attackDamage: 6,
+            },
+          },
+          {
+            name: 'Fractured Ice',
+            description:
+              'The plant starts glowing purple and gains ice cubes on its body. The freeze now deals 5 damage ' +
+              'every quarter-second, and the base attack deals 9 damage.',
+            cost: 650,
+            effects: { glow: '#9c4dcc', hasIceCubes: true, freeze: { duration: 1, tickDamage: 5 }, attackDamage: 9 },
+          },
+          {
+            name: 'Cryo-fracture',
+            description:
+              'Arctic Willow grows bigger, still glowing purple. The freeze now deals a devastating 10 damage ' +
+              'every quarter-second, and the base attack deals 12 damage.',
+            cost: 1500,
+            effects: { sizeMultiplier: 1.2, freeze: { duration: 1, tickDamage: 10 }, attackDamage: 12 },
+          },
+        ],
+      },
       null,
     ],
   },
@@ -1184,6 +1273,23 @@ function createTower(typeKey) {
     icicleCount: 0,
     hasIceSpikes: false,
     hasIcicleRing: false,
+    // Arctic Willow's Brittle Path only (mutually exclusive with Frosted
+    // Path above — a tower can only ever have one chosenPath). freeze is
+    // a whole-object {duration, tickDamage} replace each tier, null
+    // until the path's first tier — rides along on the tower's own
+    // ordinary attack via the generalized projectile.freeze field (see
+    // spawnProjectile()/resolveProjectile() in game.js and applyFreeze()
+    // in enemies.js), the exact same shape slow above already uses, just
+    // for a full stop instead of a partial one. hasBrittleStems (tier 2)/
+    // hasIceCubes (tier 3) are purely visual, drawn by
+    // drawArcticWillow()/drawArcticWillowCatkin() in this file — "grow
+    // bigger" (tiers 1/2/4) and "turn purple"/"glowing purple" (tiers
+    // 1/2 and 3/4 respectively) reuse the already-generic
+    // sizeMultiplier/color/glow effects instead of needing fields of
+    // their own.
+    freeze: null,
+    hasBrittleStems: false,
+    hasIceCubes: false,
     // The Mangler (Rose's Prodigy) only: every grabInterval seconds,
     // grabs one random non-boss enemy in range for grabDamage bonus
     // damage, holding it immobilized for grabDuration — on top of (not
@@ -1409,6 +1515,16 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.icicleCount !== undefined) tower.icicleCount = effects.icicleCount;
   if (effects.hasIceSpikes) tower.hasIceSpikes = true;
   if (effects.hasIcicleRing) tower.hasIcicleRing = true;
+  // Arctic Willow's Brittle Path: freeze is a whole-object replace, same
+  // convention as slow above — no cooldown of its own to reset, since
+  // (also like slow) it isn't a separate periodic shot, it just rides
+  // along on the tower's ordinary attack from here on (see
+  // spawnProjectile() in game.js). hasBrittleStems/hasIceCubes are
+  // purely visual, same boolean-flag convention as hasIceSpikes/
+  // hasIcicleRing above.
+  if (effects.freeze) tower.freeze = effects.freeze;
+  if (effects.hasBrittleStems) tower.hasBrittleStems = true;
+  if (effects.hasIceCubes) tower.hasIceCubes = true;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -1631,7 +1747,9 @@ function renderTower(ctx, tower, x, y, time) {
       tower.hasIceSpikes,
       // Frosted Path's own tiered height growth — same chosenPath +
       // upgradesPurchased gating every other tower's own tiered art uses.
-      tower.chosenPath === 0 ? tower.upgradesPurchased : 0
+      tower.chosenPath === 0 ? tower.upgradesPurchased : 0,
+      tower.hasBrittleStems,
+      tower.hasIceCubes
     );
   } else if (tower.type === 'sunlitConductor') {
     drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
@@ -2704,7 +2822,7 @@ const WILLOW_CATKIN_MARK_COUNT = 10;
 // 3) — deliberately a different read from the icicles above (loose vs.
 // a neat radiating ring), matching the user's own "icicles on its body"
 // vs. "ice spikes pointing outward" distinction.
-function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes) {
+function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes, hasIceCubes) {
   const catkinHeight = size * 1.5;
   const catkinWidth = size * 0.55;
 
@@ -2779,6 +2897,26 @@ function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpike
       ctx.restore();
     }
   }
+
+  // Brittle Path's own tier-3 trait ("gain ice cubes on its body") —
+  // small square-ish blocks scattered over the body, a deliberately
+  // different silhouette from Frosted Path's icicles (tapered drops) and
+  // ice spikes (radiating triangles) above, so the two paths' own ice
+  // decorations never read as the same thing even though both are icy.
+  if (hasIceCubes) {
+    ctx.fillStyle = 'rgba(179, 229, 252, 0.85)';
+    ctx.strokeStyle = '#4fc3f7';
+    ctx.lineWidth = 1;
+    [[-0.3, 0.2], [0.25, 0.4], [0, 0.65], [-0.2, 0.85]].forEach(([dx, dt]) => {
+      const cubeSize = size * 0.18;
+      const cx = x + dx * catkinWidth;
+      const cy = y - catkinHeight * (0.1 + dt * 0.75);
+      ctx.beginPath();
+      ctx.rect(cx - cubeSize * 0.5, cy - cubeSize * 0.5, cubeSize, cubeSize);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
 }
 
 // Arctic Willow's full tower: a short woody stem with a couple of green
@@ -2789,8 +2927,12 @@ function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpike
 // changes color/slow/damage in the user's own wording, so the formula
 // below deliberately gives tier 2 the same height as tier 1, same
 // "skipped tier" shape drawCorpseFlower's own heightMultiplier already
-// uses for Hazard/Acidic Mixture Path).
-function drawArcticWillow(ctx, x, y, size, color, glow, time, flashAmount, icicleCount, hasIceSpikes, frostTier) {
+// uses for Hazard/Acidic Mixture Path). hasBrittleStems (Brittle Path's
+// own tier-2 trait, "grows new stems with plants") adds a 3rd small
+// leaf cluster beyond the base tower's usual 2, in a purple-tinted green
+// so it reads as this path's own growth rather than identical to the
+// plain leaves either path starts with.
+function drawArcticWillow(ctx, x, y, size, color, glow, time, flashAmount, icicleCount, hasIceSpikes, frostTier, hasBrittleStems, hasIceCubes) {
   const heightMultiplier = frostTier >= 4 ? 1.5 : frostTier >= 3 ? 1.3 : frostTier >= 1 ? 1.15 : 1;
   const stemHeight = size * 1.1 * heightMultiplier;
   const groundY = y + stemHeight;
@@ -2815,6 +2957,18 @@ function drawArcticWillow(ctx, x, y, size, color, glow, time, flashAmount, icicl
   ctx.ellipse(x + size * 0.3, y + stemHeight * 0.7, size * 0.26, size * 0.11, 0.5, 0, Math.PI * 2);
   ctx.fill();
 
+  if (hasBrittleStems) {
+    ctx.fillStyle = '#6a5a9c';
+    ctx.strokeStyle = '#4e3524';
+    const newStemHeight = stemHeight * 0.65;
+    ctx.fillRect(x + size * 0.22 - size * 0.04, y + stemHeight - newStemHeight, size * 0.08, newStemHeight);
+    ctx.strokeRect(x + size * 0.22 - size * 0.04, y + stemHeight - newStemHeight, size * 0.08, newStemHeight);
+    ctx.fillStyle = '#5a7a9c';
+    ctx.beginPath();
+    ctx.ellipse(x + size * 0.4, y + stemHeight - newStemHeight * 0.85, size * 0.18, size * 0.08, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.translate(x, y);
   ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
   ctx.translate(-x, -y);
@@ -2824,7 +2978,7 @@ function drawArcticWillow(ctx, x, y, size, color, glow, time, flashAmount, icicl
     ctx.shadowBlur = 20;
   }
 
-  drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes);
+  drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes, hasIceCubes);
 
   ctx.restore();
 }

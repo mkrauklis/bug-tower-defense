@@ -1283,6 +1283,17 @@ function createEnemyInstance(entry, spawnDelay) {
     // somehow has both active at once; movement is blocked while *either*
     // is above 0 (see updateEnemies()).
     infectedRemaining: 0,
+    // Arctic Willow's Brittle Path (direct follow-up request): seconds
+    // left fully stopped by its own on-hit freeze, same "a separate
+    // field from immobilizedRemaining/infectedRemaining, own distinct
+    // visual" reasoning as infectedRemaining's own comment just above —
+    // movement is blocked while any of the 3 is above 0 (see
+    // updateEnemies()). frozenTick (null unless actually frozen) carries
+    // the fixed per-0.25s damage amount/timer/source-tower for the
+    // freeze's own periodic damage — ticked in updateEnemies() too,
+    // unconditionally (same as burn), independent of the movement block.
+    frozenRemaining: 0,
+    frozenTick: null,
     // Savanah's Sandworm/Desert Termite (and any future type that sets
     // tunnelInterval on its own roster entry — see SAVANAH_ROSTER's
     // comment above): tunnelCooldown counts down to the next tunnel
@@ -1532,6 +1543,30 @@ function applySlow(enemy, slow) {
   enemy.slow = { multiplier: slow.multiplier, remaining: slow.duration };
 }
 
+// Arctic Willow's Brittle Path (direct follow-up request, mutually
+// exclusive with Frosted Path — the existing single-chosen-path lock
+// already handles that): a FULL stop (unlike applySlow's own partial
+// speed reduction), for a fixed duration, plus a fixed per-tick damage
+// amount on its own 0.25s timer (the request's own wording: "X damage
+// every 1/4 of a second the enemy is frozen") — ticked in
+// updateEnemies() below, where enemy.frozenRemaining is also read
+// alongside immobilizedRemaining/infectedRemaining to block movement.
+// The request explicitly suggested reusing the existing stun/freeze
+// machinery rather than building a parallel one — immobilizedRemaining/
+// infectedRemaining already establish "any of several `xRemaining`
+// fields blocks movement while > 0," so frozenRemaining is a 3rd field
+// in that same shape (not a reuse of infectedRemaining itself, which
+// stays Mushroom-specific — same reasoning infectedRemaining's own
+// comment gives for not reusing immobilizedRemaining: each gets its own
+// distinct visual in renderEnemies() without the two ever being
+// conflated). Same plain-overwrite convention applyBurn/applySlow
+// already use — a fresh freeze replaces whatever was ticking, never
+// stacks or extends.
+function applyFreeze(enemy, freeze, sourceTower) {
+  enemy.frozenRemaining = freeze.duration;
+  enemy.frozenTick = { damage: freeze.tickDamage, timer: 0.25, sourceTower };
+}
+
 function updateEnemies(deltaSeconds) {
   activeEnemies.forEach((enemy) => {
     // A zombie (Mushroom's Zombify) is a completely separate little state
@@ -1586,6 +1621,20 @@ function updateEnemies(deltaSeconds) {
       if (enemy.slow.remaining <= 0) enemy.slow = null;
     }
 
+    // Arctic Willow's Brittle Path: ticks (and deals its own damage)
+    // unconditionally, same "keeps running regardless of the movement-
+    // blocking check below" shape burn/slow above already use — the
+    // movement-blocking return further down is what actually stops this
+    // enemy from walking while frozen; this block is only the damage
+    // side of it.
+    if (enemy.frozenTick) {
+      enemy.frozenTick.timer -= deltaSeconds;
+      if (enemy.frozenTick.timer <= 0) {
+        damageEnemy(enemy, enemy.frozenTick.damage, enemy.frozenTick.sourceTower);
+        enemy.frozenTick.timer += 0.25;
+      }
+    }
+
     // Tunneling (Savanah's Sandworm/Desert Termite): a periodic cooldown
     // that starts a tunneledRemaining countdown every tunnelInterval
     // seconds, surfacing again once tunnelDuration has elapsed. Ticks
@@ -1609,15 +1658,18 @@ function updateEnemies(deltaSeconds) {
       }
     }
 
-    // Grabbed by a Tanglement root, and/or stunned by Infect Path's spore
-    // infection — either one alone (or both at once) holds the enemy in
-    // place; movement only, burn above still ticks normally. Both timers
-    // count down regardless of which one is actually still active, so
-    // whichever ends first just quietly reaches 0 without affecting the
-    // other.
-    if (enemy.immobilizedRemaining > 0 || enemy.infectedRemaining > 0) {
+    // Grabbed by a Tanglement root, stunned by Infect Path's spore
+    // infection, and/or fully frozen by Arctic Willow's Brittle Path —
+    // any one alone (or several at once) holds the enemy in place;
+    // movement only, burn/freeze-tick damage above still tick normally.
+    // All 3 timers count down regardless of which ones are actually
+    // still active, so whichever ends first just quietly reaches 0
+    // without affecting the others.
+    if (enemy.immobilizedRemaining > 0 || enemy.infectedRemaining > 0 || enemy.frozenRemaining > 0) {
       enemy.immobilizedRemaining = Math.max(0, enemy.immobilizedRemaining - deltaSeconds);
       enemy.infectedRemaining = Math.max(0, enemy.infectedRemaining - deltaSeconds);
+      enemy.frozenRemaining = Math.max(0, enemy.frozenRemaining - deltaSeconds);
+      if (enemy.frozenRemaining <= 0) enemy.frozenTick = null;
       return;
     }
 
@@ -4409,6 +4461,37 @@ function renderEnemies(ctx, time) {
       [[-0.5, -0.3], [0.4, -0.1], [0.1, 0.4], [-0.3, 0.35]].forEach(([dx, dy]) => {
         ctx.beginPath();
         ctx.arc(enemy.x + dx * enemy.radius, enemy.y + dy * enemy.radius, enemy.radius * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // Arctic Willow's Brittle Path full freeze gets its own distinct
+    // look too — a cold icy-blue glow (same shadowBlur-glow technique
+    // Infect Path's own stun uses just above, blue instead of green)
+    // plus a few small angular ice-shard marks, so "frozen" reads as its
+    // own thing rather than blending into Tanglement's dashed ring or
+    // Infect Path's mold patches.
+    if (enemy.frozenRemaining > 0) {
+      ctx.save();
+      ctx.shadowColor = '#4fc3f7';
+      ctx.shadowBlur = 8;
+      ctx.strokeStyle = 'rgba(79, 195, 247, 0.75)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.radius + 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = '#b3e5fc';
+      [[-0.45, -0.35], [0.35, -0.2], [0, 0.4]].forEach(([dx, dy]) => {
+        const sx = enemy.x + dx * enemy.radius;
+        const sy = enemy.y + dy * enemy.radius;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - enemy.radius * 0.16);
+        ctx.lineTo(sx + enemy.radius * 0.1, sy);
+        ctx.lineTo(sx, sy + enemy.radius * 0.16);
+        ctx.lineTo(sx - enemy.radius * 0.1, sy);
+        ctx.closePath();
         ctx.fill();
       });
     }

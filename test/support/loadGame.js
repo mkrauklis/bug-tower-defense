@@ -43,7 +43,7 @@ function loadGameContext() {
       isBossRound, getBossForRound, getUnlockedEnemyTypes, getRoundScaling,
       getTotalWaveSize,
       generateWave, spawnWave, updateEnemies, getLastLeakedEnemies,
-      findNearestEnemyInRange, damageEnemy, applyBurn, applySlow, getEnemiesInRadius,
+      findNearestEnemyInRange, damageEnemy, applyBurn, applySlow, applyFreeze, getEnemiesInRadius,
       ARMORED_BEETLE_TIERS, getUnlockedArmoredBeetleKeys, getArmoredBeetleTier,
       getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath, isPointInMagmaPool,
@@ -176,7 +176,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
     `
     globalThis.__fullExports = {
       createTower, purchaseUpgrade, getAvailableUpgrade,
-      damageEnemy, applyBurn, applySlow, findNearestEnemyInRange, getEnemiesInRadius,
+      damageEnemy, applyBurn, applySlow, applyFreeze, findNearestEnemyInRange, getEnemiesInRadius,
       updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies, getLastLeakedEnemies,
       getStrongestAuraFor,
       spawnFloatingText, updateFloatingTexts,

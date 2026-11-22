@@ -507,6 +507,14 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
     // attack every tower already fires — tower.slow is null for every
     // tower without it, so this is a no-op for everyone else.
     slow: tower.slow || null,
+    // Arctic Willow's Brittle Path (direct follow-up request): the exact
+    // same generalization pipeline as slow just above, now for a full
+    // freeze instead of a partial slow — see resolveProjectile()'s own
+    // `if (projectile.freeze)` branch and applyFreeze() in enemies.js.
+    // Mutually exclusive with slow in practice (a tower only ever has
+    // one chosen path), but both fields are forwarded unconditionally
+    // the same way — whichever one the tower doesn't have is just null.
+    freeze: tower.freeze || null,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
     shape:
       tower.attackType === 'fireball'
@@ -625,6 +633,12 @@ function resolveProjectile(projectile) {
   damageEnemy(target, projectile.damage, projectile.sourceTower);
   if (projectile.burn) applyBurn(target, projectile.burn, projectile.sourceTower);
   if (projectile.slow) applySlow(target, projectile.slow);
+  // Arctic Willow's Brittle Path: same pipeline as slow just above, now
+  // crediting the freeze's own periodic damage ticks to whichever tower
+  // actually fired this hit (applyFreeze()'s own sourceTower param,
+  // enemies.js) — the same per-tower damage-dealt counter every other
+  // damage source in the game already feeds.
+  if (projectile.freeze) applyFreeze(target, projectile.freeze, projectile.sourceTower);
 
   // Zombify: only a spore's own killing blow counts (never any other
   // damage source — burn, a root, another tower entirely, etc. — and never
