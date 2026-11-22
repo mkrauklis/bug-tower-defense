@@ -1025,6 +1025,21 @@ function createTower(typeKey) {
     chosenPath: null,
     upgradesPurchased: 0, // count of upgrades bought within the chosen path
     stats: { ...type.baseStats },
+    // Lifetime damage this specific placed tower has personally inflicted
+    // (direct request: a running per-tower damage counter, shown in the
+    // Selected Tower panel). Incremented in exactly one place — damageEnemy()
+    // in enemies.js, which every damage source in the game already funnels
+    // through — by having each call site pass itself as damageEnemy's new
+    // optional third (sourceTower) argument. A hit armor fully negates never
+    // reaches the increment (damageEnemy returns before touching health at
+    // all), so a tower's counter only ever grows by damage that actually
+    // landed. Reset to 0 by createTower() here, so a sold-and-rebought tower
+    // (or a Prodigy upgrade's brand-new instance replacing the old one, same
+    // as every other field here) starts its count over rather than
+    // inheriting the old tower's total — deliberate: this is "what has THIS
+    // placed tower done," not a persistent per-slot or per-type lifetime
+    // stat.
+    totalDamageDealt: 0,
     // 'projectile' unless a type states its own baseAttackType (Prodigies
     // only, so far — e.g. the Sunlit Conductor's continuous ray — since
     // every other tower starts as a thrown projectile and only switches

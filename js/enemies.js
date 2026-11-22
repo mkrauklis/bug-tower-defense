@@ -1313,13 +1313,29 @@ function getEnemiesInRadius(x, y, radius) {
 // persistent effect can't bypass armor just by ticking enough times;
 // deliberate, not an oversight — armor is a hard per-hit gate, not a
 // damage-reduction percentage.
-function damageEnemy(enemy, amount) {
+// `sourceTower` is optional and new (direct request: a per-tower lifetime
+// damage-dealt counter) — every call site in game.js that has a tower handy
+// passes itself, and this is the one place that actually credits it,
+// keeping every other damageEnemy() call site below (and every other file)
+// untouched. Deliberately credited AFTER the armor gate above: an attack
+// armor fully blocks dealt zero real damage, so it shouldn't inflate the
+// tower's counter. A couple of damage sources genuinely have no single
+// owning tower to credit — a zombie's own death explosion (zombieExplosionDamage,
+// below) isn't an attack by any currently-placed tower, it's the zombie
+// itself going off — so those calls simply omit the argument rather than
+// forcing a dubious attribution.
+function damageEnemy(enemy, amount, sourceTower) {
   if (enemy.armorThreshold > 0 && amount < enemy.armorThreshold) return;
   enemy.health -= amount;
+  if (sourceTower) sourceTower.totalDamageDealt += amount;
 }
 
-function applyBurn(enemy, burn) {
-  enemy.burn = { damagePerSecond: burn.damagePerSecond, remaining: burn.duration };
+// `sourceTower` (same new optional argument as damageEnemy above) is stashed
+// on the burn state itself so the DoT ticks below — which fire on their own,
+// long after the hit that started them, with no tower reference otherwise in
+// scope — can still credit the tower that applied it.
+function applyBurn(enemy, burn, sourceTower) {
+  enemy.burn = { damagePerSecond: burn.damagePerSecond, remaining: burn.duration, sourceTower };
 }
 
 // Corpse Flower's Acidic Mixture Path (direct request): a genuinely new
@@ -1375,7 +1391,7 @@ function updateEnemies(deltaSeconds) {
     }
 
     if (enemy.burn) {
-      damageEnemy(enemy, enemy.burn.damagePerSecond * deltaSeconds);
+      damageEnemy(enemy, enemy.burn.damagePerSecond * deltaSeconds, enemy.burn.sourceTower);
       enemy.burn.remaining -= deltaSeconds;
       if (enemy.burn.remaining <= 0) enemy.burn = null;
     }

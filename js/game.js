@@ -496,6 +496,7 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
     aimX: target.x,
     aimY: target.y,
     target,
+    sourceTower: tower, // per-tower damage-dealt counter — see damageEnemy() in enemies.js
     damage: tower.stats.damage * damageMultiplier,
     burn: tower.burn,
     // Arctic Willow's Frosted Path (direct request: "makes enemies when
@@ -554,6 +555,7 @@ function spawnAcidProjectile(tower, target) {
     aimX: target.x,
     aimY: target.y,
     target,
+    sourceTower: tower,
     damage: tower.acid.damage,
     burn: null,
     slow: { multiplier: tower.acid.slowMultiplier, duration: tower.acid.slowDuration },
@@ -590,6 +592,7 @@ function spawnBloomAcidProjectile(tower, target) {
     aimX: target.x,
     aimY: target.y,
     target,
+    sourceTower: tower,
     damage: tower.bloom.damage,
     burn: null,
     slow: { multiplier: tower.bloom.slowMultiplier, duration: tower.bloom.slowDuration },
@@ -619,8 +622,8 @@ function resolveProjectile(projectile) {
   const driftFromAim = Math.hypot(target.x - projectile.aimX, target.y - projectile.aimY);
   if (driftFromAim > target.radius + PROJECTILE_HIT_TOLERANCE) return; // fizzle: wandered off
 
-  damageEnemy(target, projectile.damage);
-  if (projectile.burn) applyBurn(target, projectile.burn);
+  damageEnemy(target, projectile.damage, projectile.sourceTower);
+  if (projectile.burn) applyBurn(target, projectile.burn, projectile.sourceTower);
   if (projectile.slow) applySlow(target, projectile.slow);
 
   // Zombify: only a spore's own killing blow counts (never any other
@@ -786,8 +789,8 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.target && tower.attackCooldown <= 0) {
     if (tower.attackType === 'ray') {
       // A continuous beam hits instantly — there's no travel time to model.
-      damageEnemy(tower.target, tower.stats.damage * auraDamageMultiplier);
-      if (tower.burn) applyBurn(tower.target, tower.burn);
+      damageEnemy(tower.target, tower.stats.damage * auraDamageMultiplier, tower);
+      if (tower.burn) applyBurn(tower.target, tower.burn, tower);
     } else {
       // Damage (and burn) travel with the projectile and apply on arrival —
       // the aura multiplier is baked into the projectile's own damage at
@@ -834,7 +837,7 @@ function updateTowerGasCloud(tower, x, y, deltaSeconds) {
   if (tower.gasCloudCooldown > 0) return;
   tower.gasCloudCooldown = GAS_CLOUD_TICK_INTERVAL;
 
-  getEnemiesInRadius(x, y, tower.gasCloud.radius).forEach((enemy) => damageEnemy(enemy, tower.gasCloud.damagePerTick));
+  getEnemiesInRadius(x, y, tower.gasCloud.radius).forEach((enemy) => damageEnemy(enemy, tower.gasCloud.damagePerTick, tower));
 }
 
 // Corpse Flower's Acidic Mixture Path (all 4 tiers): every
@@ -872,7 +875,7 @@ function updateTowerGasRing(tower, x, y, deltaSeconds) {
 
   getEnemiesInRadius(x, y, tower.gasRing.outerRadius).forEach((enemy) => {
     const dist = Math.hypot(enemy.x - x, enemy.y - y);
-    if (dist >= tower.gasRing.innerRadius) damageEnemy(enemy, tower.gasRing.damagePerTick);
+    if (dist >= tower.gasRing.innerRadius) damageEnemy(enemy, tower.gasRing.damagePerTick, tower);
   });
 }
 
@@ -924,7 +927,7 @@ function updateTowerGrab(tower, x, y, deltaSeconds) {
   const eligible = getEnemiesInRadius(x, y, tower.stats.range).filter((enemy) => !enemy.isBoss);
   if (eligible.length === 0) return;
   const victim = eligible[Math.floor(random() * eligible.length)];
-  damageEnemy(victim, tower.grabDamage);
+  damageEnemy(victim, tower.grabDamage, tower);
   victim.immobilizedRemaining = Math.max(victim.immobilizedRemaining, tower.grabDuration);
 }
 
@@ -1020,6 +1023,7 @@ function spawnThornProjectile(tower, target) {
     aimX: target.x,
     aimY: target.y,
     target,
+    sourceTower: tower,
     damage: tower.thornShotDamage,
     burn: tower.thornShotPoison, // same {damagePerSecond, duration} shape applyBurn/resolveProjectile already expect
     color: '#4e342e',
@@ -1040,7 +1044,7 @@ function updateTowerRoots(tower) {
     const [victim] = getEnemiesInRadius(root.x, root.y, ROOT_TRIGGER_RADIUS);
     if (!victim) return true;
 
-    damageEnemy(victim, root.damage); // the base "step on it" hit — always happens
+    damageEnemy(victim, root.damage, tower); // the base "step on it" hit — always happens
 
     // Tanglement's grab is additive, not a replacement for the above: a
     // root with a successful roll still dealt its normal hit this same
@@ -1048,7 +1052,7 @@ function updateTowerRoots(tower) {
     // game's seeded random() (not Math.random()), same as everywhere else
     // that needs randomness.
     if (tower.rootGrabChance > 0 && random() < tower.rootGrabChance) {
-      damageEnemy(victim, tower.rootGrabDamage);
+      damageEnemy(victim, tower.rootGrabDamage, tower);
       victim.immobilizedRemaining = Math.max(victim.immobilizedRemaining, tower.rootGrabDuration);
     }
 
@@ -1076,7 +1080,7 @@ function updateTowerPuddle(tower, deltaSeconds) {
   tower.activePuddles.forEach((puddle) => {
     puddle.remaining -= deltaSeconds;
     getEnemiesInRadius(puddle.x, puddle.y, puddle.radius).forEach((enemy) => {
-      damageEnemy(enemy, puddle.damagePerSecond * deltaSeconds);
+      damageEnemy(enemy, puddle.damagePerSecond * deltaSeconds, tower);
     });
   });
   tower.activePuddles = tower.activePuddles.filter((puddle) => puddle.remaining > 0);
@@ -1090,7 +1094,7 @@ function updateTowerOrbit(tower, x, y, deltaSeconds) {
     const emberX = x + tower.orbit.radius * Math.cos(angle);
     const emberY = y + tower.orbit.radius * Math.sin(angle);
     getEnemiesInRadius(emberX, emberY, tower.orbit.emberRadius).forEach((enemy) => {
-      damageEnemy(enemy, tower.orbit.damagePerSecond * deltaSeconds);
+      damageEnemy(enemy, tower.orbit.damagePerSecond * deltaSeconds, tower);
     });
   }
 }
@@ -1103,7 +1107,7 @@ function updateTowerSpark(tower, x, y, deltaSeconds) {
   if (tower.sparkCooldown <= 0) {
     tower.sparkCooldown = tower.spark.interval;
     const target = findNearestEnemyInRange(x, y, tower.stats.range);
-    if (target) damageEnemy(target, tower.spark.damage);
+    if (target) damageEnemy(target, tower.spark.damage, tower);
   }
 }
 
@@ -1119,7 +1123,7 @@ function updateTowerShockwave(tower, x, y, deltaSeconds) {
   tower.shockwaveCooldown -= deltaSeconds;
   if (tower.shockwaveCooldown <= 0) {
     tower.shockwaveCooldown = tower.shockwave.interval;
-    getEnemiesInRadius(x, y, tower.stats.range).forEach((enemy) => damageEnemy(enemy, tower.shockwave.damage));
+    getEnemiesInRadius(x, y, tower.stats.range).forEach((enemy) => damageEnemy(enemy, tower.shockwave.damage, tower));
     tower.shockwavePulse = SHOCKWAVE_PULSE_DURATION;
   }
 }
@@ -1139,7 +1143,7 @@ function updateTowerVines(tower, x, y, deltaSeconds) {
     for (let i = 0; i < tower.vineCount; i += 1) {
       const target = findNearestEnemyInRange(x, y, vineRange);
       if (target) {
-        damageEnemy(target, tower.vineDamage);
+        damageEnemy(target, tower.vineDamage, tower);
         // Starts that specific vine's lash-toward-target animation (see
         // renderRoseVines in towers.js) — only when it actually hit
         // something, so an idle vine with nothing in range stays put.
@@ -1460,6 +1464,7 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
       : 'none';
     const lines = [
       `Damage: ${selectedTower.stats.damage.toFixed(1)}`,
+      `Damage Dealt: ${Math.round(selectedTower.totalDamageDealt)}`,
       `Size: ${selectedTower.stats.size.toFixed(1)}`,
       `Attack interval: ${selectedTower.stats.attackInterval.toFixed(2)}s`,
       `Attack: ${selectedTower.attackType}`,
@@ -1689,17 +1694,16 @@ function renderWaveSection(ctx, x, width, startY) {
   ctx.fillText('Wave', x, y);
   y += 22;
 
+  // Direct request (relayed from the peer session): remove whatever UI
+  // shows per-enemy info/stats — "enemies should just show their health
+  // bar/visual as normal without an info readout." The only such readout
+  // found anywhere in the codebase was this per-round composition
+  // breakdown (each upcoming enemy's name/HP/speed multiplier) — individual
+  // enemies in the world (renderEnemies() in enemies.js) already draw
+  // nothing but their body art and health bar, no text overlay, so that
+  // part needed no change. `round` itself isn't enemy info, so it stays.
   ctx.font = '12px sans-serif';
-  const waveLines = [
-    `Round: ${round}`,
-    ...currentWave.map((entry) =>
-      entry.isBoss
-        ? `BOSS: ${entry.name} (${entry.health} HP, ${entry.speedMultiplier}x speed)`
-        : `${entry.name} x${entry.count} (${entry.health} HP each, ${entry.speedMultiplier}x speed)`
-    ),
-  ];
-  const wrapped = waveLines.flatMap((line) => uiWrapText(ctx, line, width));
-  y = uiDrawTextLines(ctx, wrapped, x, y, 14, '#ccc', '12px sans-serif') + 10;
+  y = uiDrawTextLines(ctx, [`Round: ${round}`], x, y, 14, '#ccc', '12px sans-serif') + 10;
 
   // Horde Mode has no discrete round to wait at — no Next Round button (it
   // can never be "pressed," enemies just keep coming) and no Auto-Continue
