@@ -529,6 +529,94 @@ const VOLCANIC_ROSTER = {
   orderTier3: ['velvetAnt', 'volcanicLonghornBeetle', 'fireLovingBeetle'],
 };
 
+// Caves (direct request, relayed from the peer session, from 3 reference
+// photos given as a written description instead): a dark cave roster of
+// 12 named creatures given in one ordered, weakest-to-strongest list —
+// but only 2 boss tiers, not the usual 3 (explicitly called out in the
+// request itself: "same shape as Volcanic/Deep Forest's existing 2-boss
+// fallback"). Unlike Whirlpool/Tundra's own 12-entry lists (which split
+// evenly into 3 regular tiers of 3 plus 3 bosses at positions 4/8/12),
+// this list's 2 bosses sit at positions 4 and 12 — Cave Midge (round 25)
+// and Blind Cavefish (the FINAL entry, explicitly called out as "the
+// toughest in this roster"). That leaves 7 regular enemies between the
+// two bosses (positions 5-11), not the usual 3-then-3 split a 3-boss list
+// would give — rather than force an arbitrary tier2/tier3 split the
+// request's own ordering doesn't support, all 7 go into orderTier2 as one
+// longer list (nothing in getUnlockedEnemyTypes()'s own every-5-rounds
+// cadence requires exactly 3 entries — any length works), unlocking
+// progressively from round 26 through round 56; orderTier3 is left empty,
+// same "no 3rd regular tier designed" shape Volcanic originally shipped
+// with (see that roster's own history, now filled in by its own later
+// follow-up) before this. getBossForRound()'s own existing fallback means
+// round 75+ just keeps reusing Blind Cavefish, the same tolerance
+// FOREST_ROSTER's 2-boss shape already established.
+//
+// Difficulty tier: Medium (MAP_DIFFICULTY_MULTIPLIER below), not Hard —
+// nothing in the request named a tier explicitly, so this is a judgment
+// call; a cave full of bats/moths/birds/blind salamanders reads as
+// atmospheric and a little spooky rather than the brutal gauntlet
+// Whirlpool/Tundra/Volcanic's own rosters are calibrated for, so health/
+// speed below are calibrated at Marshland/Savanah's own Medium-tier
+// baseline (tier1 ~15-55hp, climbing to boss2's 600 — in the same range
+// Marshland's Military Helmet Snail/Savanah's Blue Death Beetle sit at
+// for their own boss2) rather than Whirlpool/Tundra/Volcanic's Hard-tier
+// numbers. Bounty is a clean round(health/2) throughout — brand new
+// content, no earlier pre-doubling baggage to account for, same approach
+// Whirlpool/Volcanic's own numbers used when they were new.
+//
+// Speed is the usual second axis, independent of the health-ordered list:
+// real swifts/swiftlets are famously fast fliers (faster even than the
+// bat), while blind cave salamanders/the final cavefish boss are slow
+// crawlers/drifters despite real toughness, matching the non-monotonic-
+// with-health pattern every other roster's own "weakest to strongest"
+// list already establishes (e.g. Whirlpool's tuna, Savanah's desertAnt).
+const CAVES_ROSTER = {
+  enemyTypes: {
+    bat: { name: 'Bat', speedMultiplier: 1.0, health: 15, color: '#2b2a2e', radius: 7, bounty: 8 },
+    moth: { name: 'Moth', speedMultiplier: 0.55, health: 30, color: '#d8d2c0', radius: 9, bounty: 15 },
+    fungusGnat: { name: 'Fungus Gnats', speedMultiplier: 0.95, health: 55, color: '#6b6255', radius: 5, bounty: 28 },
+    oilbird: { name: 'Oilbird', speedMultiplier: 0.55, health: 85, color: '#6b4a32', radius: 11, bounty: 43 },
+    // Swifts (real ones) are among the fastest fliers in nature —
+    // drawCaveBirdBody's own `longWings` option (a longer, narrower
+    // scythe-shaped wing) is this family's shared signature trait, and
+    // the fastest regular enemy on this map, same "small/fast up front"
+    // convention Whirlpool's tuna/Savanah's desertAnt already use.
+    swiftlet: { name: 'Swiftlet', speedMultiplier: 1.1, health: 115, color: '#3a3a42', radius: 7, bounty: 58 },
+    whiteCollaredSwift: {
+      name: 'White-collared Swift',
+      speedMultiplier: 1.05,
+      health: 150,
+      color: '#454552',
+      radius: 7,
+      bounty: 75,
+    },
+    caveSwallow: { name: 'Cave Swallow', speedMultiplier: 0.9, health: 190, color: '#7a5a3a', radius: 7, bounty: 95 },
+    olm: { name: 'Olm', speedMultiplier: 0.35, health: 240, color: '#d9b8ae', radius: 10, bounty: 120 },
+    texasBlindSalamander: {
+      name: 'Texas Blind Salamander',
+      speedMultiplier: 0.3,
+      health: 300,
+      color: '#c9a8b8',
+      radius: 10,
+      bounty: 150,
+    },
+    caveShrimp: { name: 'Cave Shrimp', speedMultiplier: 0.5, health: 370, color: '#cfe0d8', radius: 6, bounty: 185 },
+  },
+  bossTypes: {
+    1: { name: 'Cave Midge', speedMultiplier: 0.55, health: 260, color: '#5c3a2e', radius: 16, bounty: 130 },
+    // The map's true final boss (explicitly called out in the request:
+    // "should be the toughest in this roster") — biggest, slowest, and
+    // by far the tankiest thing here, same billing every other map's
+    // final boss gets. Deliberately eyeless (drawBlindCavefish below
+    // draws no eye at all, unlike every other fish-shaped creature in
+    // this game) — "blind," its own namesake trait.
+    2: { name: 'Blind Cavefish', speedMultiplier: 0.28, health: 600, color: '#d8dce0', radius: 21, bounty: 300 },
+  },
+  order: ['bat', 'moth', 'fungusGnat'],
+  orderTier2: ['oilbird', 'swiftlet', 'whiteCollaredSwift', 'caveSwallow', 'olm', 'texasBlindSalamander', 'caveShrimp'],
+  orderTier3: [],
+};
+
 // Keyed by TERRAIN id (map.js's TERRAIN_THEMES keys — 'forest'/'marsh'/
 // 'desert'), not the map's own id ('deepForest'/'marshland'/'savanah') —
 // getActiveRoster() below looks this up via getActiveMap().terrain.
@@ -539,6 +627,7 @@ const MAP_ROSTERS = {
   ocean: OCEAN_ROSTER,
   tundra: TUNDRA_ROSTER,
   volcano: VOLCANIC_ROSTER,
+  caves: CAVES_ROSTER,
 };
 
 // Falls back to the Forest roster if the active map's terrain isn't a
@@ -904,6 +993,13 @@ const MAP_DIFFICULTY_MULTIPLIER = {
   // future Hard map's relative brutality actually lives" convention
   // this constant's own comment on tundra already established.
   volcano: 1.8, // Hard
+  // Caves (direct request, relayed from the peer session): Medium, not
+  // Hard — see CAVES_ROSTER's own comment for the judgment call (nothing
+  // in the request named a tier explicitly; a cave of bats/birds/blind
+  // salamanders reads as atmospheric rather than brutal, so it's
+  // calibrated alongside Marshland/Savanah, not Whirlpool/Tundra/
+  // Volcanic).
+  caves: 1.3, // Medium
 };
 
 function getRoundScaling(round) {
@@ -1085,6 +1181,19 @@ const ENEMY_FACING_OFFSET = {
   polarBumblebee: Math.PI,
   snowGroundBeetle: Math.PI,
   wolfSpider: Math.PI,
+  // Caves (direct request, relayed from the peer session): every one-
+  // sided shape draws head/front/antennae toward -x, same convention as
+  // everything above. Moth and Fungus Gnats are left out entirely, same
+  // "radially-ish symmetric, reads fine at any rotation" reasoning Arctic
+  // Moth's own entry above already established.
+  bat: Math.PI,
+  oilbird: Math.PI,
+  swiftlet: Math.PI,
+  whiteCollaredSwift: Math.PI,
+  caveSwallow: Math.PI,
+  olm: Math.PI,
+  texasBlindSalamander: Math.PI,
+  caveShrimp: Math.PI,
 };
 // Keyed by enemyKey (e.g. 'forest-boss-tier-1'), same as
 // ENEMY_FACING_OFFSET, since different boss tiers can have different
@@ -1106,6 +1215,8 @@ const BOSS_FACING_OFFSET = {
   'tundra-boss-tier-1': 0, // Arctic Fritillary — radially symmetric wing markings, no one-sided feature
   'tundra-boss-tier-2': 0, // Arctic Woolly Bear Moth — radially symmetric banding, no one-sided feature
   'tundra-boss-tier-3': Math.PI, // Giant Arctic Wolf Spider — same spider-body convention as the regular Wolf Spider
+  'caves-boss-tier-1': 0, // Cave Midge — radially-ish symmetric wings/body, no one-sided feature, same reasoning as the Arctic Fritillary/Woolly Bear Moth bosses above
+  'caves-boss-tier-2': Math.PI, // Blind Cavefish — same fish-body convention as every other fish in this game, even with no eye drawn
 };
 
 function getInitialPathHeading(path) {
@@ -3406,6 +3517,301 @@ function drawNamibDesertBeetle(ctx, e) {
   });
 }
 
+// --- Caves (direct request, relayed from the peer session) ----------------
+// Every one-sided shape below draws its own head/front toward -x, same
+// convention as every other roster in this file — see ENEMY_FACING_OFFSET/
+// BOSS_FACING_OFFSET's own Caves entries further up.
+
+// Angular bat wings (a sharp, pointed silhouette) rather than the round
+// drawInsectWings every flying insect elsewhere in this file uses — bats
+// are mammals, not insects, and their own real wing shape is the one
+// thing that should read as unmistakably different at a glance.
+function drawBat(ctx, e) {
+  ctx.fillStyle = e.color;
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 0.2, e.y);
+    ctx.lineTo(e.x - e.radius * 0.9, e.y + side * e.radius * 0.3);
+    ctx.lineTo(e.x - e.radius * 1.6, e.y + side * e.radius * 1.1);
+    ctx.lineTo(e.x - e.radius * 0.9, e.y + side * e.radius * 0.9);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.5, e.radius * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.45, e.y, e.radius * 0.28, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.55, e.y - e.radius * 0.2);
+  ctx.lineTo(e.x - e.radius * 0.45, e.y - e.radius * 0.55);
+  ctx.lineTo(e.x - e.radius * 0.3, e.y - e.radius * 0.22);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Pale, fuzzy, round wings — the request's own called-out trait — reusing
+// drawInsectWings the same way every existing moth/butterfly in this file
+// already does. No facing offset (see this section's own top comment):
+// the body is drawn vertically-elongated with wings flanking both sides
+// symmetrically, same "reads fine at any rotation" shape Arctic Moth's
+// own entry already relies on.
+function drawMoth(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.8, tint: 'rgba(216, 210, 196, 0.8)' });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.45, e.radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, -25);
+  ctx.beginPath();
+  ctx.arc(e.x, e.y - e.radius * 0.55, e.radius * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Tiny — the roster's own smallest, plainest entry by design, same
+// "weakest reads as the least distinctive" convention Deer Fly's own
+// comment calls out. No facing offset, same reasoning as Moth above.
+function drawFungusGnat(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.4, tint: 'rgba(220, 220, 220, 0.35)' });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.4, e.radius * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Boss (round 25): a bigger, boss-scaled take on the same small-flying-
+// insect silhouette Fungus Gnat uses, plus a pair of small glowing-red
+// eye dots — the one visual cue that reads as "boss" rather than just
+// "bigger gnat," same role Haleakalā Mecyclothorax Beetle's own forward
+// mandibles play for its tier. No facing offset, same reasoning as every
+// other wings-only creature in this section.
+function drawCaveMidge(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.5, tint: 'rgba(200, 200, 210, 0.5)' });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.5, e.radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#c62828';
+  [-0.18, 0.18].forEach((dx) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y - e.radius * 0.45, e.radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Shared bird silhouette for Caves' own 4 birds (Oilbird/Swiftlet/White-
+// collared Swift/Cave Swallow) — no bird shape existed anywhere in this
+// codebase before, so this is new rather than a reuse. A plain oval body
+// with a small round head and pointed beak toward -x, swept-back wings,
+// and a plain pointed tail by default. `longWings` (real swifts/swiftlets
+// are famously fast, long-winged fliers) draws a longer, narrower scythe-
+// shaped wing instead of the default stubby one; `tailFork` draws a
+// swallow's own forked tail instead of the plain pointed one; `collarColor`
+// draws a pale band around the throat — each option is this family's own
+// real, named distinguishing trait,
+// same "one shared body, a small flag picks the detail" convention
+// Volcanic's drawIguanaBody (`crested`/`snoutColor`) already established.
+function drawCaveBirdBody(ctx, e, { tailFork = false, collarColor = null, longWings = false } = {}) {
+  const wingReach = longWings ? 1.5 : 1.0;
+  ctx.fillStyle = shadeColor(e.color, -15);
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y + side * e.radius * 0.15);
+    ctx.quadraticCurveTo(
+      e.x + e.radius * 0.3 * wingReach, e.y + side * e.radius * 0.7 * wingReach,
+      e.x + e.radius * 0.9 * wingReach, e.y + side * e.radius * 1.1 * wingReach
+    );
+    ctx.quadraticCurveTo(e.x + e.radius * 0.5, e.y + side * e.radius * 0.5, e.x, e.y + side * e.radius * 0.15);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  ctx.fillStyle = e.color;
+  if (tailFork) {
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x + e.radius * 0.6, e.y);
+      ctx.lineTo(e.x + e.radius * 1.3, e.y + side * e.radius * 0.5);
+      ctx.lineTo(e.x + e.radius * 0.95, e.y + side * e.radius * 0.1);
+      ctx.closePath();
+      ctx.fill();
+    });
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(e.x + e.radius * 0.6, e.y - e.radius * 0.25);
+    ctx.lineTo(e.x + e.radius * 1.2, e.y);
+    ctx.lineTo(e.x + e.radius * 0.6, e.y + e.radius * 0.25);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.75, e.radius * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (collarColor) {
+    ctx.strokeStyle = collarColor;
+    ctx.lineWidth = Math.max(1.5, e.radius * 0.18);
+    ctx.beginPath();
+    ctx.arc(e.x - e.radius * 0.35, e.y, e.radius * 0.3, -Math.PI * 0.6, Math.PI * 0.6);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.75, e.y, e.radius * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#2a2420';
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 1.05, e.y);
+  ctx.lineTo(e.x - e.radius * 1.3, e.y - e.radius * 0.08);
+  ctx.lineTo(e.x - e.radius * 1.05, e.y + e.radius * 0.12);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Larger brown bird (the request's own called-out trait), otherwise
+// plain — the roster's own weakest bird, by design the least ornamented
+// of the 4.
+function drawOilbird(ctx, e) {
+  drawCaveBirdBody(ctx, e);
+}
+
+function drawSwiftlet(ctx, e) {
+  drawCaveBirdBody(ctx, e, { longWings: true });
+}
+
+// A real swift species too (not just named like one) — same long-winged
+// treatment as Swiftlet, plus its own real pale throat band.
+function drawWhiteCollaredSwift(ctx, e) {
+  drawCaveBirdBody(ctx, e, { longWings: true, collarColor: '#f0ece0' });
+}
+
+function drawCaveSwallow(ctx, e) {
+  drawCaveBirdBody(ctx, e, { tailFork: true });
+}
+
+// Shared body for Caves' 2 blind cave salamanders (Olm/Texas Blind
+// Salamander) — an elongated low body/tail, 2 pairs of short bent limbs,
+// and a blunt head toward -x with NO eye at all (both real animals are
+// blind) — the one deliberate omission that most reads as "cave-adapted"
+// at a glance, the same role deliberately omitting Blind Cavefish's own
+// eye plays below. `gillColor` draws a few feathery external gill fronds
+// just behind the head — the real Olm's own famous signature trait
+// (external gills it never loses, even as an adult) — in a blood-red
+// accent distinct from either salamander's own pale body color.
+function drawCaveSalamanderBody(ctx, e, { gillColor } = {}) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.3, e.y, e.radius * 1.3, e.radius * 0.38, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, -15);
+  ctx.lineWidth = Math.max(1.2, e.radius * 0.12);
+  ctx.lineCap = 'round';
+  [-0.3, 0.6].forEach((t) => {
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x + t * e.radius, e.y + side * e.radius * 0.25);
+      ctx.lineTo(e.x + t * e.radius - e.radius * 0.1, e.y + side * e.radius * 0.6);
+      ctx.stroke();
+    });
+  });
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.95, e.y, e.radius * 0.42, e.radius * 0.32, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (gillColor) {
+    ctx.strokeStyle = gillColor;
+    ctx.lineWidth = Math.max(1, e.radius * 0.1);
+    ctx.lineCap = 'round';
+    [-1, 1].forEach((side) => {
+      [0.15, 0, -0.15].forEach((t) => {
+        ctx.beginPath();
+        ctx.moveTo(e.x - e.radius * 0.6, e.y + side * e.radius * 0.25 + t * e.radius * 0.1);
+        ctx.quadraticCurveTo(
+          e.x - e.radius * 0.35, e.y + side * e.radius * 0.55 + t * e.radius * 0.1,
+          e.x - e.radius * 0.5, e.y + side * e.radius * 0.75 + t * e.radius * 0.1
+        );
+        ctx.stroke();
+      });
+    });
+  }
+}
+
+function drawOlm(ctx, e) {
+  drawCaveSalamanderBody(ctx, e, { gillColor: '#e85070' });
+}
+
+// Same body/blind-head/gill treatment as Olm — "similar but distinct,"
+// per the request's own wording — differentiated by its own body color
+// (set in CAVES_ROSTER) and a slightly different gill-red accent.
+function drawTexasBlindSalamander(ctx, e) {
+  drawCaveSalamanderBody(ctx, e, { gillColor: '#d04868' });
+}
+
+// A small curved, pale/translucent body (read through a light color
+// choice rather than actual alpha transparency, same convention every
+// other "pale" creature in this file already uses) with a few thin legs
+// and a pair of long antennae toward -x.
+function drawCaveShrimp(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.8, e.y - e.radius * 0.3);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.3, e.y - e.radius * 0.7, e.x + e.radius * 0.9, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.3, e.y + e.radius * 0.5, e.x - e.radius * 0.6, e.y + e.radius * 0.35);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, -20);
+  ctx.lineWidth = 1;
+  [0.4, 0.1, -0.2].forEach((t) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x + t * e.radius, e.y + e.radius * 0.1);
+    ctx.lineTo(e.x + t * e.radius, e.y + e.radius * 0.5);
+    ctx.stroke();
+  });
+
+  ctx.strokeStyle = shadeColor(e.color, -10);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.75, e.y - e.radius * 0.25);
+  ctx.lineTo(e.x - e.radius * 1.3, e.y - e.radius * 0.5);
+  ctx.stroke();
+}
+
+// Boss (the map's own final boss, round 50): an elongated, pale fish
+// body with a tail fin and a translucent dorsal-fin ridge — but
+// deliberately NO eye at all, the one thing every other fish-shaped
+// creature in this entire file (Clown Fish, Marlin, the sharks, etc.)
+// always draws. "Blind" is this fish's whole namesake, so the missing
+// eye is the single most important visual choice here, not an oversight.
+function drawBlindCavefish(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.15, e.radius * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.95, e.y);
+  ctx.lineTo(e.x + e.radius * 1.5, e.y - e.radius * 0.45);
+  ctx.lineTo(e.x + e.radius * 1.5, e.y + e.radius * 0.45);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, -15);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.2, e.y - e.radius * 0.4);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.3, e.y - e.radius * 0.7, e.x + e.radius * 0.6, e.y - e.radius * 0.35);
+  ctx.closePath();
+  ctx.fill();
+}
+
 const ENEMY_DRAW_FUNCTIONS = {
   ant: drawAnt,
   fireAnt: drawFireAnt,
@@ -3463,6 +3869,16 @@ const ENEMY_DRAW_FUNCTIONS = {
   velvetAnt: drawVelvetAnt,
   volcanicLonghornBeetle: drawVolcanicLonghornBeetle,
   fireLovingBeetle: drawFireLovingBeetle,
+  bat: drawBat,
+  moth: drawMoth,
+  fungusGnat: drawFungusGnat,
+  oilbird: drawOilbird,
+  swiftlet: drawSwiftlet,
+  whiteCollaredSwift: drawWhiteCollaredSwift,
+  caveSwallow: drawCaveSwallow,
+  olm: drawOlm,
+  texasBlindSalamander: drawTexasBlindSalamander,
+  caveShrimp: drawCaveShrimp,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -3487,6 +3903,8 @@ const BOSS_DRAW_FUNCTIONS = {
   'volcano-boss-tier-1': drawHaleakalaMecyclothoraxBeetle,
   'volcano-boss-tier-2': drawMarineIguana,
   'volcano-boss-tier-3': drawNamibDesertBeetle,
+  'caves-boss-tier-1': drawCaveMidge,
+  'caves-boss-tier-2': drawBlindCavefish,
 };
 
 function drawFallbackCircle(ctx, e) {

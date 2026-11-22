@@ -1475,6 +1475,195 @@ function renderVolcanicDecor(ctx, decor, time = 0) {
 }
 
 // ---------------------------------------------------------------------------
+// Caves (direct request, relayed from the peer session, from 3 reference
+// photos the session couldn't pass directly — a written description was
+// given instead): a dark, enclosed cave interior — mostly near-black
+// background rock, lit almost entirely by glowing multi-colored crystal
+// clusters (cyan/magenta/green, angular/faceted, not smooth) rather than
+// ambient light, plus warm amber-brown stalactites/stalagmites scattered
+// through as a deliberate warm/earthy contrast against the neon crystals.
+// The one genuinely new idea here: the request specifically asked for the
+// PATH ITSELF to be a flowing water channel the enemies walk/swim
+// through — "visually distinct from Marshland's puddle/pond water" (that
+// request's own words) — so CAVES_PATH_COLORS below is a bright glowing
+// cyan-teal fill, unlike every other map's solid-ground path (dirt/
+// magma/ice/sand) and unlike Marshland's own muddy-green puddles (those
+// are still just decor, not the path). A single path (like Deep Forest/
+// Marshland/Whirlpool/Volcanic), not two like Savanah/Tundra — nothing in
+// the request asked for a second path.
+// ---------------------------------------------------------------------------
+
+const CAVES_WAYPOINTS = [
+  { x: -20, y: 320 }, // off-canvas spawn
+  { x: 180, y: 320 },
+  { x: 180, y: 120 },
+  { x: 420, y: 120 },
+  { x: 420, y: 480 },
+  { x: 680, y: 480 },
+  { x: 680, y: 220 },
+  { x: 860, y: 220 }, // ends at the crystal pool goal, on-canvas
+];
+
+// A dark, wet-rock outline around a bright glowing cyan-teal fill — the
+// literal "flowing water path" the request asked for, deliberately far
+// brighter than Whirlpool's own muted ocean-floor teal (WHIRLPOOL_PATH_
+// COLORS) so it reads as genuinely lit/glowing against this map's
+// near-black cave floor, the same "path is the brightest thing on the
+// map" role Volcanic's own magma path plays.
+const CAVES_PATH_COLORS = { outline: '#0a1518', fill: '#2fb8c9' };
+
+// Hand-placed clear of CAVES_WAYPOINTS above (checked segment-by-segment
+// against every leg, same convention as every other terrain's decor).
+// Varied neon colors per the request's own description ("bright cyan/
+// teal... vivid magenta/pink... bright green... so the cave reads as
+// colorful and otherworldly rather than monochrome") rather than one
+// repeated color.
+const CAVES_CRYSTALS = [
+  { x: 70, y: 60, size: 30, color: '#2fe8ff' },
+  { x: 900, y: 500, size: 34, color: '#ff3fd0' },
+  { x: 300, y: 580, size: 26, color: '#3ef07a' },
+  { x: 560, y: 60, size: 28, color: '#2fe8ff' },
+  { x: 850, y: 90, size: 24, color: '#ff3fd0' },
+  { x: 100, y: 520, size: 30, color: '#3ef07a' },
+];
+
+// Warm amber-brown pointed mineral formations (the request's own 3rd
+// reference photo — a real limestone cave) — a deliberate warm/earthy
+// contrast against the crystals' neon palette, per the request's own
+// wording. `hanging: true` is purely cosmetic (drawCaveFormation below
+// gives it a soft ground shadow to read as a stalactite hanging from the
+// ceiling rather than a stalagmite rising from the floor) — both share
+// the same spike silhouette either way, same "one shared shape, a small
+// flag picks the detail" convention every other terrain's own decor
+// variants already use (e.g. Volcanic's `crested`/`snoutColor`).
+const CAVES_FORMATIONS = [
+  { x: 250, y: 250, size: 22, hanging: true },
+  { x: 480, y: 550, size: 26, hanging: false },
+  { x: 750, y: 350, size: 20, hanging: true },
+  { x: 130, y: 450, size: 24, hanging: false },
+  { x: 600, y: 100, size: 18, hanging: true },
+  { x: 350, y: 560, size: 22, hanging: false },
+];
+
+// Marks Caves' single goal — a glowing crystal-rimmed pool where the
+// flowing-water path finally empties out — same "the goal gets its own
+// drawn landmark" role every other map's own goal marker plays.
+const CAVES_GOAL = { x: 860, y: 220, size: 70 };
+
+const CAVES_DECOR = {
+  crystals: CAVES_CRYSTALS,
+  formations: CAVES_FORMATIONS,
+  goal: CAVES_GOAL,
+};
+
+// Reused for both the scattered mineral formations and the crystal pool
+// goal's own rim shards — a single spike silhouette (a triangle plus a
+// thin center ridge line and a small highlight drip), warm amber-brown.
+// `hanging` adds a soft dark ground shadow beneath, read as "this one
+// hangs from the ceiling" rather than rising from the floor.
+function drawCaveFormation(ctx, x, y, size, hanging) {
+  if (hanging) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + size * 0.3, size * 0.5, size * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const formationColor = '#8a6a3a';
+  ctx.fillStyle = formationColor;
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.4, y + size * 0.5);
+  ctx.lineTo(x, y - size * 0.9);
+  ctx.lineTo(x + size * 0.4, y + size * 0.5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(formationColor, -25);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * 0.9);
+  ctx.lineTo(x - size * 0.05, y + size * 0.5);
+  ctx.stroke();
+
+  ctx.fillStyle = shadeColor(formationColor, 25);
+  ctx.beginPath();
+  ctx.ellipse(x - size * 0.1, y - size * 0.2, size * 0.08, size * 0.22, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Angular, faceted crystal spikes (the request's own called-out trait:
+// "visible jagged/angular facet edges, not smooth rounded shapes") —
+// a cluster of 3 varying-height diamond-cut spikes rather than one, so
+// each cluster reads as a real jutting formation instead of a single
+// gem. Glows from within via shadowBlur (same technique fireflies/
+// Infect Path's own stun glow already use elsewhere in this codebase),
+// gently pulsing so the cave reads as genuinely lit by them rather than
+// a flat decal.
+function drawGlowingCrystal(ctx, x, y, size, color, time = 0) {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.5 + x * 0.05);
+
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10 + pulse * 8;
+  ctx.fillStyle = color;
+  [[-0.35, 1, 0.8], [0, 1.3, 1], [0.35, 0.9, 0.7]].forEach(([dx, height, width]) => {
+    ctx.beginPath();
+    ctx.moveTo(x + dx * size, y + size * 0.4);
+    ctx.lineTo(x + dx * size - size * 0.16 * width, y - size * 0.1);
+    ctx.lineTo(x + dx * size, y - size * height);
+    ctx.lineTo(x + dx * size + size * 0.16 * width, y - size * 0.1);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.beginPath();
+  ctx.moveTo(x - size * 0.04, y - size * 1.25);
+  ctx.lineTo(x - size * 0.1, y - size * 0.2);
+  ctx.lineTo(x + size * 0.02, y - size * 0.3);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// The crystal-rimmed pool every enemy walks/swims into — same pulsing-
+// glow technique Volcanic's own drawLavaVent uses, just cyan-teal instead
+// of molten orange, with 3 small drawGlowingCrystal spikes around its rim
+// tying it visually back to the rest of the cave's own crystal clusters.
+function drawCaveWaterPool(ctx, x, y, size, time = 0) {
+  ctx.fillStyle = '#060a0c';
+  ctx.beginPath();
+  ctx.ellipse(x, y, size, size * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#1c3a40';
+  ctx.lineWidth = Math.max(2, size * 0.12);
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.92, size * 0.58, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.6);
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 0.75);
+  gradient.addColorStop(0, 'rgba(190, 250, 255, 0.95)');
+  gradient.addColorStop(0.55, `rgba(47, 184, 201, ${0.85 + pulse * 0.1})`);
+  gradient.addColorStop(1, 'rgba(10, 60, 70, 0.9)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * (0.6 + pulse * 0.05), size * (0.42 + pulse * 0.04), 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  [[-1, -0.6], [1, -0.5], [0, 0.7]].forEach(([dx, dy]) => {
+    drawGlowingCrystal(ctx, x + dx * size * 0.9, y + dy * size * 0.5, size * 0.3, '#5ff0ff', time);
+  });
+}
+
+function renderCavesDecor(ctx, decor, time = 0) {
+  decor.formations.forEach((formation) => drawCaveFormation(ctx, formation.x, formation.y, formation.size, formation.hanging));
+  decor.crystals.forEach((crystal) => drawGlowingCrystal(ctx, crystal.x, crystal.y, crystal.size, crystal.color, time));
+  drawCaveWaterPool(ctx, decor.goal.x, decor.goal.y, decor.goal.size, time);
+}
+
+// ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/
 // renderMapPreview() below both dispatch through this rather than
@@ -1518,6 +1707,11 @@ const TERRAIN_THEMES = {
   // around them is deliberately dark, same "obsidian floor" the request
   // asked for).
   volcano: { background: '#0f0906', renderDecor: renderVolcanicDecor },
+  // Near-black cave rock (the request's own "mostly black/near-black
+  // background," lit almost entirely by the glowing crystals themselves)
+  // — a flat fill is enough, same as every other dark theme above; the
+  // crystals/formations/water-path are what actually carry the lighting.
+  caves: { background: '#070709', renderDecor: renderCavesDecor },
 };
 
 // Fills the world background for the active theme — a flat
@@ -1622,9 +1816,23 @@ const MAP_TYPES = {
     terrain: 'volcano',
     decor: VOLCANIC_DECOR,
   },
+  // Direct request, relayed from the peer session: a dark cave interior
+  // lit by glowing multi-colored crystals, with the enemy path itself a
+  // flowing water channel — see CAVES_WAYPOINTS' own comment above for
+  // the full design rationale.
+  caves: {
+    id: 'caves',
+    name: 'Caves',
+    builtin: true,
+    paths: [CAVES_WAYPOINTS],
+    pathWidth: 56,
+    pathColors: CAVES_PATH_COLORS,
+    terrain: 'caves',
+    decor: CAVES_DECOR,
+  },
 };
 
-const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic'];
+const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic', 'caves'];
 
 // ---------------------------------------------------------------------------
 // Active-map state. MAP_PATHS/MAP_PATH_WIDTH are what every other file

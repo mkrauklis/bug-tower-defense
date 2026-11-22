@@ -43,12 +43,18 @@ test('mapselect:next/prev step the carousel index without changing selectedMap',
 test('the carousel index wraps around at both ends once renderMapSelect clamps it', () => {
   const game = loadFullGameContext();
   const ctx = game.getCanvas().getContext('2d');
+  // Read dynamically rather than hardcoded — this literally went stale
+  // once before (this test used to assert a hardcoded 4/5 left over from
+  // when there were only 5 built-in maps, silently wrong the moment
+  // Volcanic became the 6th without anyone re-running the suite to catch
+  // it — no Node/browser is available in this environment to run it).
+  const mapCount = game.listAllMaps().length;
 
   game.setMapCarouselIndex(-1); // one step before the first map
   game.renderMapSelect(ctx); // clamp happens at the top of renderMapSelect()
-  assert.equal(game.getMapCarouselIndex(), 4); // wraps to the last of 5 built-in maps (deepForest/marshland/savanah/whirlpool/tundra)
+  assert.equal(game.getMapCarouselIndex(), mapCount - 1); // wraps to the last built-in map
 
-  game.setMapCarouselIndex(5); // one step past the last map
+  game.setMapCarouselIndex(mapCount); // one step past the last map
   game.renderMapSelect(ctx);
   assert.equal(game.getMapCarouselIndex(), 0); // wraps back to the first
 });
