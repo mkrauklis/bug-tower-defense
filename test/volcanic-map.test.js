@@ -8,11 +8,18 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 // rationale, and VOLCANIC_ROSTER's own comment in enemies.js for why it's
 // calibrated at Tundra's post-nerf baseline rather than Whirlpool's own
 // (longer-path) numbers. Unlike Tundra/Savanah, this is a single-path map
-// (like Deep Forest/Marshland) with only 2 regular tiers + 2 boss tiers
-// designed (8 named creatures total, not the usual 3-tiers-of-3-plus-3-
-// bosses shape) — getUnlockedEnemyTypes()/getBossForRound()'s own
-// existing tolerance for a roster with fewer than 3 boss tiers (already
-// exercised by FOREST_ROSTER) covers this.
+// (like Deep Forest/Marshland).
+//
+// Originally shipped with only 2 regular tiers + 2 boss tiers designed (8
+// named creatures total, not the usual 3-tiers-of-3-plus-3-bosses shape)
+// — getUnlockedEnemyTypes()/getBossForRound()'s own existing tolerance
+// for a roster with fewer than 3 boss tiers (already exercised by
+// FOREST_ROSTER) covered that. A later direct request ("add new enemies
+// to volcano") filled in the previously-empty tier3 (Velvet Ant/Volcanic
+// Longhorn Beetle/Fire-Loving Beetle) and a real 3rd boss (Namib Desert
+// Beetle, round 75) — see VOLCANIC_ROSTER's own comment for the full
+// follow-up writeup. Volcanic is now the usual 3-tiers-plus-3-bosses
+// shape, same as Whirlpool/Tundra.
 
 test('volcanic is registered in MAP_TYPES with the expected shape — a single path, unlike Savanah/Tundra', () => {
   const game = loadGameContext();
@@ -114,7 +121,7 @@ test('a tower CAN be placed on open obsidian ground clear of both the path and e
   assert.equal(game.getTowers().length, 1);
 });
 
-test('Volcanic\'s roster lists exactly 2 regular tiers of 3 plus 2 boss tiers — not the usual 3-tier/3-boss shape', () => {
+test('Volcanic\'s roster lists 3 regular tiers plus 3 boss tiers, same shape as Whirlpool/Tundra', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.volcanic);
   const roster = game.getActiveRoster();
@@ -123,26 +130,38 @@ test('Volcanic\'s roster lists exactly 2 regular tiers of 3 plus 2 boss tiers �
   assert.equal(roster.bossTypes[1].name, 'Haleakalā Mecyclothorax Beetle');
   assert.deepEqual(roster.orderTier2, ['landIguana', 'pinkIguana', 'lavaIguana']);
   assert.equal(roster.bossTypes[2].name, 'Marine Iguana');
-  assert.deepEqual(roster.orderTier3, []);
-  assert.equal(roster.bossTypes[3], undefined);
+  assert.deepEqual(roster.orderTier3, ['velvetAnt', 'volcanicLonghornBeetle', 'fireLovingBeetle']);
+  assert.equal(roster.bossTypes[3].name, 'Namib Desert Beetle');
 });
 
-test('Marine Iguana is the tougher of Volcanic\'s 2 bosses, and both outrank every regular enemy', () => {
+test('Namib Desert Beetle is the toughest thing on Volcanic — tougher than both other bosses and every regular enemy', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.volcanic);
   const roster = game.getActiveRoster();
 
   assert.ok(roster.bossTypes[2].health > roster.bossTypes[1].health);
+  assert.ok(roster.bossTypes[3].health > roster.bossTypes[2].health);
   Object.values(roster.enemyTypes).forEach((type) => {
-    assert.ok(roster.bossTypes[1].health > type.health);
+    assert.ok(roster.bossTypes[3].health > type.health);
   });
 
   // Calibrated at Tundra's own post-nerf (below-Whirlpool) baseline, not
   // Whirlpool's own numbers — see VOLCANIC_ROSTER's own comment for why.
-  assert.ok(roster.bossTypes[2].health < game.MAP_ROSTERS.ocean.bossTypes[3].health);
+  assert.ok(roster.bossTypes[3].health < game.MAP_ROSTERS.ocean.bossTypes[3].health);
 });
 
-test('generateWave spawns Volcanic\'s 2 designed bosses on rounds 25/50, and falls back to the highest designed tier (Marine Iguana again) at round 75', () => {
+test('tier3 (Velvet Ant/Volcanic Longhorn Beetle/Fire-Loving Beetle) escalates past tier2\'s own ceiling (Lava Iguana)', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.volcanic);
+  const { enemyTypes } = game.getActiveRoster();
+
+  const tier2Max = Math.max(enemyTypes.landIguana.health, enemyTypes.pinkIguana.health, enemyTypes.lavaIguana.health);
+  assert.ok(enemyTypes.velvetAnt.health > tier2Max);
+  assert.ok(enemyTypes.volcanicLonghornBeetle.health > enemyTypes.velvetAnt.health);
+  assert.ok(enemyTypes.fireLovingBeetle.health > enemyTypes.volcanicLonghornBeetle.health);
+});
+
+test('generateWave spawns Volcanic\'s 3 designed bosses on rounds 25/50/75, and falls back to Namib Desert Beetle again at round 100', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.volcanic);
 
@@ -155,15 +174,19 @@ test('generateWave spawns Volcanic\'s 2 designed bosses on rounds 25/50, and fal
   assert.equal(wave50[0].enemyKey, 'volcano-boss-tier-2');
   assert.equal(wave50[0].name, 'Marine Iguana');
 
-  // No tier 3 designed (orderTier3/bossTypes[3] are both empty/undefined)
-  // — same "reuse the highest designed tier" fallback FOREST_ROSTER's own
-  // 2-boss shape already relies on.
   const wave75 = game.generateWave(75);
-  assert.equal(wave75[0].enemyKey, 'volcano-boss-tier-2');
-  assert.equal(wave75[0].name, 'Marine Iguana');
+  assert.equal(wave75[0].enemyKey, 'volcano-boss-tier-3');
+  assert.equal(wave75[0].name, 'Namib Desert Beetle');
+
+  // No tier 4 designed — falls back to the highest designed tier (Namib
+  // Desert Beetle again), same "reuse the highest designed tier" fallback
+  // every other 3-boss map's own round-100+ rematches already rely on.
+  const wave100 = game.generateWave(100);
+  assert.equal(wave100[0].enemyKey, 'volcano-boss-tier-3');
+  assert.equal(wave100[0].name, 'Namib Desert Beetle');
 });
 
-test('getAllSpawnableEnemyKeys lists Volcanic\'s full 6-enemy roster plus the shared armored beetles and both boss tiers', () => {
+test('getAllSpawnableEnemyKeys lists Volcanic\'s full 9-enemy roster plus the shared armored beetles and all 3 boss tiers', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.volcanic);
   const keys = game.getAllSpawnableEnemyKeys();
@@ -171,10 +194,10 @@ test('getAllSpawnableEnemyKeys lists Volcanic\'s full 6-enemy roster plus the sh
   [
     'lavaCricket', 'volcanicAshBeetle', 'wekiuBug',
     'landIguana', 'pinkIguana', 'lavaIguana',
+    'velvetAnt', 'volcanicLonghornBeetle', 'fireLovingBeetle',
     'carapaceBeetle', 'ironshellBeetle', 'titanBeetle',
-    'volcano-boss-tier-1', 'volcano-boss-tier-2',
+    'volcano-boss-tier-1', 'volcano-boss-tier-2', 'volcano-boss-tier-3',
   ].forEach((key) => assert.ok(keys.includes(key), `expected ${key} to be spawnable`));
-  assert.equal(keys.includes('volcano-boss-tier-3'), false);
 });
 
 test('Volcanic\'s decor (obsidian rocks, ash vents, magma pools, the lava-vent goal) is present with sane, on-canvas coordinates', () => {
@@ -198,7 +221,8 @@ test('a spawned Volcanic enemy renders without throwing (smoke check via drawEne
   const keys = [
     'lavaCricket', 'volcanicAshBeetle', 'wekiuBug',
     'landIguana', 'pinkIguana', 'lavaIguana',
-    'volcano-boss-tier-1', 'volcano-boss-tier-2',
+    'velvetAnt', 'volcanicLonghornBeetle', 'fireLovingBeetle',
+    'volcano-boss-tier-1', 'volcano-boss-tier-2', 'volcano-boss-tier-3',
   ];
   keys.forEach((key) => {
     const entry = game.getSpawnEntryForEnemyKey(key);

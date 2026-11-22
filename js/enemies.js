@@ -440,28 +440,39 @@ const TUNDRA_ROSTER = {
   orderTier3: ['polarBumblebee', 'snowGroundBeetle', 'wolfSpider'],
 };
 
-// Volcanic (direct request): a Hard-tier roster given as exactly 8 named
+// Volcanic (direct request): originally shipped as exactly 8 named
 // creatures — 3 regular tier1 insects, a boss, 3 regular tier2 reptiles,
 // and a second boss — NOT the usual 3-regular-tiers-plus-3-bosses shape
-// every other built-in roster above uses. `orderTier3` is deliberately an
-// empty array rather than omitted: getUnlockedEnemyTypes() (below) reads
+// every other built-in roster above uses; `orderTier3` shipped as a
+// deliberately empty array (getUnlockedEnemyTypes() below reads
 // `roster.orderTier3.length` unconditionally once round > 50, so an
-// actually-missing field would throw — FOREST_ROSTER already established
-// the "fewer boss tiers than 3 is fine" half of this (see its own
-// bossTypes, only 2 entries); this is the same tolerance on the regular-
-// tier side. getBossForRound()'s own existing highest-designed-tier
-// fallback means round 75 (nominally "boss tier 3") just reuses Marine
-// Iguana (bossTypes[2]) again rather than needing a tier 3 designed here.
+// actually-missing field would throw) and getBossForRound()'s own
+// existing highest-designed-tier fallback meant round 75 just reused
+// Marine Iguana (bossTypes[2]) again, the same "fewer tiers than 3 is
+// fine" tolerance FOREST_ROSTER's own 2-boss shape already established.
 //
-// Health/speed calibrated at TUNDRA_ROSTER's own POST-NERF baseline (see
-// that roster's comment above for why it was nerfed — tuned below
-// Whirlpool's equivalents, not above), not Whirlpool's own numbers
-// directly: this is brand new, never-played content, and Volcanic's
-// single path (VOLCANIC_WAYPOINTS, map.js) — while meaningfully longer
-// than Tundra's own paths — is still shorter than Whirlpool's long inward
-// spiral, so erring toward the already-proven-safe baseline rather than
-// Whirlpool's own (longer-path-calibrated) numbers avoids shipping a
-// second "impossible" Hard map on day one.
+// A later direct request ("add new enemies to volcano") filled that
+// empty tier3 slot in for real, the same "an empty orderTier3 slot was
+// already there waiting" pattern Deep Forest's snakes/Marshland's fish/
+// Savanah's scorpions all used for their own follow-up tier3s — Volcanic
+// now has a real 3rd boss too (Namib Desert Beetle), making round 75 a
+// genuine new boss rather than a Marine Iguana rematch. 3 new insects,
+// weakest to strongest as given (Velvet Ant, Volcanic Longhorn Beetle,
+// Fire-Loving Beetle), escalating past Lava Iguana's own tier2 ceiling
+// (150) same as every other map's own tier3 escalates past its tier2.
+// Namib Desert Beetle's health follows the same "~1.9x the previous
+// boss" escalation Savanah's Emperor Scorpion/Marshland's Electric Eel
+// both used for their own boss3 (both later follow-up additions too).
+//
+// Health/speed otherwise calibrated at TUNDRA_ROSTER's own POST-NERF
+// baseline (see that roster's comment above for why it was nerfed —
+// tuned below Whirlpool's equivalents, not above), not Whirlpool's own
+// numbers directly: this is brand new, never-played content, and
+// Volcanic's single path (VOLCANIC_WAYPOINTS, map.js) — while
+// meaningfully longer than Tundra's own paths — is still shorter than
+// Whirlpool's long inward spiral, so erring toward the already-proven-
+// safe baseline rather than Whirlpool's own (longer-path-calibrated)
+// numbers avoids shipping a second "impossible" Hard map on day one.
 const VOLCANIC_ROSTER = {
   enemyTypes: {
     lavaCricket: { name: 'Lava Cricket', speedMultiplier: 0.7, health: 13, color: '#4a1510', radius: 6, bounty: 6 },
@@ -470,17 +481,52 @@ const VOLCANIC_ROSTER = {
     landIguana: { name: 'Land Iguana', speedMultiplier: 0.5, health: 100, color: '#6b7a4a', radius: 11, bounty: 42 },
     pinkIguana: { name: 'Pink Iguana', speedMultiplier: 0.55, health: 125, color: '#d98fa3', radius: 11, bounty: 52 },
     lavaIguana: { name: 'Lava Iguana', speedMultiplier: 0.6, health: 150, color: '#3a2420', radius: 11, bounty: 62 },
+    // Tier3 (direct follow-up request): real velvet ants are actually
+    // wingless wasps, not ants, famous for their painful sting and dense
+    // fuzzy black-and-red/orange banded coat — drawVelvetAnt below leans
+    // on that banding since it's this insect's own single most
+    // recognizable trait. A fast runner (real velvet ants are notably
+    // quick on the ground), the weakest of this new trio per the
+    // request's own given order.
+    velvetAnt: { name: 'Velvet Ant', speedMultiplier: 0.75, health: 180, color: '#b8360f', radius: 8, bounty: 90 },
+    // A long-antennae beetle, recolored into Volcanic's own lava-dark
+    // palette with a glowing orange antennae/joint accent rather than a
+    // literal-brown longhorn beetle — same "fits THIS map's theme" spirit
+    // every other Volcanic insect already uses.
+    volcanicLonghornBeetle: {
+      name: 'Volcanic Longhorn Beetle',
+      speedMultiplier: 0.5,
+      health: 230,
+      color: '#2e1a14',
+      radius: 10,
+      bounty: 115,
+    },
+    // Real fire-loving beetles (genus Melanophila) are famous for
+    // literally being drawn to fires/heat via dedicated infrared-sensing
+    // pits — a perfect native fit for a volcanic map, not a reskin of
+    // anything. drawFireLovingBeetle below gives it a pair of small
+    // glowing heat-pit accents as its own signature trait. The strongest
+    // of this new trio, per the request's own given order.
+    fireLovingBeetle: { name: 'Fire-Loving Beetle', speedMultiplier: 0.55, health: 290, color: '#1c1410', radius: 9, bounty: 145 },
   },
   bossTypes: {
     1: { name: 'Haleakalā Mecyclothorax Beetle', speedMultiplier: 0.45, health: 220, color: '#2e2a26', radius: 17, bounty: 110 },
-    // The map's true "last designed" boss (see this roster's own top
-    // comment on getBossForRound()'s fallback) — biggest, slowest, and
-    // tankiest thing here, same billing every other map's final boss gets.
     2: { name: 'Marine Iguana', speedMultiplier: 0.4, health: 420, color: '#23282a', radius: 21, bounty: 210 },
+    // Namib Desert Beetle (direct follow-up request, the new tier3's own
+    // boss): a real beetle famous for the bumpy, fog-harvesting shell
+    // covering its back (drawNamibDesertBeetle below gives it exactly
+    // that bumpy texture) — grey/tan rather than this roster's otherwise
+    // dark, lava-charred palette, a deliberate "pale desert beetle" visual
+    // contrast against everything else here. The map's true "last
+    // designed" boss now (getBossForRound()'s own fallback no longer
+    // needs to reuse Marine Iguana past round 75) — biggest, slowest, and
+    // tankiest thing on this map, same billing every other map's final
+    // boss gets.
+    3: { name: 'Namib Desert Beetle', speedMultiplier: 0.35, health: 800, color: '#6b6255', radius: 19, bounty: 400 },
   },
   order: ['lavaCricket', 'volcanicAshBeetle', 'wekiuBug'],
   orderTier2: ['landIguana', 'pinkIguana', 'lavaIguana'],
-  orderTier3: [],
+  orderTier3: ['velvetAnt', 'volcanicLonghornBeetle', 'fireLovingBeetle'],
 };
 
 // Keyed by TERRAIN id (map.js's TERRAIN_THEMES keys — 'forest'/'marsh'/
@@ -3285,6 +3331,81 @@ function drawMarineIguana(ctx, e) {
   drawIguanaBody(ctx, e, { crested: true, snoutColor: '#e8e4da' });
 }
 
+// --- Volcanic tier3 (direct follow-up request) -----------------------------
+
+// Reuses the shared ant body (3 pairs of legs, oval body, round head) —
+// real velvet ants are wingless wasps with an ant-like fuzzy 3-segment
+// body, so the shared ant silhouette is the right starting shape. The
+// dense black-and-red/orange banded fuzz is this insect's own single
+// most recognizable trait (and its whole namesake), so it's the one
+// thing added on top rather than anything beetle-specific.
+function drawVelvetAnt(ctx, e) {
+  drawAntBody(ctx, e);
+  ctx.fillStyle = '#0d0a08';
+  [-0.3, 0.3].forEach((dx) => {
+    ctx.beginPath();
+    ctx.ellipse(e.x + dx * e.radius, e.y, e.radius * 0.18, e.radius * 0.48, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Shares drawBeetleBody/drawBeetlePlates with every other Volcanic beetle
+// here, but with its own long, prominent curving antennae (this beetle's
+// own namesake trait) ending in a small glowing-orange tip — reading as
+// "lava-hot," same visual language Volcanic's own magma path/pools use,
+// rather than a literal brown longhorn beetle.
+function drawVolcanicLonghornBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  ctx.strokeStyle = shadeColor(e.color, 55);
+  ctx.lineWidth = Math.max(1, e.radius * 0.08);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 1.1, e.y + side * e.radius * 0.1);
+    ctx.quadraticCurveTo(
+      e.x - e.radius * 1.7, e.y + side * e.radius * 0.5,
+      e.x - e.radius * 2.1, e.y + side * e.radius * 0.35
+    );
+    ctx.stroke();
+    ctx.fillStyle = '#e8540f';
+    ctx.beginPath();
+    ctx.arc(e.x - e.radius * 2.1, e.y + side * e.radius * 0.35, e.radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Real fire-loving beetles (genus Melanophila) have dedicated infrared-
+// sensing pits that let them detect fires from miles away — the one
+// signature trait drawn here, a pair of small glowing-orange pits on an
+// otherwise plain dark charred-black beetle body.
+function drawFireLovingBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  ctx.fillStyle = 'rgba(232, 84, 15, 0.85)';
+  [-0.25, 0.25].forEach((dy) => {
+    ctx.beginPath();
+    ctx.arc(e.x + e.radius * 0.3, e.y + dy * e.radius, e.radius * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Boss (round 75, this tier's own): shares drawBeetleBody/drawBeetlePlates
+// (3 ridged segments, same "boss-tier, not just another regular beetle"
+// treatment Haleakalā Mecyclothorax Beetle's own tier uses), plus a
+// scatter of small raised bumps across the shell — the real Namib Desert
+// Beetle's own famous fog-harvesting bumpy texture — in a pale grey/tan
+// rather than this roster's otherwise dark, lava-charred palette, a
+// deliberate "pale desert beetle" visual contrast.
+function drawNamibDesertBeetle(ctx, e) {
+  drawBeetleBody(ctx, e);
+  drawBeetlePlates(ctx, e, 3, true);
+  ctx.fillStyle = shadeColor(e.color, 30);
+  [[-0.5, -0.25], [-0.15, -0.35], [0.2, -0.2], [-0.35, 0.2], [0.05, 0.3], [0.4, 0.05]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
 const ENEMY_DRAW_FUNCTIONS = {
   ant: drawAnt,
   fireAnt: drawFireAnt,
@@ -3339,6 +3460,9 @@ const ENEMY_DRAW_FUNCTIONS = {
   landIguana: drawLandIguana,
   pinkIguana: drawPinkIguana,
   lavaIguana: drawLavaIguana,
+  velvetAnt: drawVelvetAnt,
+  volcanicLonghornBeetle: drawVolcanicLonghornBeetle,
+  fireLovingBeetle: drawFireLovingBeetle,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -3362,6 +3486,7 @@ const BOSS_DRAW_FUNCTIONS = {
   'tundra-boss-tier-3': drawGiantArcticWolfSpider,
   'volcano-boss-tier-1': drawHaleakalaMecyclothoraxBeetle,
   'volcano-boss-tier-2': drawMarineIguana,
+  'volcano-boss-tier-3': drawNamibDesertBeetle,
 };
 
 function drawFallbackCircle(ctx, e) {
