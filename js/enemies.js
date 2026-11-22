@@ -573,7 +573,13 @@ const VOLCANIC_ROSTER = {
 const CAVES_ROSTER = {
   enemyTypes: {
     bat: { name: 'Bat', speedMultiplier: 1.0, health: 15, color: '#2b2a2e', radius: 7, bounty: 8 },
-    moth: { name: 'Moth', speedMultiplier: 0.55, health: 30, color: '#d8d2c0', radius: 9, bounty: 15 },
+    // Color REVISED alongside the Moth's own art redesign (direct
+    // follow-up request, from a real reference photo) — the wings now
+    // have their own fixed amber-brown/dark-border/eyespot palette
+    // (MOTH_WING_COLOR etc., drawMoth), independent of this field; this
+    // is now specifically the fuzzy body's own "fat brown body" color,
+    // not the pale cream it was before the redesign.
+    moth: { name: 'Moth', speedMultiplier: 0.55, health: 30, color: '#5c4028', radius: 9, bounty: 15 },
     fungusGnat: { name: 'Fungus Gnats', speedMultiplier: 0.95, health: 55, color: '#6b6255', radius: 5, bounty: 28 },
     oilbird: { name: 'Oilbird', speedMultiplier: 0.55, health: 85, color: '#6b4a32', radius: 11, bounty: 43 },
     // Swifts (real ones) are among the fastest fliers in nature —
@@ -3564,22 +3570,113 @@ function drawBat(ctx, e) {
   ctx.fill();
 }
 
-// Pale, fuzzy, round wings — the request's own called-out trait — reusing
-// drawInsectWings the same way every existing moth/butterfly in this file
-// already does. No facing offset (see this section's own top comment):
-// the body is drawn vertically-elongated with wings flanking both sides
-// symmetrically, same "reads fine at any rotation" shape Arctic Moth's
-// own entry already relies on.
+// REDESIGNED on a direct follow-up request (relayed from the peer
+// session, from a real reference photo of a pinned moth specimen — wings
+// fully spread flat, not folded/angled like a resting or flying moth):
+// 4 distinct wing lobes (2 bigger forewings, 2 smaller hindwings, each
+// pair mirrored left-right) rather than drawInsectWings' usual 2-wing
+// fan, tracing a wide bowtie/"W" silhouette when spread — the request's
+// own called-out overall shape. Warm golden-tan/amber-brown wings with a
+// darker brown border band (MOTH_WING_COLOR/MOTH_WING_BORDER_COLOR,
+// drawn as 2 concentric ellipses rather than a stroke so the border
+// reads as a solid band, not a thin outline), and one prominent eyespot
+// per wing (a dark ring around a pale center, MOTH_EYESPOT_RING_COLOR/
+// MOTH_EYESPOT_CENTER_COLOR) — all 4 wings share identical coloring, the
+// real animal's own actual symmetry. No facing offset (see this
+// section's own top comment): same "reads fine at any rotation" shape
+// Arctic Moth's own entry already relies on — a pinned-specimen display
+// pose doesn't have a meaningful "direction of travel" to begin with.
+const MOTH_WING_COLOR = '#c99a4a';
+const MOTH_WING_BORDER_COLOR = '#5c3a1a';
+const MOTH_EYESPOT_RING_COLOR = '#2e1c0e';
+const MOTH_EYESPOT_CENTER_COLOR = '#f0e4c8';
+
+// One wing lobe, drawn in its own local, unrotated frame then
+// transformed into place — `angle` is how far this lobe's own long axis
+// tilts away from the body, same "fan the lobe outward" role `side`
+// plays for drawInsectWings elsewhere in this file. Reused 4 times (fore/
+// hind, left/right) by drawMoth below.
+function drawMothWing(ctx, cx, cy, length, width, angle) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  ctx.fillStyle = MOTH_WING_BORDER_COLOR;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, length, width, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = MOTH_WING_COLOR;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, length * 0.82, width * 0.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = MOTH_EYESPOT_RING_COLOR;
+  ctx.beginPath();
+  ctx.arc(length * 0.08, 0, width * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = MOTH_EYESPOT_CENTER_COLOR;
+  ctx.beginPath();
+  ctx.arc(length * 0.14, 0, width * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
 function drawMoth(ctx, e) {
-  drawInsectWings(ctx, e, { spread: 0.8, tint: 'rgba(216, 210, 196, 0.8)' });
+  [-1, 1].forEach((side) => {
+    // Forewing: the bigger of the pair, closer to the head.
+    drawMothWing(
+      ctx,
+      e.x + side * e.radius * 0.95,
+      e.y - e.radius * 0.35,
+      e.radius * 1.1,
+      e.radius * 0.55,
+      side * 0.4
+    );
+    // Hindwing: smaller, trailing further back toward the tail.
+    drawMothWing(
+      ctx,
+      e.x + side * e.radius * 0.7,
+      e.y + e.radius * 0.55,
+      e.radius * 0.7,
+      e.radius * 0.4,
+      side * 0.9
+    );
+  });
+
+  // Fuzzy, fat body where all 4 wings meet — drawn on top of the wings
+  // so it reads as the thorax/abdomen sitting over them, same layering
+  // every winged creature elsewhere in this file already uses.
   ctx.fillStyle = e.color;
   ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius * 0.45, e.radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.ellipse(e.x, e.y, e.radius * 0.36, e.radius * 0.5, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = shadeColor(e.color, -25);
-  ctx.beginPath();
-  ctx.arc(e.x, e.y - e.radius * 0.55, e.radius * 0.18, 0, Math.PI * 2);
-  ctx.fill();
+
+  // Feathery/comb-like antennae, sticking up and out from the head — a
+  // few short side-teeth along each main antenna shaft give it that
+  // comb texture rather than a plain bare line.
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = Math.max(1, e.radius * 0.09);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    const baseX = e.x + side * e.radius * 0.08;
+    const baseY = e.y - e.radius * 0.45;
+    const tipX = e.x + side * e.radius * 0.4;
+    const tipY = e.y - e.radius * 0.95;
+    ctx.beginPath();
+    ctx.moveTo(baseX, baseY);
+    ctx.quadraticCurveTo(e.x + side * e.radius * 0.3, e.y - e.radius * 0.75, tipX, tipY);
+    ctx.stroke();
+    [0.35, 0.6, 0.85].forEach((t) => {
+      const toothX = baseX + (tipX - baseX) * t;
+      const toothY = baseY + (tipY - baseY) * t;
+      ctx.beginPath();
+      ctx.moveTo(toothX, toothY);
+      ctx.lineTo(toothX + side * e.radius * 0.1, toothY - e.radius * 0.03);
+      ctx.stroke();
+    });
+  });
 }
 
 // Tiny — the roster's own smallest, plainest entry by design, same

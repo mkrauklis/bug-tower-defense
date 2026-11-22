@@ -374,20 +374,30 @@ test('Blind Cavefish\'s spawn entry carries no special traits (just a plain, tou
 // game.ENEMY_DRAW_FUNCTIONS (a new export — see loadGame.js's own
 // comment) rather than only inspecting roster data.
 
-// A minimal ctx recorder: captures every ellipse() call's radii and every
-// stroke()'s lineWidth/strokeStyle at the moment it fired — enough to
-// check actual drawn geometry without a real canvas.
+// A minimal ctx recorder: captures every ellipse()/arc() call's own
+// arguments, every stroke()'s lineWidth/strokeStyle at the moment it
+// fired, and how many times save() was called — enough to check actual
+// drawn geometry/shape counts without a real canvas. Note: it does NOT
+// simulate translate()/rotate(), so (x, y) on a recorded ellipse/arc is
+// whatever was passed to that call in its own LOCAL frame, not a true
+// world-space position — fine for comparing sizes/counts (what every
+// test below actually needs), not for comparing absolute positions
+// across calls made inside a save()/translate()/restore() block.
 function createGeometryRecordingCtx() {
   const ellipses = [];
+  const arcs = [];
   const strokes = [];
   let lineWidth = 1;
   let strokeStyle = null;
+  let saveCount = 0;
   const proxy = new Proxy(
     {},
     {
       get(obj, prop) {
         if (prop === 'ellipse') return (x, y, rx, ry) => ellipses.push({ x, y, rx, ry });
+        if (prop === 'arc') return (x, y, r) => arcs.push({ x, y, r });
         if (prop === 'stroke') return () => strokes.push({ lineWidth, strokeStyle });
+        if (prop === 'save') return () => { saveCount += 1; };
         if (prop in obj) return obj[prop];
         return (..._args) => proxy;
       },
@@ -399,7 +409,15 @@ function createGeometryRecordingCtx() {
       },
     }
   );
-  return { ctx: proxy, ellipses, strokes };
+  return {
+    ctx: proxy,
+    ellipses,
+    arcs,
+    strokes,
+    get saveCount() {
+      return saveCount;
+    },
+  };
 }
 
 test('Olm\'s roster color differs clearly from Texas Blind Salamander\'s', () => {
@@ -445,6 +463,48 @@ test('Olm renders with a longer, thinner body and bigger, more vivid gills than 
     olmGillStrokes[0].lineWidth > texasGillStrokes[0].lineWidth,
     `expected Olm's gill stroke (${olmGillStrokes[0].lineWidth}) to be thicker than Texas Blind Salamander's (${texasGillStrokes[0].lineWidth})`
   );
+});
+
+// --- Follow-up: Moth redesigned from a real pinned-specimen photo --------
+// Direct follow-up request, relayed from the peer session: the user sent
+// a reference photo of a real moth with its wings fully spread flat
+// (pinned-specimen pose) — 4 distinct wing lobes (2 bigger forewings, 2
+// smaller hindwings), each with its own eyespot, warm amber-brown wings
+// with a darker border, a fuzzy brown body, and feathery antennae.
+// Reusing the same geometry-recording ctx the Olm/Texas Blind Salamander
+// fix above introduced.
+
+test('Moth renders 4 distinct wing lobes (2 forewings, 2 hindwings) rather than the old 2-wing fan, each with its own eyespot', () => {
+  const game = loadGameContext();
+  const mothEnemy = { x: 0, y: 0, radius: 9, color: '#5c4028' };
+  const rec = createGeometryRecordingCtx();
+  game.ENEMY_DRAW_FUNCTIONS.moth(rec.ctx, mothEnemy);
+
+  // drawMothWing is called once per lobe, each wrapped in its own
+  // save()/restore() — exactly 4 lobes, not the old design's 2-wing fan.
+  assert.equal(rec.saveCount, 4);
+
+  // Each wing lobe draws a border ellipse + a fill ellipse (2 per lobe),
+  // plus the fuzzy body itself (1) = 9 ellipses total.
+  assert.equal(rec.ellipses.length, 9);
+
+  // Each wing lobe also draws exactly one eyespot — a dark ring + a pale
+  // center (2 arcs per lobe) = 8 arcs total, one eyespot per wing.
+  assert.equal(rec.arcs.length, 8);
+});
+
+test('the Moth\'s forewings and hindwings are genuinely different sizes — bigger/smaller, not 4 identical lobes', () => {
+  const game = loadGameContext();
+  const mothEnemy = { x: 0, y: 0, radius: 9, color: '#5c4028' };
+  const rec = createGeometryRecordingCtx();
+  game.ENEMY_DRAW_FUNCTIONS.moth(rec.ctx, mothEnemy);
+
+  // The first ellipse drawn for each wing lobe is its own border
+  // ellipse, sized directly off the `length`/`width` drawMoth passes in
+  // — forewings and hindwings pass different values, so their own
+  // border ellipses' radii fall into more than one distinct size.
+  const borderEllipseSizes = new Set(rec.ellipses.map((el) => `${el.rx.toFixed(2)},${el.ry.toFixed(2)}`));
+  assert.ok(borderEllipseSizes.size >= 2, 'expected forewing and hindwing border ellipses to use different sizes');
 });
 
 // --- Follow-up: darker flowing water + a coordinated cave-rock floor ------
