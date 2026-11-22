@@ -195,7 +195,12 @@ test('generateWave spawns each of Tundra\'s 3 bosses on its own round, with the 
   assert.equal(wave75[0].name, 'Giant Arctic Wolf Spider');
 });
 
-test('getAllSpawnableEnemyKeys lists Tundra\'s full roster plus the shared armored beetles and all 3 boss tiers', () => {
+// No shared armored beetles here any more (direct request, relayed from
+// the peer session: removed entirely from Tundra, not just reskinned —
+// see ARMORED_BEETLE_TERRAINS' own comment in enemies.js). Tundra's own
+// native snowGroundBeetle is a completely separate, unrelated roster
+// enemy (its own tier-3 regular type) and is unaffected.
+test('getAllSpawnableEnemyKeys lists Tundra\'s full roster and all 3 boss tiers, with no shared armored beetles', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.tundra);
   const keys = game.getAllSpawnableEnemyKeys();
@@ -204,9 +209,12 @@ test('getAllSpawnableEnemyKeys lists Tundra\'s full roster plus the shared armor
     'arcticBumblebee', 'deerFly', 'arcticMoth',
     'arcticRinglet', 'snowScorpionFly', 'arcticBluet',
     'polarBumblebee', 'snowGroundBeetle', 'wolfSpider',
-    'carapaceBeetle', 'ironshellBeetle', 'titanBeetle',
     'tundra-boss-tier-1', 'tundra-boss-tier-2', 'tundra-boss-tier-3',
   ].forEach((key) => assert.ok(keys.includes(key), `expected ${key} to be spawnable`));
+
+  ['carapaceBeetle', 'ironshellBeetle', 'titanBeetle'].forEach((key) =>
+    assert.equal(keys.includes(key), false, `expected ${key} NOT to be spawnable on Tundra any more`)
+  );
 });
 
 test('Tundra\'s decor (snowmen, ice spikes, boulders, both ice cave goals) is present with sane, on-canvas coordinates', () => {

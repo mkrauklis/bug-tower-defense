@@ -201,7 +201,11 @@ test('generateWave on Whirlpool spawns the boss keyed/prefixed with the ocean te
   assert.equal(wave[0].name, 'Great White');
 });
 
-test('getAllSpawnableEnemyKeys lists Whirlpool\'s full roster plus the shared armored beetles and all 3 boss tiers', () => {
+// No armored beetles here any more (direct request, relayed from the peer
+// session: removed entirely from Whirlpool, not just reskinned — see
+// ARMORED_BEETLE_TERRAINS' own comment in enemies.js) — just the map's own
+// 9 regular types and all 3 boss tiers.
+test('getAllSpawnableEnemyKeys lists Whirlpool\'s full roster and all 3 boss tiers, with no armored beetles', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.whirlpool);
   const keys = game.getAllSpawnableEnemyKeys();
@@ -209,7 +213,6 @@ test('getAllSpawnableEnemyKeys lists Whirlpool\'s full roster plus the shared ar
     'seaCucumber', 'urchin', 'clownFish',
     'starfish', 'seahorse', 'horseshoeCrab',
     'stingray', 'tuna', 'marlin',
-    'carapaceBeetle', 'ironshellBeetle', 'titanBeetle',
     'ocean-boss-tier-1', 'ocean-boss-tier-2', 'ocean-boss-tier-3',
   ]);
 });
@@ -269,14 +272,17 @@ test('every Easter egg sits outside the spiral\'s own bounding ellipse (x:[120,8
   });
 });
 
-// --- Armored beetle ocean reskin (user bug report: literal land beetles
-// walking the Whirlpool seafloor looked out of place) ---------------------
-// The shared ARMORED_BEETLE_TIERS forcing function (Carapace/Ironshell/
-// Titan Beetle, rounds 75/100/125) still spawns on every map, Whirlpool
-// included — these tests confirm only the presentation (name/color)
-// changes on Whirlpool, while every mechanical stat stays byte-for-byte
-// identical to the shared tier data, and every other map's presentation
-// is completely untouched.
+// --- Armored beetles removed from Whirlpool entirely ----------------------
+// Originally the shared ARMORED_BEETLE_TIERS forcing function (Carapace/
+// Ironshell/Titan Beetle, rounds 75/100/125) spawned on every map,
+// Whirlpool included, reskinned here to "Armored Hermit Crab"/"Spiny
+// Lobster"/"Giant Isopod" so literal land beetles didn't look out of
+// place on an ocean floor (user bug report). Later removed entirely
+// (direct request, relayed from the peer session: "stop injecting it...
+// remove from maps where it was only ever an off-theme bolt-on") — not
+// reskinned any more, just gone — since Whirlpool's own native roster has
+// no beetle-family enemy of its own to make one feel at home. See
+// ARMORED_BEETLE_TERRAINS' own comment in enemies.js.
 
 test('on Deep Forest (default), armored beetles still read as the original land-beetle names/colors', () => {
   const game = loadGameContext();
@@ -285,48 +291,25 @@ test('on Deep Forest (default), armored beetles still read as the original land-
   assert.equal(entry.color, game.getArmoredBeetleTier('carapaceBeetle').color);
 });
 
-test('on Whirlpool, each armored beetle tier gets an ocean-themed name/color instead of the land-beetle one', () => {
+test('on Whirlpool, armored beetles never unlock, spawn, or show up as a spawnable key at all any more', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.whirlpool);
 
-  const carapace = game.getSpawnEntryForEnemyKey('carapaceBeetle');
-  const ironshell = game.getSpawnEntryForEnemyKey('ironshellBeetle');
-  const titan = game.getSpawnEntryForEnemyKey('titanBeetle');
-
-  assert.equal(carapace.name, 'Armored Hermit Crab');
-  assert.equal(ironshell.name, 'Spiny Lobster');
-  assert.equal(titan.name, 'Giant Isopod');
-
-  // Names actually changed from the shared tier data's own land-beetle names.
-  assert.notEqual(carapace.color, game.getArmoredBeetleTier('carapaceBeetle').color);
-  assert.notEqual(ironshell.color, game.getArmoredBeetleTier('ironshellBeetle').color);
-  assert.notEqual(titan.color, game.getArmoredBeetleTier('titanBeetle').color);
+  assert.deepEqual(game.getUnlockedArmoredBeetleKeys(500), []);
+  const keys = game.getAllSpawnableEnemyKeys();
+  assert.equal(keys.includes('carapaceBeetle'), false);
+  assert.equal(keys.includes('ironshellBeetle'), false);
+  assert.equal(keys.includes('titanBeetle'), false);
 });
 
-test('the ocean reskin changes presentation only — health, armorThreshold, speedMultiplier, and bounty are untouched', () => {
-  const game = loadGameContext();
-  const forestEntry = game.getSpawnEntryForEnemyKey('ironshellBeetle'); // Deep Forest is the default active map
-
-  game.setActiveMap(game.MAP_TYPES.whirlpool);
-  const oceanEntry = game.getSpawnEntryForEnemyKey('ironshellBeetle');
-
-  assert.equal(oceanEntry.health, forestEntry.health);
-  assert.equal(oceanEntry.armorThreshold, forestEntry.armorThreshold);
-  assert.equal(oceanEntry.speedMultiplier, forestEntry.speedMultiplier);
-  assert.equal(oceanEntry.bounty, forestEntry.bounty);
-  assert.notEqual(oceanEntry.name, forestEntry.name); // only the presentation differs
-});
-
-test('a generated Whirlpool wave past round 75 carries the reskinned name, not the land-beetle one', () => {
+test('a generated Whirlpool wave past round 75 never includes an armored beetle', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.whirlpool);
   const wave = game.generateWave(76);
-  const armored = wave.find((entry) => entry.enemyKey === 'carapaceBeetle');
-  assert.ok(armored);
-  assert.equal(armored.name, 'Armored Hermit Crab');
+  assert.equal(wave.some((entry) => entry.enemyKey === 'carapaceBeetle'), false);
 });
 
-test('a generated Deep Forest wave past round 75 still carries the original land-beetle name', () => {
+test('a generated Deep Forest wave past round 75 still carries the original land-beetle name, unaffected by Whirlpool\'s removal', () => {
   const game = loadGameContext();
   const wave = game.generateWave(76); // Deep Forest is the default active map
   const armored = wave.find((entry) => entry.enemyKey === 'carapaceBeetle');

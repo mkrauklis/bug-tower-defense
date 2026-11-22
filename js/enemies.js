@@ -513,9 +513,13 @@ function getActiveRoster() {
 // damage), full stop. A future enemy on any roster can opt in just by
 // setting its own armorThreshold.
 //
-// Shared across every map (direct request: "regardless of map") rather
-// than reskinned per terrain or added into any one MAP_ROSTERS entry —
-// every map gets the identical three tiers, unlocking by round alone.
+// Originally shared across every map (direct request: "regardless of
+// map"), later narrowed (direct request, relayed from the peer session:
+// "stop injecting it regardless of map... remove from maps where it was
+// only ever an off-theme bolt-on") to only the terrains whose own native
+// roster already includes a beetle-family enemy — see
+// ARMORED_BEETLE_TERRAINS just below the theme table. Every enabled
+// terrain still gets the identical three tiers, unlocking by round alone.
 // Deliberately NOT using orderTier3's existing unlock cadence (every-5-
 // rounds-per-type starting right after round 50, landing at round
 // 51/56/61) since that can't be made to land on the specific rounds
@@ -575,51 +579,49 @@ function getActiveRoster() {
 // 150/300/600 progression this file's own comment above describes is now
 // 300/600/1200 — still exactly 2x tier-over-tier, just from a doubled
 // starting point.
-// Per-terrain reskin (user bug report: literal land beetles were showing
-// up on every map — Whirlpool's ocean floor originally, then flagged
-// again more broadly as "beetles in random maps" once Marshland/Savanah/
-// Tundra existed too). Mechanically these are still the exact same
-// ARMORED_BEETLE_TIERS entries below (same key, same health/
-// armorThreshold/unlockRound/bounty/speedMultiplier — nothing about the
-// forcing function itself changes on any map), but generateWave()/
-// getSpawnEntryForEnemyKey()/drawEnemyShape() all consult this table
-// (keyed by TERRAIN id, then by the tier's own shared `key`) to swap in a
-// theme-appropriate name/color/shape wherever one is defined — see this
-// file's own "per-terrain armored reskins" section further down for the
-// actual art. Deep Forest has no entry here: it's the "native" land-
-// beetle look every tier's own stored name/color already is, so it falls
-// through unchanged exactly like before any of this existed.
+// Per-terrain reskin history (user bug report: literal land beetles were
+// showing up on every map — Whirlpool's ocean floor originally, then
+// flagged again more broadly as "beetles in random maps" once Marshland/
+// Savanah/Tundra existed too) — REMOVED below (direct request, relayed
+// from the peer session), not just reskinned, on the three terrains where
+// a beetle (or a themed stand-in) never belonged to begin with: Whirlpool
+// (ocean), Marshland (marsh), Tundra (tundra). ARMORED_BEETLE_TERRAINS
+// just below gates the forcing function itself (getUnlockedArmoredBeetleKeys/
+// getAllSpawnableEnemyKeys) so those three terrains never unlock, spawn,
+// or offer these enemies at all any more — simpler than keeping some
+// equivalent armor-gated enemy there instead, and what was actually asked
+// for. The two terrains that keep it (Deep Forest/Savanah, both already
+// having native beetle-family enemies of their own — babyBeetle/
+// dungBeetle/tigerBeetle/Longhorn Beetle, and Blue Death Beetle,
+// respectively) now ALSO lost their old per-terrain reskin (Savanah's
+// "Desert Carapace Beetle" etc.) per the same request's own wording —
+// "as literal beetles, no reskin needed" — so this table is left with
+// only Volcanic's entry, which (unlike Savanah's) was always color-only on
+// the same literal beetle shape and silhouette, not a cosmetic rename;
+// Volcanic also already has its own native beetle-family enemies
+// (Volcanic Ash Beetle, Haleakalā Mecyclothorax Beetle), so the same "fits
+// natively" logic that keeps Deep Forest/Savanah enabled applies here too
+// — this wasn't called out explicitly in the request, but follows the
+// same stated principle. Deep Forest/Savanah have no entry here any more:
+// both now fall through to the tier's own stored name/color unchanged,
+// the same "native" land-beetle look Deep Forest always had.
 const ARMORED_BEETLE_THEME_BY_TERRAIN = {
-  ocean: {
-    carapaceBeetle: { name: 'Armored Hermit Crab', color: '#9a5230' },
-    ironshellBeetle: { name: 'Spiny Lobster', color: '#2f4a42' },
-    titanBeetle: { name: 'Giant Isopod', color: '#a89aa5' },
-  },
-  marsh: {
-    carapaceBeetle: { name: 'Snapping Turtle', color: '#4a5a32' },
-    ironshellBeetle: { name: 'Armored Mud Crab', color: '#5a4530' },
-    titanBeetle: { name: 'Giant Marsh Isopod', color: '#3a3a28' },
-  },
-  desert: {
-    carapaceBeetle: { name: 'Desert Carapace Beetle', color: '#9c7a42' },
-    ironshellBeetle: { name: 'Desert Ironshell Beetle', color: '#7a5a32' },
-    titanBeetle: { name: 'Desert Titan Beetle', color: '#5a3f22' },
-  },
-  tundra: {
-    carapaceBeetle: { name: 'Frost Isopod', color: '#8aa0ac' },
-    ironshellBeetle: { name: 'Glacial Pillbug', color: '#5a7a8c' },
-    titanBeetle: { name: 'Permafrost Colossus', color: '#3a4a52' },
-  },
-  // Name/color only, same as desert above — keeps the literal beetle
-  // shape rather than a full art reskin (lava-hot colors on a beetle
-  // silhouette already reads as "belongs on Volcanic" without needing
-  // new shapes).
   volcano: {
     carapaceBeetle: { name: 'Obsidian Carapace Beetle', color: '#3a2e28' },
     ironshellBeetle: { name: 'Magma Ironshell Beetle', color: '#8a3a1a' },
     titanBeetle: { name: 'Molten Titan Beetle', color: '#c85a1e' },
   },
 };
+
+// Terrains whose own native roster already includes a beetle-family enemy
+// — the only terrains where ARMORED_BEETLE_TIERS below still unlocks/
+// spawns/is Sandbox-spawnable at all (see getUnlockedArmoredBeetleKeys()
+// and getAllSpawnableEnemyKeys() further down, the two choke points this
+// gates). 'forest' (Deep Forest: babyBeetle/dungBeetle/tigerBeetle/
+// Longhorn Beetle), 'desert' (Savanah: Blue Death Beetle), and 'volcano'
+// (Volcanic: Volcanic Ash Beetle/Haleakalā Mecyclothorax Beetle) all have
+// one; 'ocean' (Whirlpool)/'marsh' (Marshland)/'tundra' (Tundra) don't.
+const ARMORED_BEETLE_TERRAINS = new Set(['forest', 'desert', 'volcano']);
 
 const ARMORED_BEETLE_TIERS = [
   {
@@ -658,6 +660,7 @@ const ARMORED_BEETLE_TIERS = [
 ];
 
 function getUnlockedArmoredBeetleKeys(round) {
+  if (!ARMORED_BEETLE_TERRAINS.has(getActiveMap().terrain)) return [];
   return ARMORED_BEETLE_TIERS.filter((tier) => round >= tier.unlockRound).map((tier) => tier.key);
 }
 
@@ -729,9 +732,11 @@ function getUnlockedEnemyTypes(round) {
     unlocked.push(...roster.orderTier3.slice(0, tier3Count));
   }
 
-  // Armored beetles (shared across every map — see ARMORED_BEETLE_TIERS'
-  // own comment) unlock on their own explicit rounds, not this function's
-  // every-5-rounds cadence.
+  // Armored beetles (only on terrains in ARMORED_BEETLE_TERRAINS — see
+  // that constant's own comment) unlock on their own explicit rounds, not
+  // this function's every-5-rounds cadence; getUnlockedArmoredBeetleKeys()
+  // itself already returns [] on every other terrain, so nothing further
+  // needs to check that here.
   unlocked.push(...getUnlockedArmoredBeetleKeys(round));
 
   return unlocked;
@@ -1196,7 +1201,9 @@ function getAllSpawnableEnemyKeys() {
   const roster = getActiveRoster();
   const terrain = getActiveMap().terrain;
   const bossKeys = Object.keys(roster.bossTypes).map((tier) => `${terrain}-boss-tier-${tier}`);
-  const armoredKeys = ARMORED_BEETLE_TIERS.map((tier) => tier.key);
+  // Only offered for Sandbox discovery on terrains that actually spawn
+  // them in a real game — see ARMORED_BEETLE_TERRAINS' own comment.
+  const armoredKeys = ARMORED_BEETLE_TERRAINS.has(terrain) ? ARMORED_BEETLE_TIERS.map((tier) => tier.key) : [];
   return [...roster.order, ...roster.orderTier2, ...roster.orderTier3, ...armoredKeys, ...bossKeys];
 }
 
@@ -2723,105 +2730,17 @@ function drawGreatWhite(ctx, e) {
   ctx.fill();
 }
 
-// --- Per-terrain armored reskins -------------------------------------------
-// See ARMORED_BEETLE_THEME_BY_TERRAIN's own comment: same shared armored-
-// beetle mechanics, just a different body plan instead of a land beetle
-// on every terrain but Deep Forest. Shares drawHorseshoeCrab's "rounded
-// shell, front claws/head toward -x" convention (these keep the shared
-// rotation table's existing Math.PI entry for carapaceBeetle/
-// ironshellBeetle/titanBeetle), and mirrors drawBeetlePlates' own "more
-// segments each tier" progression so the tier-over-tier escalation still
-// reads clearly even with all-new art. Reused as-is (just a different
-// color/name per ARMORED_BEETLE_THEME_BY_TERRAIN) for Marshland and
-// Tundra too — a generic "shelled armored creature" silhouette doubles
-// reasonably for a crab, a turtle, or an isopod at this small a scale;
-// Savanah deliberately has no entry here at all, since it keeps the
-// literal beetle shape (dungBeetle/tigerBeetle already establish beetles
-// as native fauna there) — only its name/color are reskinned, the same
-// as Deep Forest's own untouched "native" look just recolored.
-function drawArmoredShellBody(ctx, e, segmentCount) {
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = shadeColor(e.color, -15);
-  [-0.35, 0.35].forEach((dy) => {
-    ctx.beginPath();
-    ctx.ellipse(e.x - e.radius * 0.9, e.y + dy * e.radius, e.radius * 0.35, e.radius * 0.22, 0, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  ctx.strokeStyle = shadeColor(e.color, -35);
-  ctx.lineWidth = Math.max(1.3, e.radius * 0.09);
-  for (let i = 1; i < segmentCount; i += 1) {
-    const t = i / segmentCount;
-    const px = e.x + e.radius * (0.7 - t * 1.3);
-    ctx.beginPath();
-    ctx.moveTo(px, e.y - e.radius * 0.72);
-    ctx.lineTo(px, e.y + e.radius * 0.72);
-    ctx.stroke();
-  }
-}
-
-// Carapace Beetle's reskin — the lightest of the three, 3 shell segments.
-function drawArmoredHermitCrab(ctx, e) {
-  drawArmoredShellBody(ctx, e, 3);
-}
-
-// Ironshell Beetle's reskin — 4 segments plus a pair of trailing antennae,
-// the one added signature feature at this tier (same role Ironshell's own
-// metallic rivets play).
-function drawSpinyLobster(ctx, e) {
-  drawArmoredShellBody(ctx, e, 4);
-  ctx.strokeStyle = shadeColor(e.color, 35);
-  ctx.lineWidth = Math.max(1, e.radius * 0.08);
-  [-0.25, 0.25].forEach((dy) => {
-    ctx.beginPath();
-    ctx.moveTo(e.x - e.radius * 0.85, e.y + dy * e.radius * 0.3);
-    ctx.quadraticCurveTo(
-      e.x - e.radius * 1.4,
-      e.y + dy * e.radius * 0.8,
-      e.x - e.radius * 1.8,
-      e.y + dy * e.radius * 1.3
-    );
-    ctx.stroke();
-  });
-}
-
-// Titan Beetle's reskin — 6 segments plus a trailing tail-fan, the one
-// added signature feature at this tier (same role Titan Beetle's own
-// frontal horn plays).
-function drawGiantIsopod(ctx, e) {
-  drawArmoredShellBody(ctx, e, 6);
-  ctx.fillStyle = shadeColor(e.color, -25);
-  ctx.beginPath();
-  ctx.moveTo(e.x + e.radius * 0.6, e.y - e.radius * 0.5);
-  ctx.lineTo(e.x + e.radius * 1.3, e.y);
-  ctx.lineTo(e.x + e.radius * 0.6, e.y + e.radius * 0.5);
-  ctx.closePath();
-  ctx.fill();
-}
-
-const ARMORED_BEETLE_DRAW_FUNCTIONS_BY_TERRAIN = {
-  ocean: {
-    carapaceBeetle: drawArmoredHermitCrab,
-    ironshellBeetle: drawSpinyLobster,
-    titanBeetle: drawGiantIsopod,
-  },
-  marsh: {
-    carapaceBeetle: drawArmoredHermitCrab,
-    ironshellBeetle: drawSpinyLobster,
-    titanBeetle: drawGiantIsopod,
-  },
-  tundra: {
-    carapaceBeetle: drawArmoredHermitCrab,
-    ironshellBeetle: drawSpinyLobster,
-    titanBeetle: drawGiantIsopod,
-  },
-  // desert has no entry — Savanah keeps the literal beetle shape, just
-  // recolored/renamed (see this section's own top comment).
-};
+// --- Per-terrain armored reskins (REMOVED) ---------------------------------
+// This section used to hold drawArmoredShellBody/drawArmoredHermitCrab/
+// drawSpinyLobster/drawGiantIsopod and an ARMORED_BEETLE_DRAW_FUNCTIONS_BY_
+// TERRAIN dispatch table — alternate crab/turtle/isopod art swapped in for
+// the armored beetle line on Whirlpool/Marshland/Tundra. Deleted (direct
+// request, relayed from the peer session) along with the forcing function
+// itself on those three terrains — see ARMORED_BEETLE_TERRAINS' own comment
+// further up for the full rationale. drawEnemyShape() below no longer has
+// any terrain-override branch at all: every remaining terrain that still
+// spawns these (Deep Forest/Savanah/Volcanic) always uses the literal
+// beetle art in ENEMY_DRAW_FUNCTIONS, same as before any of this existed.
 
 // --- Savanah: scorpions ---------------------------------------------------
 
@@ -3453,18 +3372,11 @@ function drawFallbackCircle(ctx, e) {
 }
 
 function drawEnemyShape(ctx, enemy) {
-  // Armored beetles are the one enemy family shared across every map (see
-  // ARMORED_BEETLE_TIERS' own comment) — on every terrain with its own
-  // entry in ARMORED_BEETLE_DRAW_FUNCTIONS_BY_TERRAIN, swap in that
-  // terrain's reskin instead of the default land-beetle art so they don't
-  // look out of place (Savanah and Deep Forest have no entry — both keep
-  // the literal beetle shape, see that table's own comment). Every other
-  // map falls through to the normal lookup below, unchanged.
-  const terrainOverrides = ARMORED_BEETLE_DRAW_FUNCTIONS_BY_TERRAIN[getActiveMap().terrain];
-  if (!enemy.isBoss && terrainOverrides && terrainOverrides[enemy.enemyKey]) {
-    terrainOverrides[enemy.enemyKey](ctx, enemy);
-    return;
-  }
+  // Armored beetles no longer have any per-terrain art override — see
+  // this file's own "per-terrain armored reskins (REMOVED)" comment
+  // further up. Every terrain that still spawns them (Deep Forest/
+  // Savanah/Volcanic) just falls through to the normal lookup below, same
+  // literal beetle art ENEMY_DRAW_FUNCTIONS already has.
   const draw = enemy.isBoss ? BOSS_DRAW_FUNCTIONS[enemy.enemyKey] : ENEMY_DRAW_FUNCTIONS[enemy.enemyKey];
   (draw || drawFallbackCircle)(ctx, enemy);
 }

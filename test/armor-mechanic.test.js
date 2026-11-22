@@ -7,11 +7,14 @@ const { loadGameContext } = require('./support/loadGame');
 // reusable — damageEnemy() is the one choke point every damage source
 // in the game already goes through, so gating it there applies the rule
 // everywhere for free (direct hits, projectiles, DoT ticks, AoE pulses,
-// root traps, etc.) with no per-effect special-casing. Three shared
-// tiers (Carapace/Ironshell/Titan Beetle) unlock at round 75/100/125
-// regardless of which map is active — see ARMORED_BEETLE_TIERS' own
-// extensive comment in enemies.js for the exact threshold/HP calibration
-// and the real tower-damage numbers it's based on.
+// root traps, etc.) with no per-effect special-casing. Three tiers
+// (Carapace/Ironshell/Titan Beetle) unlock at round 75/100/125 — see
+// ARMORED_BEETLE_TIERS' own extensive comment in enemies.js for the
+// exact threshold/HP calibration and the real tower-damage numbers it's
+// based on. Originally unlocked "regardless of which map is active";
+// later narrowed (direct request, relayed from the peer session) to only
+// the terrains whose own native roster already has a beetle-family enemy
+// — see ARMORED_BEETLE_TERRAINS' own comment in enemies.js.
 
 function makeTestEnemy(overrides) {
   return {
@@ -74,15 +77,29 @@ test('getUnlockedArmoredBeetleKeys returns exactly the tiers whose unlockRound h
   assert.deepEqual(game.getUnlockedArmoredBeetleKeys(500), ['carapaceBeetle', 'ironshellBeetle', 'titanBeetle']);
 });
 
-test('armored beetles unlock the same way regardless of which map is active', () => {
+// Direct request, relayed from the peer session: narrowed from "every
+// map, regardless" to only the terrains whose own native roster already
+// has a beetle-family enemy — Deep Forest/Savanah/Volcanic unlock them
+// identically; Whirlpool/Marshland/Tundra never unlock them at all any
+// more. See ARMORED_BEETLE_TERRAINS' own comment in enemies.js.
+test('armored beetles unlock identically on every terrain whose native roster already has a beetle-family enemy', () => {
   const game = loadGameContext();
   const forest = game.getUnlockedArmoredBeetleKeys(100);
-  game.setActiveMap(game.MAP_TYPES.marshland);
-  const marsh = game.getUnlockedArmoredBeetleKeys(100);
   game.setActiveMap(game.MAP_TYPES.savanah);
   const savanah = game.getUnlockedArmoredBeetleKeys(100);
-  assert.deepEqual(forest, marsh);
-  assert.deepEqual(marsh, savanah);
+  game.setActiveMap(game.MAP_TYPES.volcanic);
+  const volcanic = game.getUnlockedArmoredBeetleKeys(100);
+  assert.deepEqual(forest, ['carapaceBeetle', 'ironshellBeetle']);
+  assert.deepEqual(forest, savanah);
+  assert.deepEqual(savanah, volcanic);
+});
+
+test('armored beetles never unlock at all on Whirlpool, Marshland, or Tundra — removed entirely, not just reskinned', () => {
+  const game = loadGameContext();
+  [game.MAP_TYPES.whirlpool, game.MAP_TYPES.marshland, game.MAP_TYPES.tundra].forEach((mapType) => {
+    game.setActiveMap(mapType);
+    assert.deepEqual(game.getUnlockedArmoredBeetleKeys(500), []); // round 500 — nothing ever unlocks, not even delayed
+  });
 });
 
 test('each tier has meaningfully more HP and a higher armor threshold than the last', () => {
@@ -125,7 +142,7 @@ test('armored beetles never spawn before their own unlock round', () => {
   assert.equal(wave74.some((e) => e.enemyKey === 'carapaceBeetle'), false);
 });
 
-test('getAllSpawnableEnemyKeys always includes every armored beetle, for Sandbox discovery', () => {
+test('getAllSpawnableEnemyKeys includes every armored beetle on a map that spawns them (Deep Forest, by default), for Sandbox discovery', () => {
   const game = loadGameContext();
   const keys = game.getAllSpawnableEnemyKeys();
   assert.ok(keys.includes('carapaceBeetle'));

@@ -68,12 +68,16 @@ test('applyModeToWaveComposition never rounds health down to 0', () => {
   assert.ok(result.health >= 1);
 });
 
-// Armored beetles (direct request) are shared across every map, so they
-// now appear in this list too — between the roster's own types and its
-// boss keys, same position generateWave()/getUnlockedEnemyTypes() build
-// them in. See armor-mechanic.test.js for dedicated coverage of that
-// mechanic; these two just confirm the per-map roster listing itself
-// still works with them folded in.
+// Armored beetles (direct request) appear in this list too — between the
+// roster's own types and its boss keys, same position
+// generateWave()/getUnlockedEnemyTypes() build them in — but only on
+// terrains whose own native roster already has a beetle-family enemy
+// (Deep Forest included, Marshland not — see ARMORED_BEETLE_TERRAINS'
+// own comment in enemies.js, narrowed from "every map" by a later direct
+// request relayed from the peer session). See armor-mechanic.test.js for
+// dedicated coverage of that mechanic; these two just confirm the per-map
+// roster listing itself still works with them folded in (or correctly
+// left out).
 const ARMORED_BEETLE_KEYS = ['carapaceBeetle', 'ironshellBeetle', 'titanBeetle'];
 
 // Snakes (direct request) are Deep Forest's own tier-3 roster, so they
@@ -93,14 +97,13 @@ test('getAllSpawnableEnemyKeys lists the active map\'s own roster — Deep Fores
   ]);
 });
 
-test('getAllSpawnableEnemyKeys switches to Marshland\'s roster once that\'s the active map', () => {
+test('getAllSpawnableEnemyKeys switches to Marshland\'s roster once that\'s the active map, with no armored beetles (Marshland has no native beetle enemy of its own)', () => {
   const game = loadFullGameContext();
   game.setActiveMap(game.MAP_TYPES.marshland);
   assert.deepEqual(game.getAllSpawnableEnemyKeys(), [
     'tadpole', 'froglet', 'frogLarva',
     'appleSnail', 'slug', 'assassinSnail',
     'piranha', 'arowana', 'redtailCatfish',
-    ...ARMORED_BEETLE_KEYS,
     'marsh-boss-tier-1', 'marsh-boss-tier-2', 'marsh-boss-tier-3',
   ]);
 });
