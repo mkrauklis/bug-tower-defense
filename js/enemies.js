@@ -591,12 +591,23 @@ const CAVES_ROSTER = {
       bounty: 75,
     },
     caveSwallow: { name: 'Cave Swallow', speedMultiplier: 0.9, health: 190, color: '#7a5a3a', radius: 7, bounty: 95 },
-    olm: { name: 'Olm', speedMultiplier: 0.35, health: 240, color: '#d9b8ae', radius: 10, bounty: 120 },
+    // Color REVISED on user bug report (relayed from the peer session):
+    // originally too close to Texas Blind Salamander's own color below
+    // ('#d9b8ae' vs '#c9a8b8' — both pale desaturated pinks, barely
+    // distinguishable at a glance). Olm is "pale pinkish/flesh-colored"
+    // per the real animal — a clearer, warmer pink-flesh tone now. See
+    // drawOlm's own comment for the real shape/gill differences added
+    // alongside this color fix.
+    olm: { name: 'Olm', speedMultiplier: 0.35, health: 240, color: '#dba89c', radius: 10, bounty: 120 },
+    // Color REVISED alongside Olm's own fix above — a pale, cool grey-
+    // tan now (reads as "pale/translucent" per the real animal) instead
+    // of a pink too close to Olm's own, a different hue family entirely
+    // rather than just a different shade of the same pink.
     texasBlindSalamander: {
       name: 'Texas Blind Salamander',
       speedMultiplier: 0.3,
       health: 300,
-      color: '#c9a8b8',
+      color: '#c7c2b4',
       radius: 10,
       bounty: 150,
     },
@@ -3696,48 +3707,64 @@ function drawCaveSwallow(ctx, e) {
 }
 
 // Shared body for Caves' 2 blind cave salamanders (Olm/Texas Blind
-// Salamander) — an elongated low body/tail, 2 pairs of short bent limbs,
-// and a blunt head toward -x with NO eye at all (both real animals are
-// blind) — the one deliberate omission that most reads as "cave-adapted"
-// at a glance, the same role deliberately omitting Blind Cavefish's own
-// eye plays below. `gillColor` draws a few feathery external gill fronds
-// just behind the head — the real Olm's own famous signature trait
-// (external gills it never loses, even as an adult) — in a blood-red
-// accent distinct from either salamander's own pale body color.
-function drawCaveSalamanderBody(ctx, e, { gillColor } = {}) {
+// Salamander) — a low body/tail, 2 pairs of short bent limbs, and a
+// blunt head toward -x with NO eye at all (both real animals are blind)
+// — the one deliberate omission that most reads as "cave-adapted" at a
+// glance, the same role deliberately omitting Blind Cavefish's own eye
+// plays below.
+//
+// FIXED on user bug report (relayed from the peer session): the two
+// callers below originally only varied `gillColor`, and by two nearly
+// identical shades of red at that — same body geometry, same `radius`
+// (CAVES_ROSTER), colors too close to tell apart at a glance, so the two
+// read as the same creature in-game despite being meant as visually
+// distinct. `stretch`/`gillSize`/`headFlatten` are new options giving
+// each caller a genuinely different silhouette, not just a color swap:
+// `stretch` scales body length up (thinner, more eel-like) or down
+// (stockier, fatter) while the body WIDTH scales inversely, so a longer
+// body doesn't just look like a bigger version of a shorter one;
+// `headFlatten` flattens the head ellipse's own vertical radius;
+// `gillSize` scales both the gill strokes' width and how far the fronds
+// reach. All 3 default to 1 (today's exact prior geometry) when omitted,
+// so nothing else that might ever reuse this shared body is affected.
+function drawCaveSalamanderBody(ctx, e, { gillColor, gillSize = 1, stretch = 1, headFlatten = 1 } = {}) {
+  const bodyWidth = (e.radius * 0.38) / stretch;
+  const tailOffset = e.radius * 0.3 * stretch;
+  const headOffset = e.radius * 0.95 * stretch;
+
   ctx.fillStyle = e.color;
   ctx.beginPath();
-  ctx.ellipse(e.x + e.radius * 0.3, e.y, e.radius * 1.3, e.radius * 0.38, 0, 0, Math.PI * 2);
+  ctx.ellipse(e.x + tailOffset, e.y, e.radius * 1.3 * stretch, bodyWidth, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.strokeStyle = shadeColor(e.color, -15);
   ctx.lineWidth = Math.max(1.2, e.radius * 0.12);
   ctx.lineCap = 'round';
-  [-0.3, 0.6].forEach((t) => {
+  [-0.3 * stretch, 0.6 * stretch].forEach((t) => {
     [-1, 1].forEach((side) => {
       ctx.beginPath();
-      ctx.moveTo(e.x + t * e.radius, e.y + side * e.radius * 0.25);
-      ctx.lineTo(e.x + t * e.radius - e.radius * 0.1, e.y + side * e.radius * 0.6);
+      ctx.moveTo(e.x + t * e.radius, e.y + side * bodyWidth * 0.65);
+      ctx.lineTo(e.x + t * e.radius - e.radius * 0.1, e.y + side * bodyWidth * 1.6);
       ctx.stroke();
     });
   });
 
   ctx.fillStyle = e.color;
   ctx.beginPath();
-  ctx.ellipse(e.x - e.radius * 0.95, e.y, e.radius * 0.42, e.radius * 0.32, 0, 0, Math.PI * 2);
+  ctx.ellipse(e.x - headOffset, e.y, e.radius * 0.42, e.radius * 0.32 * headFlatten, 0, 0, Math.PI * 2);
   ctx.fill();
 
   if (gillColor) {
     ctx.strokeStyle = gillColor;
-    ctx.lineWidth = Math.max(1, e.radius * 0.1);
+    ctx.lineWidth = Math.max(1, e.radius * 0.1 * gillSize);
     ctx.lineCap = 'round';
     [-1, 1].forEach((side) => {
       [0.15, 0, -0.15].forEach((t) => {
         ctx.beginPath();
-        ctx.moveTo(e.x - e.radius * 0.6, e.y + side * e.radius * 0.25 + t * e.radius * 0.1);
+        ctx.moveTo(e.x - headOffset * 0.63, e.y + side * e.radius * 0.25 + t * e.radius * 0.1);
         ctx.quadraticCurveTo(
-          e.x - e.radius * 0.35, e.y + side * e.radius * 0.55 + t * e.radius * 0.1,
-          e.x - e.radius * 0.5, e.y + side * e.radius * 0.75 + t * e.radius * 0.1
+          e.x - headOffset * 0.37, e.y + side * e.radius * (0.25 + 0.3 * gillSize) + t * e.radius * 0.1,
+          e.x - headOffset * 0.53, e.y + side * e.radius * (0.25 + 0.5 * gillSize) + t * e.radius * 0.1
         );
         ctx.stroke();
       });
@@ -3745,15 +3772,23 @@ function drawCaveSalamanderBody(ctx, e, { gillColor } = {}) {
   }
 }
 
+// Real Olms are notably elongated and eel-like with large, prominent
+// feathery gills (external gills it never outgrows, even as an adult —
+// its own famous signature trait) — a longer, thinner body (stretch
+// 1.3) and big, vivid gill fronds (gillSize 1.4) read that clearly.
 function drawOlm(ctx, e) {
-  drawCaveSalamanderBody(ctx, e, { gillColor: '#e85070' });
+  drawCaveSalamanderBody(ctx, e, { gillColor: '#e8506a', gillSize: 1.4, stretch: 1.3 });
 }
 
-// Same body/blind-head/gill treatment as Olm — "similar but distinct,"
-// per the request's own wording — differentiated by its own body color
-// (set in CAVES_ROSTER) and a slightly different gill-red accent.
+// Real Texas Blind Salamanders are stockier/shorter than an Olm, with a
+// flatter head and smaller, less prominent gills — a shorter, fatter
+// body (stretch 0.75, the inverse of Olm's own 1.3), a flattened head
+// (headFlatten 0.65), and small, duller gill fronds (gillSize 0.55, a
+// paler/dustier accent color than Olm's own vivid one) read that
+// clearly — genuinely distinct proportions, not just a different color
+// on the same silhouette (see this file's own bug-fix note above).
 function drawTexasBlindSalamander(ctx, e) {
-  drawCaveSalamanderBody(ctx, e, { gillColor: '#d04868' });
+  drawCaveSalamanderBody(ctx, e, { gillColor: '#c2889a', gillSize: 0.55, stretch: 0.75, headFlatten: 0.65 });
 }
 
 // A small curved, pale/translucent body (read through a light color

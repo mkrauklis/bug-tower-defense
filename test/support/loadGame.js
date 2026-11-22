@@ -56,6 +56,13 @@ function loadGameContext() {
       MILLIPEDE_FAMILY_KEYS, recordTrailPoint, getTrailPointAtDistance,
       MAP_TYPES, getActiveMap, setActiveMap,
       PRODIGY_BASE_TYPE, turnIntoPurpleZombie,
+      // New export: lets a test actually call a specific enemy's own draw
+      // function against a recording ctx and inspect what it drew — added
+      // for a user bug report (Olm/Texas Blind Salamander looking
+      // identical in-game) where a pure data-level color check wouldn't
+      // have caught the real bug (their SHAPES were identical too, not
+      // just coincidentally-similar colors).
+      ENEMY_DRAW_FUNCTIONS,
     };
     `,
     context

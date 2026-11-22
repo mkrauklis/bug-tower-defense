@@ -361,6 +361,92 @@ test('Blind Cavefish\'s spawn entry carries no special traits (just a plain, tou
   Object.values(bossTypes).forEach((type) => assert.equal(type.armorThreshold || 0, 0));
 });
 
+// --- Follow-up: Olm and Texas Blind Salamander looked identical in-game ---
+// User bug report, relayed from the peer session: both reused the exact
+// same drawCaveSalamanderBody geometry with only `gillColor` varying
+// between 2 near-identical reds, on top of 2 roster colors (CAVES_ROSTER)
+// that were also too close to tell apart — so they read as the same
+// creature on screen. Fixed by giving drawCaveSalamanderBody real shape
+// options (`stretch`/`gillSize`/`headFlatten`) and genuinely different
+// roster colors. A plain color-equality check wouldn't have caught the
+// real bug here (the SHAPES were identical, not just similarly colored),
+// so this records actual canvas calls from the real draw functions via
+// game.ENEMY_DRAW_FUNCTIONS (a new export — see loadGame.js's own
+// comment) rather than only inspecting roster data.
+
+// A minimal ctx recorder: captures every ellipse() call's radii and every
+// stroke()'s lineWidth/strokeStyle at the moment it fired — enough to
+// check actual drawn geometry without a real canvas.
+function createGeometryRecordingCtx() {
+  const ellipses = [];
+  const strokes = [];
+  let lineWidth = 1;
+  let strokeStyle = null;
+  const proxy = new Proxy(
+    {},
+    {
+      get(obj, prop) {
+        if (prop === 'ellipse') return (x, y, rx, ry) => ellipses.push({ x, y, rx, ry });
+        if (prop === 'stroke') return () => strokes.push({ lineWidth, strokeStyle });
+        if (prop in obj) return obj[prop];
+        return (..._args) => proxy;
+      },
+      set(obj, prop, value) {
+        if (prop === 'lineWidth') lineWidth = value;
+        else if (prop === 'strokeStyle') strokeStyle = value;
+        else obj[prop] = value;
+        return true;
+      },
+    }
+  );
+  return { ctx: proxy, ellipses, strokes };
+}
+
+test('Olm\'s roster color differs clearly from Texas Blind Salamander\'s', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.caves);
+  const { enemyTypes } = game.getActiveRoster();
+  assert.notEqual(enemyTypes.olm.color, enemyTypes.texasBlindSalamander.color);
+});
+
+test('Olm renders with a longer, thinner body and bigger, more vivid gills than Texas Blind Salamander — real shape differences, not just a color swap', () => {
+  const game = loadGameContext();
+  const olmEnemy = { x: 0, y: 0, radius: 10, color: '#dba89c' };
+  const texasEnemy = { x: 0, y: 0, radius: 10, color: '#c7c2b4' };
+
+  const olmRec = createGeometryRecordingCtx();
+  game.ENEMY_DRAW_FUNCTIONS.olm(olmRec.ctx, olmEnemy);
+  const texasRec = createGeometryRecordingCtx();
+  game.ENEMY_DRAW_FUNCTIONS.texasBlindSalamander(texasRec.ctx, texasEnemy);
+
+  // The body ellipse is the first one drawn — its own x-radius is the
+  // body's length. Olm ("notably elongated eel-like") is longer than
+  // Texas Blind Salamander ("stockier/shorter").
+  const [olmBody] = olmRec.ellipses;
+  const [texasBody] = texasRec.ellipses;
+  assert.ok(olmBody.rx > texasBody.rx, `expected Olm's body (${olmBody.rx}) to be longer than Texas Blind Salamander's (${texasBody.rx})`);
+
+  // The head ellipse is the second one drawn — its own y-radius is how
+  // flat the head reads. Texas Blind Salamander has "a flatter head."
+  const [, olmHead] = olmRec.ellipses;
+  const [, texasHead] = texasRec.ellipses;
+  assert.ok(olmHead.ry > texasHead.ry, `expected Texas Blind Salamander's head (${texasHead.ry}) to be flatter than Olm's (${olmHead.ry})`);
+
+  // Gill strokes are drawn in each creature's own gillColor — isolating
+  // just those (not the leg strokes, which share a lineWidth formula
+  // unrelated to gill prominence) confirms Olm's own "prominent" gills
+  // actually use a thicker stroke than Texas Blind Salamander's "smaller,
+  // less prominent" ones.
+  const olmGillStrokes = olmRec.strokes.filter((s) => s.strokeStyle === '#e8506a');
+  const texasGillStrokes = texasRec.strokes.filter((s) => s.strokeStyle === '#c2889a');
+  assert.ok(olmGillStrokes.length > 0, 'expected Olm to draw at least one gill-colored stroke');
+  assert.ok(texasGillStrokes.length > 0, 'expected Texas Blind Salamander to draw at least one gill-colored stroke');
+  assert.ok(
+    olmGillStrokes[0].lineWidth > texasGillStrokes[0].lineWidth,
+    `expected Olm's gill stroke (${olmGillStrokes[0].lineWidth}) to be thicker than Texas Blind Salamander's (${texasGillStrokes[0].lineWidth})`
+  );
+});
+
 // --- Follow-up: darker flowing water + a coordinated cave-rock floor ------
 
 test('Caves\' water path is a dark, moody teal now — not the original bright glowing cyan', () => {
