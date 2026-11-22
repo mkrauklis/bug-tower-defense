@@ -1488,9 +1488,7 @@ function renderVolcanicDecor(ctx, decor, time = 0) {
 // request's own words) — so CAVES_PATH_COLORS below is its own dark,
 // cool teal fill, unlike every other map's solid-ground path (dirt/
 // magma/ice/sand) and unlike Marshland's own muddy-green puddles (those
-// are still just decor, not the path). A single path (like Deep Forest/
-// Marshland/Whirlpool/Volcanic), not two like Savanah/Tundra — nothing in
-// the request asked for a second path.
+// are still just decor, not the path).
 //
 // A direct follow-up request (user feedback: the path originally read
 // "too bright/light," and wanted it to actually look like flowing water
@@ -1501,17 +1499,69 @@ function renderVolcanicDecor(ctx, decor, time = 0) {
 // renderMapPreview()'s own calls to it) — the same "new, OPTIONAL hook,
 // every other theme is unaffected" pattern renderWaterEffects already
 // established for Whirlpool's own drifting caustics.
+//
+// A second direct follow-up request gave the path its own unique
+// topology: a single path that FORKS into 2 branches for a stretch, then
+// REJOINS into one path again before the shared goal — not used by any
+// other map (Savanah/Tundra have 2 fully INDEPENDENT paths with separate
+// goals; every other map is one single path with no branching at all).
+// Built as CAVES_PATH_A/CAVES_PATH_B below — 2 ordinary waypoint arrays,
+// the exact same mechanism every multi-path map already uses for enemy
+// spawning/placement/rendering — that happen to share IDENTICAL leading
+// waypoints (the shared entry segment, spawn to the fork point) and
+// IDENTICAL trailing waypoints (the shared segment from the merge point
+// into the goal), diverging only in their own middle section. Nothing
+// about the engine needed to change: createEnemyInstance() already rolls
+// a random pathIndex per enemy (same as Savanah), isPointOnPath()/
+// renderMap() already check/draw every path in MAP_PATHS generically,
+// and getLastLeakedEnemies()/updateEnemies() already detect "reached the
+// end of MY OWN path" per-enemy via enemy.pathIndex — so visually and
+// mechanically this reads as "one path that splits and rejoins" even
+// though under the hood it's still 2 waypoint arrays, exactly per the
+// request's own suggested implementation. Where both arrays share the
+// exact same coordinates (the entry/exit segments), drawing both is
+// pixel-identical to drawing one — renderMap()'s own "all outlines then
+// all fills" ordering (see its own comment) is what keeps the fork and
+// merge points themselves reading as clean rounded junctions rather than
+// a seam, the same mechanism that already made Savanah's old shared-
+// temple convergence (see SAVANAH_PATH_A/B's own history above) read
+// cleanly before that map moved to fully separate goals.
+//
+// The two branches bulge left/right by only 100px from the shared fork/
+// merge centerline (x=240 and x=440, a 200px gap) — close enough that a
+// tower placed in the gap between them (most towers' base range is well
+// past 150px) can meaningfully hit enemies on EITHER branch, per the
+// request's own explicit requirement ("don't make them so far apart that
+// it trivially requires double the towers"), while still being clearly
+// 2 separate, visually distinct lanes rather than looking like one wide
+// path (pathWidth 56 leaves a wide-open ~90px gap of clear ground between
+// the two branches' own strokes).
 // ---------------------------------------------------------------------------
 
-const CAVES_WAYPOINTS = [
-  { x: -20, y: 320 }, // off-canvas spawn
-  { x: 180, y: 320 },
-  { x: 180, y: 120 },
-  { x: 420, y: 120 },
-  { x: 420, y: 480 },
-  { x: 680, y: 480 },
-  { x: 680, y: 220 },
+const CAVES_PATH_A = [
+  { x: -20, y: 320 }, // off-canvas spawn — shared entry, identical to Path B
+  { x: 160, y: 320 },
+  { x: 160, y: 120 },
+  { x: 340, y: 120 }, // the fork point — both branches start diverging right after this exact waypoint
+  { x: 240, y: 200 }, // Path A's own branch: bulges left
+  { x: 240, y: 400 },
+  { x: 340, y: 480 }, // the merge point — both branches rejoin at this exact waypoint
+  { x: 620, y: 480 }, // shared exit, identical to Path B
+  { x: 620, y: 220 },
   { x: 860, y: 220 }, // ends at the crystal pool goal, on-canvas
+];
+
+const CAVES_PATH_B = [
+  { x: -20, y: 320 },
+  { x: 160, y: 320 },
+  { x: 160, y: 120 },
+  { x: 340, y: 120 }, // the same fork point as Path A
+  { x: 440, y: 200 }, // Path B's own branch: bulges right instead of left
+  { x: 440, y: 400 },
+  { x: 340, y: 480 }, // the same merge point as Path A
+  { x: 620, y: 480 },
+  { x: 620, y: 220 },
+  { x: 860, y: 220 },
 ];
 
 // A near-black, wet-rock outline around a dark, moody teal fill —
@@ -1525,12 +1575,12 @@ const CAVES_WAYPOINTS = [
 // base rather than the flat fill alone trying to do both jobs at once.
 const CAVES_PATH_COLORS = { outline: '#070f10', fill: '#1b5560' };
 
-// Hand-placed clear of CAVES_WAYPOINTS above (checked segment-by-segment
-// against every leg, same convention as every other terrain's decor).
-// Varied neon colors per the request's own description ("bright cyan/
-// teal... vivid magenta/pink... bright green... so the cave reads as
-// colorful and otherworldly rather than monochrome") rather than one
-// repeated color.
+// Hand-placed clear of CAVES_PATH_A/CAVES_PATH_B above (checked segment-
+// by-segment against every leg of both, same convention as every other
+// terrain's decor). Varied neon colors per the request's own description
+// ("bright cyan/teal... vivid magenta/pink... bright green... so the
+// cave reads as colorful and otherworldly rather than monochrome")
+// rather than one repeated color.
 const CAVES_CRYSTALS = [
   { x: 70, y: 60, size: 30, color: '#2fe8ff' },
   { x: 900, y: 500, size: 34, color: '#ff3fd0' },
@@ -1548,12 +1598,17 @@ const CAVES_CRYSTALS = [
 // ceiling rather than a stalagmite rising from the floor) — both share
 // the same spike silhouette either way, same "one shared shape, a small
 // flag picks the detail" convention every other terrain's own decor
-// variants already use (e.g. Volcanic's `crested`/`snoutColor`).
+// variants already use (e.g. Volcanic's `crested`/`snoutColor`). Two of
+// these (originally at (250,250) and (130,450)) were repositioned when
+// the fork/merge follow-up introduced CAVES_PATH_A/B's own two branches —
+// both used to sit in open ground that the new left branch (running down
+// x=240) or the shared entry's own vertical leg (x=160) now actually
+// passes through.
 const CAVES_FORMATIONS = [
-  { x: 250, y: 250, size: 22, hanging: true },
+  { x: 90, y: 80, size: 22, hanging: true },
   { x: 480, y: 550, size: 26, hanging: false },
   { x: 750, y: 350, size: 20, hanging: true },
-  { x: 130, y: 450, size: 24, hanging: false },
+  { x: 110, y: 450, size: 24, hanging: false },
   { x: 600, y: 100, size: 18, hanging: true },
   { x: 350, y: 560, size: 22, hanging: false },
 ];
@@ -1875,13 +1930,16 @@ const MAP_TYPES = {
   },
   // Direct request, relayed from the peer session: a dark cave interior
   // lit by glowing multi-colored crystals, with the enemy path itself a
-  // flowing water channel — see CAVES_WAYPOINTS' own comment above for
-  // the full design rationale.
+  // flowing water channel that forks into 2 branches and rejoins before
+  // the goal — see CAVES_PATH_A's own comment above for the full design
+  // rationale, including why this is 2 waypoint arrays (same mechanism
+  // Savanah's own 2 paths already use) rather than any new engine
+  // plumbing.
   caves: {
     id: 'caves',
     name: 'Caves',
     builtin: true,
-    paths: [CAVES_WAYPOINTS],
+    paths: [CAVES_PATH_A, CAVES_PATH_B],
     pathWidth: 56,
     pathColors: CAVES_PATH_COLORS,
     terrain: 'caves',

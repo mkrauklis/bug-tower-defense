@@ -6,11 +6,9 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 // reference photos given as a written description): a dark cave interior
 // lit by glowing multi-colored crystals, warm amber-brown stalactites/
 // stalagmites, and an enemy path that's itself a flowing water channel —
-// see CAVES_WAYPOINTS' own comment in map.js for the full design
-// rationale, and CAVES_ROSTER's own comment in enemies.js for the roster
-// shape/difficulty-tier judgment calls (only 2 boss tiers, Medium not
-// Hard). A single-path map, like Deep Forest/Marshland/Whirlpool/
-// Volcanic.
+// see CAVES_PATH_A's own comment in map.js for the full design rationale,
+// and CAVES_ROSTER's own comment in enemies.js for the roster shape/
+// difficulty-tier judgment calls (only 2 boss tiers, Medium not Hard).
 //
 // A direct follow-up request (relayed the same way) darkened the water
 // path (it originally read "too bright/light") and added an animated
@@ -19,8 +17,19 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 // own background color to coordinate with the amber-brown formations
 // instead of clashing against them — see CAVES_PATH_COLORS' own comment
 // in map.js for the full writeup.
+//
+// A second direct follow-up request gave the path a unique fork/merge
+// topology: CAVES_PATH_A/CAVES_PATH_B (map.js) share identical leading
+// waypoints (the entry, spawn to the fork) and identical trailing
+// waypoints (the merge to the goal), diverging only in the middle —
+// visually one path that splits into 2 branches and rejoins, built as 2
+// ordinary waypoint arrays, the exact same mechanism Savanah's own 2
+// (fully independent) paths already use. See savanah-multipath.test.js
+// for the original multi-path machinery's own dedicated coverage; these
+// tests focus on what's actually new here (shared segments, the fork/
+// merge points themselves, branch spacing).
 
-test('caves is registered in MAP_TYPES with the expected shape — a single path', () => {
+test('caves is registered in MAP_TYPES with the expected shape — 2 paths (a fork/merge, not 2 independent ones)', () => {
   const game = loadGameContext();
   const map = game.MAP_TYPES.caves;
   assert.equal(map.id, 'caves');
@@ -28,7 +37,7 @@ test('caves is registered in MAP_TYPES with the expected shape — a single path
   assert.equal(map.builtin, true);
   assert.equal(map.terrain, 'caves');
   assert.equal(map.pathWidth, 56);
-  assert.equal(map.paths.length, 1);
+  assert.equal(map.paths.length, 2);
 });
 
 test('caves shows up in listAllMaps alongside every other built-in map', () => {
@@ -55,18 +64,151 @@ test('Caves is explicitly Medium-tier, matching Marshland/Savanah\'s own 1.3x ma
   assert.notEqual(cavesMultiplier, volcanicMultiplier);
 });
 
-test('Caves\' path starts off-canvas and ends on-canvas at its own crystal pool goal', () => {
+test('both of Caves\' branches start off-canvas and end on-canvas at the same shared crystal pool goal', () => {
   const game = loadGameContext();
-  const [path] = game.MAP_TYPES.caves.paths;
+  const [pathA, pathB] = game.MAP_TYPES.caves.paths;
 
-  const start = path[0];
-  assert.ok(start.x < 0 || start.x > 960 || start.y < 0 || start.y > 640);
-
-  const end = path[path.length - 1];
-  assert.ok(end.x >= 0 && end.x <= 960 && end.y >= 0 && end.y <= 640);
+  [pathA, pathB].forEach((path) => {
+    const start = path[0];
+    assert.ok(start.x < 0 || start.x > 960 || start.y < 0 || start.y > 640);
+    const end = path[path.length - 1];
+    assert.ok(end.x >= 0 && end.x <= 960 && end.y >= 0 && end.y <= 640);
+  });
 
   const { goal } = game.MAP_TYPES.caves.decor;
-  assert.deepEqual(end, { x: goal.x, y: goal.y });
+  assert.deepEqual(pathA[pathA.length - 1], { x: goal.x, y: goal.y });
+  assert.deepEqual(pathB[pathB.length - 1], { x: goal.x, y: goal.y });
+});
+
+test('Path A and Path B share an identical entry segment (spawn to the fork) and an identical exit segment (merge to the goal)', () => {
+  const game = loadGameContext();
+  const [pathA, pathB] = game.MAP_TYPES.caves.paths;
+
+  // The shared entry: everything up to and including the fork point.
+  const forkIndex = 3; // the 4th waypoint in each array, per CAVES_PATH_A/B's own comment in map.js
+  for (let i = 0; i <= forkIndex; i += 1) {
+    assert.deepEqual(pathA[i], pathB[i], `expected waypoint ${i} (shared entry) to match`);
+  }
+
+  // The shared exit: everything from the merge point onward.
+  const mergeIndexFromEnd = 3; // the merge point is the 4th-from-last waypoint in each array
+  for (let i = 0; i <= mergeIndexFromEnd; i += 1) {
+    assert.deepEqual(
+      pathA[pathA.length - 1 - i],
+      pathB[pathB.length - 1 - i],
+      `expected waypoint ${i} from the end (shared exit) to match`
+    );
+  }
+});
+
+test('the fork and merge points are real, exact shared waypoints — not just visually close', () => {
+  const game = loadGameContext();
+  const [pathA, pathB] = game.MAP_TYPES.caves.paths;
+  const forkIndex = 3;
+  const mergeIndex = pathA.length - 4;
+
+  assert.deepEqual(pathA[forkIndex], pathB[forkIndex]);
+  assert.deepEqual(pathA[mergeIndex], pathB[mergeIndex]);
+  // And the fork point is a genuinely different place from the merge
+  // point — this is a loop, not a single point pretending to fork.
+  assert.notDeepEqual(pathA[forkIndex], pathA[mergeIndex]);
+});
+
+test('between the fork and the merge, Path A and Path B actually diverge — real separate branches, not the same route twice', () => {
+  const game = loadGameContext();
+  const [pathA, pathB] = game.MAP_TYPES.caves.paths;
+  const forkIndex = 3;
+  const mergeIndex = pathA.length - 4;
+
+  for (let i = forkIndex + 1; i < mergeIndex; i += 1) {
+    assert.notDeepEqual(pathA[i], pathB[i], `expected branch waypoint ${i} to differ between Path A and Path B`);
+  }
+});
+
+test('the two branches stay close enough together that a single tower placed between them can reach both — not "trivially requires double the towers"', () => {
+  const game = loadFullGameContext();
+  const [pathA, pathB] = game.MAP_TYPES.caves.paths;
+
+  // The midpoint of each branch's own long middle leg (per CAVES_PATH_A/
+  // B's own comment: x=240 for A, x=440 for B, both spanning y=200-400).
+  const branchAPoint = { x: 240, y: 300 };
+  const branchBPoint = { x: 440, y: 300 };
+  const gapCenter = { x: (branchAPoint.x + branchBPoint.x) / 2, y: 300 };
+
+  const distToA = Math.hypot(gapCenter.x - branchAPoint.x, gapCenter.y - branchAPoint.y);
+  const distToB = Math.hypot(gapCenter.x - branchBPoint.x, gapCenter.y - branchBPoint.y);
+
+  // Every base tower's own range comfortably clears this gap (checked
+  // against the shortest-range base tower actually in the shop).
+  const shortestRange = Math.min(...game.SHOP_ITEMS.map((item) => game.createTower(item.typeKey).stats.range));
+  assert.ok(distToA < shortestRange, `gap-to-branch-A distance ${distToA} should be well within ${shortestRange}`);
+  assert.ok(distToB < shortestRange, `gap-to-branch-B distance ${distToB} should be well within ${shortestRange}`);
+});
+
+test('isPointOnPath blocks placement near EITHER branch, including inside the shared entry/exit segments', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.caves);
+  const [pathA, pathB] = game.getMapPaths();
+
+  // A point on Path A's own branch leg (not shared with Path B).
+  assert.equal(game.isPointOnPath(240, 300), true);
+  // A point on Path B's own branch leg (not shared with Path A).
+  assert.equal(game.isPointOnPath(440, 300), true);
+  // A point on the shared entry segment (identical in both arrays).
+  assert.equal(game.isPointOnPath(160, 220), true);
+  // Comfortably in the open gap between the two branches — not on either.
+  assert.equal(game.isPointOnPath(340, 300), false);
+  assert.equal(pathA[0].x, pathB[0].x); // sanity: confirms the shared-entry assumption above
+});
+
+test('spawning many enemies on Caves uses both branches, not just one (independent per-enemy roll, same mechanism as Savanah)', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.caves);
+  game.spawnWave([
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 200, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
+  ]);
+  const pathIndexesUsed = new Set(game.getActiveEnemies().map((e) => e.pathIndex));
+  assert.deepEqual([...pathIndexesUsed].sort(), [0, 1]); // astronomically unlikely all 200 land on one branch
+});
+
+test('an enemy on Path B (Caves) walks its own branch, diverging from Path A right after the fork', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.caves);
+  game.spawnWave([
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
+  ]);
+  const [enemy] = game.getActiveEnemies();
+  enemy.pathIndex = 1; // force it onto Path B regardless of its random roll
+  const pathB = game.getMapPaths()[1];
+  enemy.x = pathB[3].x; // start it right at the fork point (waypoint index 3)
+  enemy.y = pathB[3].y;
+  enemy.waypointIndex = 3;
+  enemy.spawned = true;
+
+  game.updateEnemies(0.1);
+
+  // Path B's branch leg out of the fork runs toward (440, 200) — down and
+  // to the right of the fork at (340, 120).
+  assert.ok(enemy.x > pathB[3].x);
+  assert.ok(enemy.y > pathB[3].y);
+});
+
+test('an enemy that reaches the end of its own Caves branch is detected as leaked, at the shared goal', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.caves);
+  game.spawnWave([
+    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
+  ]);
+  const [enemy] = game.getActiveEnemies();
+  enemy.pathIndex = 1;
+  const pathB = game.getMapPaths()[1];
+  enemy.x = pathB[0].x;
+  enemy.y = pathB[0].y;
+  enemy.spawned = true;
+
+  game.updateEnemies(1000); // one giant tick straight past the end of the branch
+
+  assert.equal(game.getActiveEnemies().length, 0); // removed, reached the goal
 });
 
 test('Caves\' decor (glowing crystals, mineral formations, the crystal-pool goal) is present with sane, on-canvas coordinates', () => {
@@ -229,7 +371,13 @@ test('Caves\' water path is a dark, moody teal now — not the original bright g
 });
 
 test('Caves\' background no longer clashes against its own warm amber-brown stalactite/stalagmite formations', () => {
-  const game = loadGameContext();
+  // TERRAIN_THEMES is only exported from loadFullGameContext, not the
+  // lighter loadGameContext — fixed here (this test previously used
+  // loadGameContext and would have thrown TypeError: Cannot read
+  // properties of undefined, a latent bug caught while touching this
+  // file again for the fork/merge follow-up, not run-caught, since no
+  // Node is available in this environment).
+  const game = loadFullGameContext();
   const theme = game.TERRAIN_THEMES.caves;
   // The original cool blue-black background this follow-up replaced.
   assert.notEqual(theme.background, '#070709');
@@ -243,7 +391,8 @@ test('Caves\' background no longer clashes against its own warm amber-brown stal
 });
 
 test('Caves has its own animated path-flow effect; every other map is untouched by it', () => {
-  const game = loadGameContext();
+  // Same TERRAIN_THEMES-needs-the-full-context fix as the test above.
+  const game = loadFullGameContext();
   assert.equal(typeof game.TERRAIN_THEMES.caves.renderPathEffects, 'function');
   ['forest', 'marsh', 'desert', 'ocean', 'tundra', 'volcano'].forEach((terrain) => {
     assert.equal(game.TERRAIN_THEMES[terrain].renderPathEffects, undefined);
