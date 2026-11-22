@@ -1766,6 +1766,128 @@ function renderCavesPathEffects(ctx, paths, pathWidth, time = 0) {
 }
 
 // ---------------------------------------------------------------------------
+// Terrain: The Hollow Event ("Adventures," direct request relayed from the
+// peer session) — a single special-event stage reached via its own
+// top-level main-menu entry, not the normal Map/Mode flow (see
+// GAME_MODES.adventure / renderMenu() in game.js). A full-autumn reskin of
+// Deep Forest's own path/decor layout ("same general style as the existing
+// forest-type maps") — same waypoints, same tree/bush positions, just
+// orange canopies/bushes instead of green, plus a new scattered-fallen-
+// leaves layer the original Deep Forest decor never had.
+// ---------------------------------------------------------------------------
+
+function drawHollowTree(ctx, x, y, r) {
+  ctx.fillStyle = '#2e1f14';
+  ctx.fillRect(x - r * 0.15, y, r * 0.3, r * 0.9);
+
+  ctx.fillStyle = '#7a3a12';
+  ctx.beginPath();
+  ctx.arc(x, y - r * 0.4, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x - r * 0.5, y - r * 0.1, r * 0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + r * 0.5, y - r * 0.1, r * 0.7, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#b8571a';
+  ctx.beginPath();
+  ctx.arc(x - r * 0.3, y - r * 0.6, r * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawHollowBush(ctx, x, y, r) {
+  ctx.fillStyle = '#8a4a1a';
+  ctx.beginPath();
+  ctx.arc(x - r * 0.4, y, r * 0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + r * 0.4, y, r * 0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y - r * 0.3, r * 0.75, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+const FALLEN_LEAF_COLORS = ['#c9742e', '#a84a28', '#d4942f'];
+
+// A small simple leaf — 2 curved lobes meeting at a point, rotated into
+// place. Cheap (one fill per leaf) since dozens of these are scattered
+// across the whole map and redrawn every frame.
+function drawFallenLeaf(ctx, x, y, rotation, size, hue) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+  ctx.fillStyle = FALLEN_LEAF_COLORS[hue % FALLEN_LEAF_COLORS.length];
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.quadraticCurveTo(size * 0.7, 0, 0, size);
+  ctx.quadraticCurveTo(-size * 0.7, 0, 0, -size);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// Deterministic pseudo-scatter — deliberately NOT the game's own seeded
+// random() (random.js): decor is built once at module load, before any
+// game/run even starts, and spending rolls from the shared gameplay RNG
+// here would silently shift every ?seed=-reproduced run's later results.
+// A sine-hash instead — same "stable, non-random wobble" technique
+// drawOrganicBlobPath above already uses for its own pond shorelines,
+// just producing scattered points instead of a blob outline. Pure
+// function of `i`, so this is 100% reproducible on every load, forever,
+// with zero RNG entanglement.
+function buildFallenLeafPositions(count) {
+  const leaves = [];
+  for (let i = 0; i < count; i += 1) {
+    const hashX = Math.sin(i * 12.9898) * 43758.5453;
+    const hashY = Math.sin(i * 78.233) * 12543.123;
+    const hashR = Math.sin(i * 39.425) * 7853.254;
+    const fracX = hashX - Math.floor(hashX);
+    const fracY = hashY - Math.floor(hashY);
+    const fracR = hashR - Math.floor(hashR);
+    leaves.push({
+      x: fracX * MAP_WORLD_WIDTH,
+      y: fracY * MAP_WORLD_HEIGHT,
+      rotation: fracR * Math.PI * 2,
+      size: 5 + fracX * 4,
+      hue: i % FALLEN_LEAF_COLORS.length,
+    });
+  }
+  return leaves;
+}
+
+const HOLLOW_EVENT_LEAVES = buildFallenLeafPositions(55);
+
+// Reuses Deep Forest's own tree/bush positions directly (same path, same
+// general layout, just recolored foliage) rather than hand-placing a
+// second full set of coordinates — "same general style as the existing
+// forest-type maps," read literally.
+const HOLLOW_EVENT_DECOR = {
+  trees: DEEP_FOREST_DECOR.trees,
+  bushes: DEEP_FOREST_DECOR.bushes,
+  leaves: HOLLOW_EVENT_LEAVES,
+};
+
+// Bushes/trees first (same back-to-front layering renderForestDecor
+// already uses), THEN leaves on top of everything else — including over
+// the path itself, since this runs after renderMap() has already stroked
+// the path's own fill. "Fallen leaves scattered/covering the ground along
+// the path and in the background," per the request, made literal by draw
+// order rather than a separate path-effects pass.
+function renderHollowDecor(ctx, decor) {
+  decor.bushes.forEach((bush) => drawHollowBush(ctx, bush.x, bush.y, bush.r));
+  decor.trees.forEach((tree) => drawHollowTree(ctx, tree.x, tree.y, tree.r));
+  decor.leaves.forEach((leaf) => drawFallenLeaf(ctx, leaf.x, leaf.y, leaf.rotation, leaf.size, leaf.hue));
+}
+
+// Warmer/more orange-brown than Deep Forest's own path, fitting the
+// autumn palette, while still clearly the same "dirt path" shape/
+// convention (strokeMapPath/renderMap below).
+const HOLLOW_EVENT_PATH_COLORS = { outline: '#3a2614', fill: '#8a5a32' };
+
+// ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/
 // renderMapPreview() below both dispatch through this rather than
@@ -1824,6 +1946,11 @@ const TERRAIN_THEMES = {
   // unaffected) that layers an animated flowing-water look on top of the
   // path's own fill — see renderCavesPathEffects' own comment above.
   caves: { background: '#100b07', renderDecor: renderCavesDecor, renderPathEffects: renderCavesPathEffects },
+  // The Hollow Event ("Adventures"): a warm, dark autumn brown-black
+  // (distinct from Deep Forest's own dark green) — a flat fill is enough
+  // here too, same as every other dark theme above; the orange canopies/
+  // leaf litter are what actually carry the "autumn" read.
+  hollow: { background: '#1a1006', renderDecor: renderHollowDecor },
 };
 
 // Fills the world background for the active theme — a flat
@@ -1944,6 +2071,24 @@ const MAP_TYPES = {
     pathColors: CAVES_PATH_COLORS,
     terrain: 'caves',
     decor: CAVES_DECOR,
+  },
+  // The Hollow Event ("Adventures," direct request relayed from the peer
+  // session): deliberately NOT in MAP_TYPE_ORDER below — this map is only
+  // ever reached via its own dedicated "Adventures" main-menu entry (see
+  // renderMenu()/activateRegion()'s 'start:adventure' handler in game.js),
+  // never through the normal "Choose a Map" carousel, since it's a single
+  // fixed stage/mode combination, not a map to pick a mode for. Reuses
+  // Deep Forest's own path shape (DEEP_FOREST_WAYPOINTS) directly — "same
+  // general style as the existing forest-type maps," per the request.
+  theHollowEvent: {
+    id: 'theHollowEvent',
+    name: 'The Hollow Event',
+    builtin: true,
+    paths: [DEEP_FOREST_WAYPOINTS],
+    pathWidth: 56,
+    pathColors: HOLLOW_EVENT_PATH_COLORS,
+    terrain: 'hollow',
+    decor: HOLLOW_EVENT_DECOR,
   },
 };
 

@@ -240,6 +240,15 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       PLAYER_STARTING_HEALTH,
       triggerGameOver,
       getGameOverStats: () => gameOverStats,
+      // The Hollow Event ("Adventures," direct request relayed from the
+      // peer session): its own dedicated victory state, same shape as
+      // triggerGameOver/getGameOverStats above, plus the 2 explicit
+      // "this map/mode is deliberately NOT player-selectable through the
+      // normal flow" order lists, needed to assert theHollowEvent/
+      // adventure are excluded from both.
+      triggerStageComplete,
+      getStageCompleteStats: () => stageCompleteStats,
+      MAP_TYPE_ORDER, MENU_MODE_ORDER,
       getTowersInRange, consumeTowersInRange, getOtherTowersOfSameType, destroyTowers,
       getConsumedTowerEffects: () => consumedTowerEffects,
       getProdigyOption, getProdigyTypeKeyFor,

@@ -2,11 +2,16 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadFullGameContext } = require('./support/loadGame');
 
-test('GAME_MODES has exactly medium, horde, and sandbox, with the expected multipliers/flags', () => {
+test('GAME_MODES has exactly medium, horde, sandbox, and adventure, with the expected multipliers/flags', () => {
   const game = loadFullGameContext();
   const { medium, horde, sandbox } = game.GAME_MODES;
 
-  assert.deepEqual(Object.keys(game.GAME_MODES).sort(), ['horde', 'medium', 'sandbox']);
+  // adventure (The Hollow Event / "Adventures," direct request relayed
+  // from the peer session) joined this list later — see
+  // test/the-hollow-event.test.js for its own dedicated coverage (its
+  // round cap, exclusion from MENU_MODE_ORDER, etc.); this test only
+  // needed its own key added to the exact-member-list assertion below.
+  assert.deepEqual(Object.keys(game.GAME_MODES).sort(), ['adventure', 'horde', 'medium', 'sandbox']);
 
   assert.deepEqual(
     { health: medium.healthMultiplier, speed: medium.speedMultiplier, bounty: medium.bountyMultiplier, sandbox: medium.sandbox, horde: medium.horde },

@@ -640,6 +640,120 @@ const CAVES_ROSTER = {
   orderTier3: [],
 };
 
+// --- The Hollow Event (direct request, relayed from the peer session) -----
+// "Adventures" is a brand-new top-level entry on the main menu (see
+// renderMenu() in game.js), distinct from the normal Map/Mode flow every
+// other roster above is reached through: it drops straight into this one
+// fixed stage (see GAME_MODES.adventure in game.js) rather than offering a
+// map or mode choice, and the run is a single continuous climb to round
+// 50 — not an endless climb like every other map — where round 50 is
+// this stage's own fixed climactic final-boss round (see
+// triggerStageComplete()/the round-cap check in game.js's update()).
+//
+// Same "3 regular tier1 + a mid boss + 3 regular tier2 + a 2nd (here,
+// FINAL) boss, empty orderTier3" shape Volcanic originally shipped as
+// (see that roster's own comment) — exactly what this stage needs, since
+// getUnlockedEnemyTypes()'s own generic cadence (enemies.js, unchanged)
+// already unlocks tier1 across rounds 1/6/11, the round-25 boss slot
+// (BOSS_INTERVAL) lands Mournful Sphinx exactly where the request's own
+// "an earlier round, per your usual boss-cadence logic" asked for, tier2
+// unlocks across rounds 26/31/36 (comfortably before round 50), and the
+// round-50 boss slot (BOSS_INTERVAL * 2) lands The Hollow Crow on
+// EXACTLY round 50 — the request's own explicit requirement — for free,
+// with zero new cadence machinery needed anywhere in this file.
+//
+// Health/speed/bounty calibrated against Volcanic's own original
+// (never-played-yet) baseline and Tundra's post-nerf numbers (tier1
+// ~12-20hp, tier2 ~100-150hp, boss1 ~220-250hp, boss2 ~400-450hp) — this
+// is brand-new content on a reused Deep Forest path shape (see
+// MAP_TYPES.theHollowEvent in map.js), so erring toward an already-proven
+// baseline rather than inventing new numbers from scratch. The Hollow
+// Crow (final boss) is the one deliberate departure from that baseline:
+// per the request's own "distinct/more significant... higher stats and a
+// standout visual, similar to how your other maps' final bosses outscale
+// their mid bosses," it's tuned closer to a true TIER-3 final boss
+// elsewhere (800hp, between Namib Desert Beetle's 800 and Giant Arctic
+// Wolf Spider's 1200) even though it only ever occupies this roster's
+// bossTypes[2] slot — because round 50 genuinely IS this stage's whole
+// climax, not a mid-point the way round 50 is on an endless map, it
+// earns a "true finale" stat budget rather than a plain ~2x-the-midboss
+// one. Bounty on both bosses follows the roster-wide ~HP/2 convention
+// every boss above already uses (Tundra/Volcanic/Ocean); regular-enemy
+// bounty follows the ~HP/2.3-2.5 convention those same rosters' own
+// regular entries use.
+//
+// Bounties/order deliberately follow the request's own given numbered
+// list (weakest-to-strongest within each tier), same "the user's own
+// given order IS the intended power curve" convention Volcanic's own
+// tier3 trio and Marshland/Savanah's own tier3 fish/scorpions used.
+const HOLLOW_ROSTER = {
+  enemyTypes: {
+    // Real oakleaf butterflies (genus Kallima) fold their wings shut at
+    // rest to look exactly like a dead leaf, down to a fake "leaf vein"
+    // line down the middle — drawOakleafButterfly below draws a single
+    // closed, pointed-leaf silhouette instead of an open wing pair, the
+    // one shape in this roster that isn't built from drawInsectWings.
+    // The roster's own weakest/fastest entry, per the request's given
+    // order.
+    oakleafButterfly: { name: 'Oakleaf Butterfly', speedMultiplier: 0.9, health: 13, color: '#c9842f', radius: 6, bounty: 6 },
+    // Real dead-leaf mantises (genus Deroplatys) are slow, patient
+    // ambush predators camouflaged as a dead leaf, with raised, folded
+    // "praying" forelegs — see drawDeadleafMantis below. Deliberately
+    // the slowest of this tier (an ambush hunter, not a flier).
+    deadleafMantis: { name: 'Deadleaf Mantis', speedMultiplier: 0.55, health: 19, color: '#8a7249', radius: 8, bounty: 8 },
+    // Real buff-tip moths (Phalera bucephala) are famous for resembling
+    // a snapped birch twig at rest — dull grey-brown wings each tipped
+    // with a pale buff/cream patch mimicking pale broken wood. The
+    // strongest of this tier, per the request's given order.
+    bufftipMoth: { name: 'Buff-tip Moth', speedMultiplier: 0.7, health: 24, color: '#6b5d4a', radius: 7, bounty: 10 },
+    // Real orb weavers build webs rather than chase prey — slow and
+    // ground-bound here (it has to walk the path like everything else),
+    // tanky for its tier to match that "patient, armored" read. The
+    // roster's own weakest tier2 entry, per the request's given order.
+    orbWeaver: { name: 'Orb Weaver', speedMultiplier: 0.55, health: 100, color: '#5c3a1e', radius: 9, bounty: 42 },
+    // Real eastern red bats are solitary, fast-flying, and famously
+    // reddish-orange furred (unlike the grey-brown of Caves' own Bat) —
+    // reuses drawBat's shared body wholesale, color alone does the work,
+    // same "shared body, color tells them apart" convention Volcanic's
+    // own 3 iguanas already established.
+    easternRedBat: { name: 'Eastern Red Bat', speedMultiplier: 0.95, health: 125, color: '#a13a1f', radius: 8, bounty: 52 },
+    // Real (red-morph) Eastern Screech Owls are small but fierce nocturnal
+    // predators — reuses Caves' own shared drawCaveBirdBody, plus ear
+    // tufts and big forward-facing eyes (the 2 traits that read as "owl"
+    // rather than just "bird"). The roster's own strongest tier2 entry,
+    // per the request's given order.
+    redEasternScreechOwl: { name: 'Red Eastern Screech Owl', speedMultiplier: 0.6, health: 150, color: '#a0522d', radius: 9, bounty: 62 },
+  },
+  bossTypes: {
+    // A real sphinx/hawkmoth species — Latin "lugubris" literally means
+    // "mournful," matching the somber dark-grey/furred design below
+    // (drawMournfulSphinx: 2 layered wing pairs at different tints/
+    // spreads, a bigger, boss-tier step up from Buff-tip Moth's single
+    // pair). This stage's own mid-boss, landing on round 25 (BOSS_INTERVAL)
+    // per the request's own "an earlier round" ask.
+    1: { name: 'Mournful Sphinx', speedMultiplier: 0.45, health: 230, color: '#4a4036', radius: 18, bounty: 115 },
+    // The stage's own true, climactic final boss — lands on EXACTLY round
+    // 50 (BOSS_INTERVAL * 2) via the same generic boss-cadence machinery
+    // every other roster's own tier2 boss already uses, no special-casing
+    // needed. Tuned well above a plain "2x the mid-boss" step (see this
+    // roster's own top comment for the exact reasoning) and visually
+    // distinct via drawHollowCrow's own pale glowing "hollow" eye sockets
+    // and tattered, notched wing edges — "hollow"/decaying rather than a
+    // clean, healthy crow, and the biggest boss radius in the game so far
+    // (27, versus Great White's 24 and Giant Arctic Wolf Spider's 23),
+    // the standout-silhouette half of the request's own "standout visual"
+    // ask.
+    2: { name: 'The Hollow Crow', speedMultiplier: 0.35, health: 800, color: '#1c1c1c', radius: 27, bounty: 400 },
+  },
+  order: ['oakleafButterfly', 'deadleafMantis', 'bufftipMoth'],
+  orderTier2: ['orbWeaver', 'easternRedBat', 'redEasternScreechOwl'],
+  // Deliberately empty, same Volcanic-original/Caves precedent (this
+  // roster's own top comment) — the stage ends at round 50, so a tier3
+  // slot (which wouldn't start unlocking until round 51 anyway, per
+  // getUnlockedEnemyTypes()'s own cadence) would simply never be seen.
+  orderTier3: [],
+};
+
 // Keyed by TERRAIN id (map.js's TERRAIN_THEMES keys — 'forest'/'marsh'/
 // 'desert'), not the map's own id ('deepForest'/'marshland'/'savanah') —
 // getActiveRoster() below looks this up via getActiveMap().terrain.
@@ -651,6 +765,7 @@ const MAP_ROSTERS = {
   tundra: TUNDRA_ROSTER,
   volcano: VOLCANIC_ROSTER,
   caves: CAVES_ROSTER,
+  hollow: HOLLOW_ROSTER,
 };
 
 // Falls back to the Forest roster if the active map's terrain isn't a
@@ -1023,6 +1138,15 @@ const MAP_DIFFICULTY_MULTIPLIER = {
   // calibrated alongside Marshland/Savanah, not Whirlpool/Tundra/
   // Volcanic).
   caves: 1.3, // Medium
+  // The Hollow Event ("Adventures"): Easy, matching Deep Forest's own
+  // baseline exactly — this is a single, bite-sized 50-round event stage
+  // (not an endless map a player grinds for hours), and reaching its own
+  // round-50 climax is already the real challenge this pass is tuned
+  // around (see HOLLOW_ROSTER's own top comment on The Hollow Crow's
+  // deliberately boosted stats) — stacking a second systemic difficulty
+  // multiplier on top would risk making the whole run feel punishing
+  // rather than a fun, approachable event.
+  hollow: 1, // Easy
 };
 
 function getRoundScaling(round) {
@@ -1217,6 +1341,15 @@ const ENEMY_FACING_OFFSET = {
   olm: Math.PI,
   texasBlindSalamander: Math.PI,
   caveShrimp: Math.PI,
+  // The Hollow Event ("Adventures," direct request relayed from the peer
+  // session): every one-sided shape here draws its own head/front/leaf-
+  // tip toward -x too, same convention as everything above.
+  oakleafButterfly: Math.PI,
+  deadleafMantis: Math.PI,
+  bufftipMoth: Math.PI,
+  orbWeaver: Math.PI,
+  easternRedBat: Math.PI,
+  redEasternScreechOwl: Math.PI,
 };
 // Keyed by enemyKey (e.g. 'forest-boss-tier-1'), same as
 // ENEMY_FACING_OFFSET, since different boss tiers can have different
@@ -1240,6 +1373,11 @@ const BOSS_FACING_OFFSET = {
   'tundra-boss-tier-3': Math.PI, // Giant Arctic Wolf Spider — same spider-body convention as the regular Wolf Spider
   'caves-boss-tier-1': 0, // Cave Midge — radially-ish symmetric wings/body, no one-sided feature, same reasoning as the Arctic Fritillary/Woolly Bear Moth bosses above
   'caves-boss-tier-2': Math.PI, // Blind Cavefish — same fish-body convention as every other fish in this game, even with no eye drawn
+  // The Hollow Event ("Adventures," direct request relayed from the peer
+  // session): both bosses have a clear one-sided head/eye feature, same
+  // -x-forward convention as every other type above.
+  'hollow-boss-tier-1': Math.PI, // Mournful Sphinx — same moth-body convention as Buff-tip Moth
+  'hollow-boss-tier-2': Math.PI, // The Hollow Crow — same bird-body convention as the regular Red Eastern Screech Owl
 };
 
 function getInitialPathHeading(path) {
@@ -4011,6 +4149,220 @@ function drawBlindCavefish(ctx, e) {
   ctx.fill();
 }
 
+// --- The Hollow Event ("Adventures," direct request relayed from the -----
+// --- peer session) -------------------------------------------------------
+// Every one-sided shape below draws its own head/front toward -x, same
+// convention as every other roster in this file — see
+// ENEMY_FACING_OFFSET/BOSS_FACING_OFFSET's own entries for these types.
+
+// Real oakleaf butterflies (genus Kallima) fold their wings shut at rest
+// to look exactly like a dead leaf: a single pointed silhouette (not an
+// open wing pair the way every other flier in this file draws itself)
+// with a dark "leaf vein" line down the middle — the one shape in this
+// roster NOT built from drawInsectWings, since the mimicry is the whole
+// point and an open-wing pair wouldn't read as a closed leaf at all.
+function drawOakleafButterfly(ctx, e) {
+  ctx.fillStyle = e.color;
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x + e.radius * 0.9, e.y);
+    ctx.quadraticCurveTo(e.x - e.radius * 0.3, e.y + side * e.radius * 0.9, e.x - e.radius * 1.1, e.y + side * e.radius * 0.15);
+    ctx.quadraticCurveTo(e.x - e.radius * 0.3, e.y + side * e.radius * 0.25, e.x + e.radius * 0.9, e.y);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.strokeStyle = shadeColor(e.color, -35);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.85, e.y);
+  ctx.lineTo(e.x - e.radius * 1.0, e.y);
+  ctx.stroke();
+}
+
+// Real dead-leaf mantises (genus Deroplatys) are slow, patient ambush
+// predators camouflaged as a dead leaf, with raised, folded "praying"
+// forelegs — a long leaf-shaped abdomen plus 2 bent/raised forelegs is
+// the pair of traits that reads as "mantis" rather than just "bug."
+function drawDeadleafMantis(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.1, e.y, e.radius * 1.3, e.radius * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 1.0, e.y, e.radius * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, -30);
+  ctx.lineWidth = Math.max(1.5, e.radius * 0.12);
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 0.7, e.y + side * e.radius * 0.15);
+    ctx.quadraticCurveTo(
+      e.x - e.radius * 1.1, e.y - side * e.radius * 0.5,
+      e.x - e.radius * 0.6, e.y - side * e.radius * 0.75
+    );
+    ctx.stroke();
+  });
+}
+
+// Real buff-tip moths (Phalera bucephala) are famous for resembling a
+// snapped birch twig at rest — dull grey-brown wings folded tight along
+// the body, each tipped with a distinct pale buff/cream patch mimicking
+// pale, broken wood. Built as its own bespoke wing pair (rather than
+// drawInsectWings) so that pale tip patch can be placed precisely at
+// each wing's own local tip regardless of rotation.
+function drawBufftipMoth(ctx, e) {
+  [-1, 1].forEach((side) => {
+    ctx.save();
+    ctx.translate(e.x - e.radius * 0.1, e.y);
+    ctx.rotate(side * 0.25);
+    ctx.fillStyle = e.color;
+    ctx.beginPath();
+    ctx.ellipse(0, -e.radius * 0.1, e.radius * 1.0, e.radius * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#d8c9a0';
+    ctx.beginPath();
+    ctx.ellipse(e.radius * 0.75, -e.radius * 0.1, e.radius * 0.3, e.radius * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  ctx.fillStyle = shadeColor(e.color, -15);
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.4, e.radius * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A real sphinx/hawkmoth species — Latin "lugubris" literally means
+// "mournful," matching the somber, dark-furred design here: 2 layered
+// wing pairs at different spreads/tints (a bigger, boss-tier step up
+// from Buff-tip Moth's single pair, same "more ornamented at boss scale"
+// convention every other map's own mid-boss gets) plus a stout furry
+// body.
+function drawMournfulSphinx(ctx, e) {
+  drawInsectWings(ctx, e, { spread: 0.3, elongated: true, tint: shadeColor(e.color, 12) });
+  drawInsectWings(ctx, e, { spread: 0.55, elongated: true, tint: 'rgba(20, 18, 16, 0.55)' });
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.5, e.radius * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, -25);
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.5, e.y, e.radius * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Shared 4-pairs-of-bent-legs spider body, generalized from drawAntBody's
+// own 3-pairs-of-legs loop above but splayed out to the sides (a spider's
+// own stance) rather than trailing behind. Any future spider-shaped type
+// can reuse this the same way drawAntBody/drawBeetleBody are already
+// shared across several callers each.
+function drawSpiderLegs(ctx, e) {
+  ctx.strokeStyle = shadeColor(e.color, -35);
+  ctx.lineWidth = 1.3;
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    [-0.9, -0.3, 0.3, 0.9].forEach((t) => {
+      const kneeX = e.x + t * e.radius * 0.9;
+      const kneeY = e.y + side * e.radius * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(e.x + t * e.radius * 0.3, e.y);
+      ctx.quadraticCurveTo(kneeX, kneeY, e.x + t * e.radius * 1.3, e.y + side * e.radius * 1.5);
+      ctx.stroke();
+    });
+  });
+}
+
+// Real orb weavers build webs rather than chase prey down — a bulbous,
+// boldly-marked abdomen (their own signature trait, drawn here as a pale
+// dorsal stripe over the base color) is what reads as "orb weaver"
+// rather than a generic spider.
+function drawOrbWeaver(ctx, e) {
+  drawSpiderLegs(ctx, e);
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.15, e.y, e.radius * 0.85, e.radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.7, e.y, e.radius * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, 40);
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.15, e.y, e.radius * 0.25, e.radius * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Real eastern red bats are solitary, fast fliers, famously reddish-
+// orange furred (unlike the grey-brown of Caves' own Bat) — reuses
+// drawBat's shared body wholesale, color alone tells them apart, same
+// "shared body, color does the work" convention Volcanic's own 3
+// iguanas already established.
+function drawEasternRedBat(ctx, e) {
+  drawBat(ctx, e);
+}
+
+// Real (red-morph) Eastern Screech Owls are small, fierce nocturnal
+// predators — reuses Caves' own shared drawCaveBirdBody, plus ear tufts
+// and big forward-facing eyes, the 2 traits that read as "owl" rather
+// than just "bird" at this scale.
+function drawRedEasternScreechOwl(ctx, e) {
+  drawCaveBirdBody(ctx, e);
+  ctx.fillStyle = shadeColor(e.color, -20);
+  [-0.15, 0.25].forEach((dx) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * (0.85 - dx), e.y - e.radius * 0.25);
+    ctx.lineTo(e.x - e.radius * (0.95 - dx), e.y - e.radius * 0.55);
+    ctx.lineTo(e.x - e.radius * (0.7 - dx), e.y - e.radius * 0.3);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.fillStyle = '#fff3d6';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.8, e.y, e.radius * 0.26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1a0f00';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.8, e.y, e.radius * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Boss (the stage's own true, climactic final boss, round 50): reuses
+// Caves' own shared drawCaveBirdBody — longer wings and a forked tail for
+// a bigger, more imposing silhouette than the regular Screech Owl — plus
+// 2 deliberate departures from a normal crow: pale, glowing "hollow" eye
+// sockets instead of a normal dark eye, and a few jagged notches torn
+// into each wing's trailing edge. "Hollow"/decaying rather than a clean,
+// healthy bird, the standout-visual half of the request's own ask (its
+// stats/radius are the other half — see HOLLOW_ROSTER's own comment).
+function drawHollowCrow(ctx, e) {
+  drawCaveBirdBody(ctx, e, { longWings: true, tailFork: true });
+
+  ctx.fillStyle = 'rgba(230, 230, 220, 0.9)';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.8, e.y, e.radius * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.8, e.y, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, 25);
+  [-1, 1].forEach((side) => {
+    for (let i = 0; i < 3; i += 1) {
+      const t = i / 3;
+      const nx = e.x + e.radius * (0.2 + t * 0.6);
+      const ny = e.y + side * e.radius * (1.0 + t * 0.3);
+      ctx.beginPath();
+      ctx.moveTo(nx, ny);
+      ctx.lineTo(nx + e.radius * 0.18, ny + side * e.radius * 0.15);
+      ctx.lineTo(nx - e.radius * 0.05, ny + side * e.radius * 0.25);
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+}
+
 const ENEMY_DRAW_FUNCTIONS = {
   ant: drawAnt,
   fireAnt: drawFireAnt,
@@ -4078,6 +4430,12 @@ const ENEMY_DRAW_FUNCTIONS = {
   olm: drawOlm,
   texasBlindSalamander: drawTexasBlindSalamander,
   caveShrimp: drawCaveShrimp,
+  oakleafButterfly: drawOakleafButterfly,
+  deadleafMantis: drawDeadleafMantis,
+  bufftipMoth: drawBufftipMoth,
+  orbWeaver: drawOrbWeaver,
+  easternRedBat: drawEasternRedBat,
+  redEasternScreechOwl: drawRedEasternScreechOwl,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -4104,6 +4462,8 @@ const BOSS_DRAW_FUNCTIONS = {
   'volcano-boss-tier-3': drawNamibDesertBeetle,
   'caves-boss-tier-1': drawCaveMidge,
   'caves-boss-tier-2': drawBlindCavefish,
+  'hollow-boss-tier-1': drawMournfulSphinx,
+  'hollow-boss-tier-2': drawHollowCrow,
 };
 
 function drawFallbackCircle(ctx, e) {

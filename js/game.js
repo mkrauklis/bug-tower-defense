@@ -176,6 +176,31 @@ const GAME_MODES = {
     sandbox: true,
     horde: false,
   },
+  // "Adventures" (direct request, relayed from the peer session): a
+  // single, fixed special-event stage (The Hollow Event), not a mode a
+  // player picks for any map — deliberately left OUT of MENU_MODE_ORDER
+  // below, so it never shows up on the normal per-map "Choose a Mode"
+  // screen. Only reachable via its own dedicated main-menu button (see
+  // renderMenu()'s own 'start:adventure' entry and
+  // activateRegion()'s handler), which sets selectedMap to
+  // MAP_TYPES.theHollowEvent and starts this mode directly. Otherwise
+  // plays exactly like Medium (standard health/speed/bounty, real
+  // economy, waits for "Next Round") — adventureRoundCap is the one
+  // thing that makes it genuinely different: round 50 is this stage's
+  // own fixed, climactic final-boss round, not an endless climb, so once
+  // that round's own wave clears, the run ends in a dedicated victory
+  // state (see triggerStageComplete()/the round-cap check in update())
+  // instead of ever offering a "round 51."
+  adventure: {
+    name: 'The Hollow Event',
+    description: 'A single continuous run to round 50 — The Hollow Crow awaits.',
+    healthMultiplier: 1,
+    speedMultiplier: 1,
+    bountyMultiplier: 1,
+    sandbox: false,
+    horde: false,
+    adventureRoundCap: 50,
+  },
 };
 
 // Every placed tower lives here, including the first one bought — there's
@@ -385,6 +410,17 @@ let gameOverStats = { round: 0, modeName: '' };
 function triggerGameOver() {
   gameOverStats = { round, modeName: currentMode ? currentMode.name : '' };
   gameState = 'gameOver';
+}
+
+// The Hollow Event ("Adventures," direct request): same snapshot-stats
+// shape as gameOverStats above, for the dedicated victory screen reached
+// once round 50's own wave (The Hollow Crow) is fully cleared — see the
+// round-cap check in update() for where this actually fires.
+let stageCompleteStats = { round: 0, modeName: '' };
+
+function triggerStageComplete() {
+  stageCompleteStats = { round, modeName: currentMode ? currentMode.name : '' };
+  gameState = 'stageComplete';
 }
 
 // The game's own simulation clock, advanced in update() rather than read
@@ -1234,6 +1270,22 @@ function update(deltaSeconds) {
     return;
   }
 
+  // The Hollow Event ("Adventures") only: round 50 is this stage's own
+  // fixed final-boss round, not an endless climb — once its wave (The
+  // Hollow Crow) is fully cleared, the run ends in a dedicated victory
+  // state instead of ever reaching startNextRound()/a "round 51." Checked
+  // unconditionally (not gated behind autoContinue, unlike the ordinary
+  // round-advance below) since gameState flips away from 'playing' the
+  // instant this fires — update() simply stops being called next frame
+  // (see loop()), the same "no explicit pause needed" mechanism
+  // triggerGameOver()'s own health<=0 check above already relies on — so
+  // there's no reason to make the player click anything to notice they
+  // just won, and no way for this to double-fire.
+  if (currentMode.adventureRoundCap && round >= currentMode.adventureRoundCap && activeEnemies.length === 0) {
+    triggerStageComplete();
+    return;
+  }
+
   // Fires exactly once per clear: the instant activeEnemies hits 0 (the
   // same condition the manual Next Round button's own waveInProgress gate
   // checks), starting the next round immediately repopulates activeEnemies
@@ -1283,6 +1335,29 @@ function drawTowerWithRay(tower, x, y) {
   }
 }
 
+// The Hollow Event ("Adventures," direct request): "a persistent on-screen
+// readout at the top of the screen, in orange text... 'X rounds until
+// boss' counting down toward round 50." Centered over the WORLD area (not
+// inside the side panel) so it reads as a HUD overlay, drawn fresh every
+// frame alongside everything else here — no separate timer/state needed,
+// it's derived straight from `round`/adventureRoundCap. Once round 50's
+// own wave is cleared, gameState leaves 'playing' (see
+// triggerStageComplete() in update()) and this stops being called at all
+// — the victory screen itself is this readout's own end-state, so there's
+// nothing further to say here once that happens.
+function renderAdventureCountdown(ctx) {
+  const roundsLeft = currentMode.adventureRoundCap - round;
+  const label = roundsLeft > 0 ? `${roundsLeft} round${roundsLeft === 1 ? '' : 's'} until boss` : 'The final boss is here!';
+
+  ctx.save();
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ff8f00';
+  ctx.fillText(label, WORLD_WIDTH / 2, 10);
+  ctx.restore();
+}
+
 function render() {
   updateTouchHold();
 
@@ -1291,6 +1366,7 @@ function render() {
     if (gameState === 'menu') renderMenu(ctx);
     else if (gameState === 'mapSelect') renderMapSelect(ctx);
     else if (gameState === 'modeSelect') renderModeSelect(ctx);
+    else if (gameState === 'stageComplete') renderStageComplete(ctx);
     else renderGameOver(ctx);
     return;
   }
@@ -1314,6 +1390,10 @@ function render() {
   renderConsumedTowerEffects(ctx);
   renderWildlife(ctx, wildlife, animationTime, 'firefly'); // glowing, drawn on top so it reads over everything
   renderFloatingTexts(ctx); // "+$X" income popups etc. — always the topmost world layer, so they stay legible
+
+  // The Hollow Event ("Adventures") only — every other mode/map leaves
+  // adventureRoundCap unset, so this never shows up anywhere else.
+  if (currentMode.adventureRoundCap) renderAdventureCountdown(ctx);
 
   if (selectedShopItem && mouseX !== null && isWorldPoint(mouseX, mouseY)) {
     const buildable =
@@ -1901,7 +1981,7 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
 // also a full-screen UI state with no world/panel split, so it shares this
 // set too despite the name — every input handler below just cares "is the
 // whole canvas UI right now," not specifically "is this a menu."
-const MENU_STATES = new Set(['menu', 'mapSelect', 'modeSelect', 'gameOver']);
+const MENU_STATES = new Set(['menu', 'mapSelect', 'modeSelect', 'gameOver', 'stageComplete']);
 const MENU_MODE_ORDER = ['medium', 'horde', 'sandbox'];
 
 // `skipBackground` lets renderMenu() paint its own forest-trail backdrop
@@ -2126,6 +2206,12 @@ function renderMenu(ctx) {
 
   [
     { id: 'start:play', label: 'Play', description: 'Pick a map, then a mode, and start defending.' },
+    // "Adventures" (direct request): a new top-level entry alongside
+    // Play, not a 3rd option tucked inside Map/Mode select — it skips
+    // straight to the one special-event stage (The Hollow Event) rather
+    // than offering a map or mode choice. See activateRegion()'s own
+    // 'start:adventure' handler.
+    { id: 'start:adventure', label: 'Adventures', description: 'A single special event stage: The Hollow Event.' },
   ].forEach((entry, i) => {
     const y = startY + i * (buttonHeight + gap);
     const hovered = hoverRegion && hoverRegion.id === entry.id;
@@ -2345,6 +2431,38 @@ function renderGameOver(ctx) {
   drawMenuTooltip(ctx);
 }
 
+// The Hollow Event's own victory screen (gameState === 'stageComplete',
+// direct request: "Adventures" culminates in a single continuous run to
+// round 50) — reached when round 50's own wave (The Hollow Crow) is fully
+// cleared (see triggerStageComplete() in update()), same "stops the
+// simulation simply by being a gameState other than 'playing'" mechanism
+// renderGameOver's own comment describes, just a win instead of a loss.
+function renderStageComplete(ctx) {
+  uiBeginFrame();
+  drawMenuTitle(
+    ctx,
+    'Victory!',
+    `${stageCompleteStats.modeName} complete — The Hollow Crow has fallen at round ${stageCompleteStats.round}.`
+  );
+
+  const buttonWidth = Math.min(300, logicalWidth - 40);
+  const y = 220;
+  const x = logicalWidth / 2 - buttonWidth / 2;
+
+  uiDrawButton(ctx, {
+    x,
+    y,
+    w: buttonWidth,
+    h: 36,
+    label: '← Back to Menu',
+    state: 'accent',
+    hovered: Boolean(hoverRegion) && hoverRegion.id === 'stagecomplete:menu',
+  });
+  uiRegisterRegion('stagecomplete:menu', x, y, buttonWidth, 36, {});
+
+  drawMenuTooltip(ctx);
+}
+
 // The map editor (gameState === 'editor': draw/save/export/import a
 // custom map) used to live here — removed per direct request, along with
 // its localStorage persistence and the custom-map branch of map-select's
@@ -2480,7 +2598,9 @@ function getTooltipLines(region) {
   }
 
   if (region.id === 'start:play') return ['Pick a map, then a mode.'];
+  if (region.id === 'start:adventure') return ['A single run to round 50 — The Hollow Crow awaits.'];
   if (region.id === 'gameover:menu') return ['Back to the main menu.'];
+  if (region.id === 'stagecomplete:menu') return ['Back to the main menu.'];
 
   return [];
 }
@@ -2614,7 +2734,18 @@ function activateRegion(region) {
     return;
   }
 
+  if (region.id === 'start:adventure') {
+    selectedMap = MAP_TYPES.theHollowEvent;
+    startGame('adventure');
+    return;
+  }
+
   if (region.id === 'gameover:menu') {
+    gameState = 'menu';
+    return;
+  }
+
+  if (region.id === 'stagecomplete:menu') {
     gameState = 'menu';
     return;
   }
