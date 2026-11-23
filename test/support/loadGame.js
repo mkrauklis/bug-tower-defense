@@ -179,7 +179,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
   vm.runInContext(
     `
     globalThis.__fullExports = {
-      createTower, purchaseUpgrade, getAvailableUpgrade,
+      createTower, purchaseUpgrade, getAvailableUpgrade, TOWER_TYPES,
       damageEnemy, applyBurn, applySlow, applyFreeze, findNearestEnemyInRange, getEnemiesInRadius,
       updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies, getLastLeakedEnemies,
       getStrongestAuraFor,
@@ -189,6 +189,15 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getActiveEnemies: () => activeEnemies,
       update,
       uiBeginFrame, uiRegisterRegion, uiHitTest, uiWrapText,
+      // General button-polish pass + per-path upgrade-tier theming (direct
+      // follow-up request, relayed from the peer session) — lets tests
+      // call the actual draw code directly (uiDrawButton/uiButtonBevel/
+      // renderUpgradePaths) and assert on the theming data itself
+      // (getPathTheme/getTierThemeColor/mixHexColors/PATH_THEMES) rather
+      // than only on indirect rendering side effects.
+      uiDrawButton, uiRoundRect, uiButtonBevel,
+      renderUpgradePaths,
+      getPathTheme, getTierThemeColor, mixHexColors, PATH_THEMES,
       getCanvasPoint, isWorldPoint, activateRegion, getTooltipLines, handleCanvasTap,
       isPointInMagmaPool,
       renderUI, getSellRefund,

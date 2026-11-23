@@ -1433,9 +1433,216 @@ function render() {
 // shows up on the very next frame for free.
 // ---------------------------------------------------------------------------
 
-// Solar = yellow, Fire = orange — matches each path's own visual theme on
-// the tower itself (glow/flame colors), index-aligned with upgradePaths.
-const PATH_COLORS = ['#ffd54f', '#ff7043'];
+// Per-path upgrade-tier theming (direct request, relayed from the peer
+// session): "upgrade buttons for a given tower's upgrade path should
+// visually reflect that path's own theme, and get MORE pronounced as the
+// tier/cost goes up." Keyed by the path's own `name` (e.g. 'Solar Path')
+// rather than by tower+index, since path names are unique across the
+// whole roster and this reads far more directly than a parallel
+// tower->pathIndex->color table would. Replaces the old PATH_COLORS
+// array (only 2 entries for what's actually a 3-column layout — pathColor
+// silently came back `undefined` for every tower's own 3rd path column).
+//
+// Each entry's `base`/`peak` colors are pulled from that path's own real
+// `effects.color`/`effects.glow` values in TOWER_TYPES (towers.js) —
+// "reusing each tower's own existing color/effect fields" per the
+// request — rather than invented from scratch: e.g. Solar Path's peak is
+// Sun Ray's own glow (#ffe066 brightened), Decay Path's peak is
+// Necro-Mush's own purple (#6a1b9a), Frosted/Brittle Path peak colors are
+// Frostbite's/Fractured Ice's own tier colors, etc. — see each path's own
+// upgrade list for exactly where these came from. `motif` picks which
+// small accent icon drawPathMotifMark() draws (thorns for Thorn Path,
+// icicle crystals for Frosted Path, acid drips for Acidic Mixture Path...)
+// — one icon shape per path identity, escalating in count/size with tier.
+const PATH_THEMES = {
+  'Solar Path': { base: '#ffd54f', peak: '#fff176', motif: 'ray' },
+  'Fire Path': { base: '#ff7043', peak: '#ff3d00', motif: 'flame' },
+  'Storm Path': { base: '#fff176', peak: '#fff9c4', motif: 'bolt' },
+  'Thorn Path': { base: '#c2185b', peak: '#880e4f', motif: 'thorn' },
+  'Root Path': { base: '#5d4037', peak: '#3e2723', motif: 'vine' },
+  'Projectile Path': { base: '#6b8e4e', peak: '#2e7d32', motif: 'spike' },
+  'Decay Path': { base: '#4caf50', peak: '#6a1b9a', motif: 'decay' },
+  'Enable Path': { base: '#80deea', peak: '#8e24aa', motif: 'spore' },
+  'Infect Path': { base: '#c0ca33', peak: '#827717', motif: 'infect' },
+  'Hazard Path': { base: '#5a7a3a', peak: '#ffeb3b', motif: 'gas' },
+  'Acidic Mixture Path': { base: '#9ccc65', peak: '#e53935', motif: 'drip' },
+  'Growth Path': { base: '#d81b94', peak: '#6a1b9a', motif: 'bloom' },
+  'Frosted Path': { base: '#81d4fa', peak: '#e1f5fe', motif: 'crystal' },
+  'Brittle Path': { base: '#b39ddb', peak: '#9c4dcc', motif: 'shatter' },
+};
+const DEFAULT_PATH_THEME = { base: '#8bc34a', peak: '#8bc34a', motif: 'default' };
+
+function getPathTheme(pathName) {
+  return PATH_THEMES[pathName] || DEFAULT_PATH_THEME;
+}
+
+// Linearly interpolates between two '#rrggbb' colors, t in [0, 1].
+function mixHexColors(hexA, hexB, t) {
+  const a = parseInt(hexA.slice(1), 16);
+  const b = parseInt(hexB.slice(1), 16);
+  const ar = (a >> 16) & 0xff;
+  const ag = (a >> 8) & 0xff;
+  const ab = a & 0xff;
+  const br = (b >> 16) & 0xff;
+  const bg = (b >> 8) & 0xff;
+  const bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return `rgb(${r}, ${g}, ${bl})`;
+}
+
+// tierIndex 0..3 (Tier 1..4) -> 0, 1/3, 2/3, 1 across base->peak, so Tier 4
+// always lands exactly on the path's own "maxed out" peak color.
+function getTierThemeColor(theme, tierIndex) {
+  return mixHexColors(theme.base, theme.peak, tierIndex / 3);
+}
+
+// One small accent icon per motif, drawn centered at (cx, cy) with
+// "radius" r. Deliberately simple/cheap (a handful of canvas primitives
+// each) since these are drawn small (a few px) and repeated per tier.
+function drawPathMotifMark(ctx, cx, cy, r, motif) {
+  ctx.beginPath();
+  switch (motif) {
+    case 'ray': // Solar Path — a short radiating sunbeam tick
+      ctx.moveTo(cx - r, cy + r * 0.3);
+      ctx.lineTo(cx + r, cy - r * 0.3);
+      ctx.lineWidth = Math.max(1, r * 0.45);
+      ctx.stroke();
+      break;
+    case 'flame': // Fire Path — a small teardrop flame
+      ctx.moveTo(cx, cy - r);
+      ctx.quadraticCurveTo(cx + r * 0.9, cy, cx, cy + r);
+      ctx.quadraticCurveTo(cx - r * 0.6, cy, cx, cy - r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'bolt': // Storm Path — a small lightning zigzag
+      ctx.moveTo(cx - r * 0.4, cy - r);
+      ctx.lineTo(cx + r * 0.3, cy - r * 0.1);
+      ctx.lineTo(cx - r * 0.2, cy + r * 0.1);
+      ctx.lineTo(cx + r * 0.4, cy + r);
+      ctx.lineWidth = Math.max(1, r * 0.4);
+      ctx.stroke();
+      break;
+    case 'thorn': // Thorn Path — a small outward-pointing spike
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.5, cy + r * 0.6);
+      ctx.lineTo(cx - r * 0.5, cy + r * 0.6);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'vine': // Root Path — a small curled root/vine hook
+      ctx.moveTo(cx - r, cy + r * 0.6);
+      ctx.quadraticCurveTo(cx, cy - r, cx + r, cy - r * 0.6);
+      ctx.lineWidth = Math.max(1, r * 0.4);
+      ctx.stroke();
+      break;
+    case 'spike': // Projectile Path — a small thrown-thorn dart
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.55, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.55, cy);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'decay': // Decay Path — a small cracked/rotten X mark
+      ctx.moveTo(cx - r * 0.6, cy - r * 0.6);
+      ctx.lineTo(cx + r * 0.6, cy + r * 0.6);
+      ctx.moveTo(cx + r * 0.6, cy - r * 0.6);
+      ctx.lineTo(cx - r * 0.6, cy + r * 0.6);
+      ctx.lineWidth = Math.max(1, r * 0.4);
+      ctx.stroke();
+      break;
+    case 'spore': // Enable Path — a soft drifting spore dot
+      ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'infect': // Infect Path — a pulsing "rash" ringed dot
+      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1, r * 0.25);
+      ctx.stroke();
+      break;
+    case 'gas': // Hazard Path — a small wavy gas wisp
+      ctx.moveTo(cx - r, cy);
+      ctx.quadraticCurveTo(cx - r * 0.3, cy - r, cx, cy);
+      ctx.quadraticCurveTo(cx + r * 0.3, cy + r, cx + r, cy);
+      ctx.lineWidth = Math.max(1, r * 0.35);
+      ctx.stroke();
+      break;
+    case 'drip': // Acidic Mixture Path — a small hanging acid drip
+      ctx.moveTo(cx, cy - r);
+      ctx.quadraticCurveTo(cx + r * 0.65, cy + r * 0.2, cx, cy + r);
+      ctx.quadraticCurveTo(cx - r * 0.65, cy + r * 0.2, cx, cy - r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'bloom': // Growth Path — a tiny 4-petal flower
+      [0, Math.PI / 2].forEach((rotation) => {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(rotation);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, r * 0.3, r, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+      break;
+    case 'crystal': // Frosted Path — a smooth icicle-crystal diamond
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.6, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.6, cy);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'shatter': // Brittle Path — the same crystal, with a fracture crack through it
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.6, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.6, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.3, cy - r * 0.5);
+      ctx.lineTo(cx + r * 0.2, cy);
+      ctx.lineTo(cx - r * 0.1, cy + r * 0.5);
+      ctx.lineWidth = Math.max(1, r * 0.3);
+      ctx.strokeStyle = '#1a0a2e';
+      ctx.stroke();
+      break;
+    default:
+      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+  }
+}
+
+// Stacks (tierIndex + 1) motif marks vertically along a tier button's own
+// right edge — "get MORE pronounced as the tier/cost goes up" made
+// literal as "more icons," on top of the escalating color from
+// getTierThemeColor(). Kept off to the right since the button's own name/
+// cost text is left-aligned (see renderUpgradePaths below) and clipped to
+// the button's rounded rect, so there's no overlap to worry about even on
+// a long upgrade name.
+function drawPathTierAccents(ctx, x, y, w, h, motif, tierIndex, color) {
+  const count = tierIndex + 1;
+  const r = 2.3 + tierIndex * 0.5;
+  const marginY = 5;
+  const usableHeight = h - marginY * 2;
+  const spacing = count > 1 ? usableHeight / (count - 1) : 0;
+  const cx = x + w - 8;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  for (let i = 0; i < count; i += 1) {
+    const cy = count === 1 ? y + h / 2 : y + marginY + i * spacing;
+    drawPathMotifMark(ctx, cx, cy, r, motif);
+  }
+  ctx.restore();
+}
 
 // Currently hovered panel region (desktop mouse only — see getCanvasPoint's
 // callers below), used both to draw hover feedback and to pick which
@@ -1507,9 +1714,15 @@ function renderShopSection(ctx, x, width, startY) {
     uiRoundRect(ctx, tileX, rowY, SHOP_TILE_SIZE, SHOP_TILE_SIZE, 6);
     ctx.fillStyle = selected ? '#3a5a2e' : hovered ? '#262b35' : '#1c2028';
     ctx.fill();
+    uiButtonBevel(ctx, tileX, rowY, SHOP_TILE_SIZE, SHOP_TILE_SIZE, 6);
+    if (hovered || selected) {
+      ctx.shadowColor = selected ? 'rgba(139, 195, 74, 0.55)' : 'rgba(200, 210, 230, 0.35)';
+      ctx.shadowBlur = 9;
+    }
     ctx.strokeStyle = selected ? '#8bc34a' : affordable ? '#454c5c' : '#3a2020';
     ctx.lineWidth = selected ? 2 : 1;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     ctx.save();
     uiRoundRect(ctx, tileX, rowY, SHOP_TILE_SIZE, SHOP_TILE_SIZE, 6);
@@ -1662,7 +1875,8 @@ function renderUpgradePaths(ctx, x, width, startY) {
       return;
     }
 
-    const pathColor = PATH_COLORS[pathIndex];
+    const theme = getPathTheme(path.name);
+    const pathColor = theme.peak;
     const isLockedOut = Boolean(selectedTower) && selectedTower.chosenPath !== null && selectedTower.chosenPath !== pathIndex;
 
     ctx.fillStyle = isLockedOut ? '#666' : pathColor;
@@ -1700,22 +1914,41 @@ function renderUpgradePaths(ctx, x, width, startY) {
         ((selectedTower.chosenPath === pathIndex && tierIndex === selectedTower.upgradesPurchased) ||
           (selectedTower.chosenPath === null && tierIndex === 0));
       const affordable = isNextInLine && canAfford(upgrade.cost);
+      // The path's own themed color for THIS specific tier — base at Tier
+      // 1, blending up to the path's full "maxed out" peak color by Tier
+      // 4 (see getTierThemeColor/PATH_THEMES above). Only actually shown
+      // once a tier is owned or is the very next one in line (showAccent
+      // below) — a tier further out than that stays the plain grey
+      // "locked" look until the player actually reaches it, so the
+      // escalating theme reveals itself progressively along with the path
+      // instead of spoiling all 4 tiers' looks at once in a cramped
+      // ~85x32 button.
+      const tierColor = getTierThemeColor(theme, tierIndex);
 
       let fill = '#181b22';
       let border = '#2e333e';
       let textColor = '#777';
       let statusGlyph = '\u{1F512}'; // lock
+      let showAccent = false;
+      let accentColor = tierColor;
       if (bought) {
         fill = 'rgba(76, 175, 80, 0.18)';
-        border = '#4caf50';
+        // Blended with the universal "owned" green rather than the pure
+        // theme color outright — keeps "this tier is owned" legible at a
+        // glance (green is that signal everywhere else in this UI) while
+        // still visibly carrying the path's own escalating hue.
+        border = mixHexColors('#4caf50', tierColor, 0.55);
         textColor = '#ddd';
         statusGlyph = '✓'; // check
+        showAccent = true;
       } else if (isLockedOut) {
         textColor = '#555';
       } else if (isNextInLine) {
-        border = affordable ? pathColor : '#555';
+        border = affordable ? tierColor : '#555';
         textColor = affordable ? '#eee' : '#999';
         statusGlyph = '→'; // arrow
+        showAccent = true;
+        if (!affordable) accentColor = 'rgba(160, 160, 160, 0.5)'; // visible but dimmed until it can actually be bought
       }
 
       const regionId = `upgrade:${pathIndex}:${tierIndex}`;
@@ -1724,9 +1957,15 @@ function renderUpgradePaths(ctx, x, width, startY) {
       uiRoundRect(ctx, colX, colY, columnWidth, tierHeight, 4);
       ctx.fillStyle = fill;
       ctx.fill();
+      uiButtonBevel(ctx, colX, colY, columnWidth, tierHeight, 4);
+      if (hovered) {
+        ctx.shadowColor = affordable ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.2)';
+        ctx.shadowBlur = 6;
+      }
       ctx.strokeStyle = border;
       ctx.lineWidth = 1;
       ctx.stroke();
+      ctx.shadowBlur = 0;
       if (hovered) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
         ctx.fill();
@@ -1735,6 +1974,9 @@ function renderUpgradePaths(ctx, x, width, startY) {
       ctx.save();
       uiRoundRect(ctx, colX, colY, columnWidth, tierHeight, 4);
       ctx.clip();
+      if (showAccent) {
+        drawPathTierAccents(ctx, colX, colY, columnWidth, tierHeight, theme.motif, tierIndex, accentColor);
+      }
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillStyle = textColor;
@@ -1931,9 +2173,15 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
     uiRoundRect(ctx, tileX, rowY, SANDBOX_TILE_SIZE, SANDBOX_TILE_SIZE, 6);
     ctx.fillStyle = hovered ? '#262b35' : '#1c2028';
     ctx.fill();
+    uiButtonBevel(ctx, tileX, rowY, SANDBOX_TILE_SIZE, SANDBOX_TILE_SIZE, 6);
+    if (hovered) {
+      ctx.shadowColor = 'rgba(200, 210, 230, 0.35)';
+      ctx.shadowBlur = 9;
+    }
     ctx.strokeStyle = '#454c5c';
     ctx.lineWidth = 1;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     ctx.save();
     uiRoundRect(ctx, tileX, rowY, SANDBOX_TILE_SIZE, SANDBOX_TILE_SIZE, 6);
@@ -2230,9 +2478,15 @@ function renderMenu(ctx) {
     uiRoundRect(ctx, x, y, buttonWidth, buttonHeight, 8);
     ctx.fillStyle = hovered ? '#262b35' : '#1a1e26';
     ctx.fill();
+    uiButtonBevel(ctx, x, y, buttonWidth, buttonHeight, 8);
+    if (hovered) {
+      ctx.shadowColor = 'rgba(139, 195, 74, 0.5)';
+      ctx.shadowBlur = 12;
+    }
     ctx.strokeStyle = hovered ? '#8bc34a' : '#3a4050';
     ctx.lineWidth = hovered ? 2 : 1;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     ctx.fillStyle = '#f0f0f0';
     ctx.font = 'bold 17px sans-serif';
@@ -2699,9 +2953,18 @@ function renderMapSelect(ctx) {
   uiRoundRect(ctx, cardX, cardY, MAP_PREVIEW_WIDTH, MAP_PREVIEW_HEIGHT, 10);
   ctx.fillStyle = '#10131a';
   ctx.fill();
+  // No uiButtonBevel overlay here — the real map art (renderMapPreview,
+  // right below) fills this card right after, and a gloss sliver drawn
+  // now would just get painted over and wasted. A hover/selected glow on
+  // the border still reads fine on top of the finished art, though.
+  if (selected || cardHovered) {
+    ctx.shadowColor = selected ? 'rgba(139, 195, 74, 0.6)' : 'rgba(90, 138, 62, 0.5)';
+    ctx.shadowBlur = selected ? 14 : 9;
+  }
   ctx.strokeStyle = selected ? '#8bc34a' : cardHovered ? '#5a8a3e' : '#3a4050';
   ctx.lineWidth = selected ? 3 : 1;
   ctx.stroke();
+  ctx.shadowBlur = 0;
 
   renderMapPreview(ctx, map, cardX, cardY, MAP_PREVIEW_WIDTH, MAP_PREVIEW_HEIGHT, animationTime);
   uiRegisterRegion(cardRegionId, cardX, cardY, MAP_PREVIEW_WIDTH, MAP_PREVIEW_HEIGHT, { map });
@@ -2788,9 +3051,15 @@ function renderModeSelect(ctx) {
     uiRoundRect(ctx, x, y, buttonWidth, buttonHeight, 8);
     ctx.fillStyle = hovered ? '#262b35' : '#1a1e26';
     ctx.fill();
+    uiButtonBevel(ctx, x, y, buttonWidth, buttonHeight, 8);
+    if (hovered) {
+      ctx.shadowColor = 'rgba(139, 195, 74, 0.5)';
+      ctx.shadowBlur = 12;
+    }
     ctx.strokeStyle = hovered ? '#8bc34a' : '#3a4050';
     ctx.lineWidth = hovered ? 2 : 1;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     ctx.fillStyle = '#f0f0f0';
     ctx.font = 'bold 17px sans-serif';

@@ -76,23 +76,58 @@ function uiRoundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// General button-polish pass (direct request: "make them look like a
+// finished game's buttons, not placeholder UI rectangles"). A cheap
+// glossy-bevel overlay shared by every button-ish shape in the game
+// (uiDrawButton below, plus the shop/sandbox tiles, the main-menu buttons,
+// and the mode-select cards in game.js, none of which go through
+// uiDrawButton itself) — a soft lighter sliver across the top ~45% and a
+// darker sliver across the bottom ~22%, clipped to the shape's own rounded
+// rect, standing in for a real depth/gradient without introducing
+// createRadialGradient/addColorStop (same "layered translucent fills over
+// a real gradient" choice renderHollowSplash's own moon glow made, for the
+// same reason: it must survive a minimal stub ctx with no real gradient
+// support). Caller still draws its own fill first — this only adds the
+// shine on top of it.
+function uiButtonBevel(ctx, x, y, w, h, r) {
+  ctx.save();
+  uiRoundRect(ctx, x, y, w, h, r);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+  ctx.fillRect(x, y, w, h * 0.45);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
+  ctx.fillRect(x, y + h * 0.78, w, h * 0.22);
+  ctx.restore();
+}
+
 // A simple rectangular button: fill + border + centered label. `state` picks
 // the color scheme ('default' | 'disabled' | 'accent'); `hovered` draws a
-// slightly brighter fill so mouse users get feedback (touch has no hover,
+// slightly brighter fill, a crisper border, and a soft outer glow so mouse
+// users get real "this is responding to me" feedback (touch has no hover,
 // it just taps).
 function uiDrawButton(ctx, { x, y, w, h, label, state = 'default', hovered = false }) {
   const palette = {
-    default: { fill: '#2a2f3a', fillHover: '#343a47', border: '#454c5c', text: '#eee' },
-    disabled: { fill: '#20242c', fillHover: '#20242c', border: '#2e3340', text: '#777' },
-    accent: { fill: '#3a5a2e', fillHover: '#45692f', border: '#5a8a3e', text: '#eee' },
+    default: { fill: '#2a2f3a', fillHover: '#363c4a', border: '#4a5166', glow: 'rgba(200, 210, 230, 0.35)', text: '#eee' },
+    disabled: { fill: '#20242c', fillHover: '#20242c', border: '#2e3340', glow: null, text: '#777' },
+    accent: { fill: '#3a5a2e', fillHover: '#48702f', border: '#6ba33f', glow: 'rgba(139, 195, 74, 0.5)', text: '#eee' },
   }[state];
+  const r = Math.min(5, h / 2);
 
-  uiRoundRect(ctx, x, y, w, h, 5);
+  uiRoundRect(ctx, x, y, w, h, r);
   ctx.fillStyle = hovered ? palette.fillHover : palette.fill;
   ctx.fill();
+
+  uiButtonBevel(ctx, x, y, w, h, r);
+
+  if (hovered && palette.glow) {
+    ctx.shadowColor = palette.glow;
+    ctx.shadowBlur = 10;
+  }
   ctx.strokeStyle = palette.border;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = hovered ? 1.5 : 1;
+  uiRoundRect(ctx, x, y, w, h, r);
   ctx.stroke();
+  ctx.shadowBlur = 0;
 
   ctx.fillStyle = palette.text;
   ctx.font = '13px sans-serif';
