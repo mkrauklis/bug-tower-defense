@@ -716,6 +716,14 @@ const HOLLOW_ROSTER = {
     // reuses drawBat's shared body wholesale, color alone does the work,
     // same "shared body, color tells them apart" convention Volcanic's
     // own 3 iguanas already established.
+    // Enemy-art realism pass follow-up: this roster's own top comment
+    // originally called "color alone does the work" sufficient — revised
+    // after applying the same standard this pass used everywhere else
+    // (Desert Ant, Pink Iguana) to every other "shared body, only color
+    // differs" case found. Real Eastern Red Bats do have one further
+    // genuine field mark beyond color: a heavily furred tail membrane
+    // (most bats, Caves' own plain Bat included, have a bare one) — see
+    // drawBat's own new `furredTail` option, used only here.
     easternRedBat: { name: 'Eastern Red Bat', speedMultiplier: 0.95, health: 125, color: '#a13a1f', radius: 8, bounty: 52 },
     // Real (red-morph) Eastern Screech Owls are small but fierce nocturnal
     // predators — reuses Caves' own shared drawCaveBirdBody, plus ear
@@ -3816,7 +3824,7 @@ function drawNamibDesertBeetle(ctx, e) {
 // drawInsectWings every flying insect elsewhere in this file uses — bats
 // are mammals, not insects, and their own real wing shape is the one
 // thing that should read as unmistakably different at a glance.
-function drawBat(ctx, e) {
+function drawBat(ctx, e, { furredTail = false } = {}) {
   ctx.fillStyle = e.color;
   [-1, 1].forEach((side) => {
     ctx.beginPath();
@@ -3828,6 +3836,29 @@ function drawBat(ctx, e) {
     ctx.fill();
   });
 
+  // Real Eastern Red Bats have one further genuinely distinguishing trait
+  // beyond their reddish color: a heavily FURRED tail membrane (most bat
+  // species, including Caves' own plain Bat, have a bare one) — a small
+  // fuzzy triangular flap trailing behind the body, drawn in the same
+  // base color with a fringe of short bristle-dashes along its edge.
+  if (furredTail) {
+    ctx.beginPath();
+    ctx.moveTo(e.x + e.radius * 0.1, e.y);
+    ctx.lineTo(e.x + e.radius * 0.7, e.y - e.radius * 0.35);
+    ctx.lineTo(e.x + e.radius * 0.7, e.y + e.radius * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = shadeColor(e.color, 20);
+    ctx.lineWidth = 1;
+    [-0.25, 0, 0.25].forEach((t) => {
+      ctx.beginPath();
+      ctx.moveTo(e.x + e.radius * 0.5, e.y + t * e.radius * 0.6);
+      ctx.lineTo(e.x + e.radius * 0.75, e.y + t * e.radius * 0.9);
+      ctx.stroke();
+    });
+  }
+
+  ctx.fillStyle = e.color;
   ctx.beginPath();
   ctx.ellipse(e.x, e.y, e.radius * 0.5, e.radius * 0.4, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -3995,7 +4026,7 @@ function drawCaveMidge(ctx, e) {
 // real, named distinguishing trait,
 // same "one shared body, a small flag picks the detail" convention
 // Volcanic's drawIguanaBody (`crested`/`snoutColor`) already established.
-function drawCaveBirdBody(ctx, e, { tailFork = false, collarColor = null, longWings = false } = {}) {
+function drawCaveBirdBody(ctx, e, { tailFork = false, collarColor = null, longWings = false, spotted = false } = {}) {
   const wingReach = longWings ? 1.5 : 1.0;
   ctx.fillStyle = shadeColor(e.color, -15);
   [-1, 1].forEach((side) => {
@@ -4053,13 +4084,31 @@ function drawCaveBirdBody(ctx, e, { tailFork = false, collarColor = null, longWi
   ctx.lineTo(e.x - e.radius * 1.05, e.y + e.radius * 0.12);
   ctx.closePath();
   ctx.fill();
+
+  // Enemy-art realism pass (direct request): real oilbirds (Steatornis
+  // caripensis) are famous specifically for small white spots scattered
+  // across their otherwise plain rufous-brown plumage — their own single
+  // most recognizable field mark, and the one real trait this bird
+  // family's shared body had no way to draw before now. Kept deliberately
+  // modest (no structural change like longWings/tailFork/collarColor get)
+  // so Oilbird stays this roster's own least-ornamented bird overall,
+  // just no longer missing its real signature marking entirely.
+  if (spotted) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    [[0.15, -0.55], [0.45, -0.35], [0.3, 0.1], [0.5, 0.4], [0.1, 0.55]].forEach(([dx, dy]) => {
+      ctx.beginPath();
+      ctx.arc(e.x + dx * e.radius, e.y + dy * e.radius, e.radius * 0.07, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
 }
 
-// Larger brown bird (the request's own called-out trait), otherwise
-// plain — the roster's own weakest bird, by design the least ornamented
-// of the 4.
+// Larger brown bird (the request's own called-out trait) with real
+// oilbird white wing-spotting (`spotted`) — otherwise plain, no
+// structural embellishment like the other 3 birds get, so it's still
+// this roster's own least-ornamented bird overall.
 function drawOilbird(ctx, e) {
-  drawCaveBirdBody(ctx, e);
+  drawCaveBirdBody(ctx, e, { spotted: true });
 }
 
 function drawSwiftlet(ctx, e) {
@@ -4367,7 +4416,7 @@ function drawOrbWeaver(ctx, e) {
 // "shared body, color does the work" convention Volcanic's own 3
 // iguanas already established.
 function drawEasternRedBat(ctx, e) {
-  drawBat(ctx, e);
+  drawBat(ctx, e, { furredTail: true });
 }
 
 // Real (red-morph) Eastern Screech Owls are small, fierce nocturnal
