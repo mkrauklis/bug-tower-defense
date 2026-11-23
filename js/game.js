@@ -3237,6 +3237,7 @@ function renderUI(ctx) {
 
   ctx.fillStyle = '#12161c';
   ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+  drawUIPanelGrain(ctx, panelX, panelY, panelWidth, panelHeight, '#12161c');
   ctx.strokeStyle = '#2a2f3a';
   ctx.lineWidth = 1;
   ctx.beginPath();

@@ -100,6 +100,30 @@ function uiButtonBevel(ctx, x, y, w, h, r) {
   ctx.restore();
 }
 
+// Texture pass, part 5/4 (direct request, relayed from the peer session:
+// "UI panels/backgrounds: a bit more surface detail (subtle grain/
+// gradient) instead of flat fills, consistent with the button-bevel
+// polish you already did"), in the same pixelated-chunky-block style
+// every other part of this pass uses. Reuses the exact same
+// buildGrainSpecks()/drawGrain() primitive (map.js) every terrain/tower
+// surface in this pass already draws with, rather than a separate
+// technique just for UI — one scatter, precomputed once and sized to
+// comfortably cover the largest panel/tooltip this file ever draws, so
+// every caller below can reuse it at its own actual size via a clip
+// rather than allocating a fresh scatter per frame (the same "one
+// precomputed set, clipped/scaled per caller" approach
+// PUDDLE_SHIMMER_UNIT_SPECKS already uses in map.js).
+const UI_GRAIN_SPECKS = buildGrainSpecks(260, 960, 900, 3, 51.731, 84.653, 27.233);
+
+function drawUIPanelGrain(ctx, x, y, w, h, baseColor) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  drawGrain(ctx, UI_GRAIN_SPECKS, x, y, baseColor, 3);
+  ctx.restore();
+}
+
 // A simple rectangular button: fill + border + centered label. `state` picks
 // the color scheme ('default' | 'disabled' | 'accent'); `hovered` draws a
 // slightly brighter fill, a crisper border, and a soft outer glow so mouse
@@ -161,6 +185,7 @@ function uiDrawTooltip(ctx, x, y, lines, canvasWidth, canvasHeight) {
   uiRoundRect(ctx, boxX, boxY, boxWidth, boxHeight, 5);
   ctx.fillStyle = 'rgba(15, 17, 22, 0.96)';
   ctx.fill();
+  drawUIPanelGrain(ctx, boxX, boxY, boxWidth, boxHeight, '#0f1116');
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1;
   ctx.stroke();

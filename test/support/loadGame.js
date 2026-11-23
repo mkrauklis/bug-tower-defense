@@ -201,6 +201,10 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       // (getPathTheme/getTierThemeColor/mixHexColors/PATH_THEMES) rather
       // than only on indirect rendering side effects.
       uiDrawButton, uiRoundRect, uiButtonBevel,
+      // Texture pass, part 5 (UI panels/backgrounds): lets a test call
+      // drawUIPanelGrain()/uiDrawTooltip() directly and inspect the
+      // grain layer they draw.
+      drawUIPanelGrain, UI_GRAIN_SPECKS, uiDrawTooltip,
       renderUpgradePaths,
       getPathTheme, getTierThemeColor, mixHexColors, PATH_THEMES,
       getCanvasPoint, isWorldPoint, activateRegion, getTooltipLines, handleCanvasTap,
