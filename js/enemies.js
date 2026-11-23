@@ -4444,40 +4444,217 @@ function drawRedEasternScreechOwl(ctx, e) {
   ctx.fill();
 }
 
-// Boss (the stage's own true, climactic final boss, round 50): reuses
-// Caves' own shared drawCaveBirdBody — longer wings and a forked tail for
-// a bigger, more imposing silhouette than the regular Screech Owl — plus
-// 2 deliberate departures from a normal crow: pale, glowing "hollow" eye
-// sockets instead of a normal dark eye, and a few jagged notches torn
-// into each wing's trailing edge. "Hollow"/decaying rather than a clean,
-// healthy bird, the standout-visual half of the request's own ask (its
-// stats/radius are the other half — see HOLLOW_ROSTER's own comment).
+// One splayed primary (flight) feather, drawn in its own local frame then
+// rotated/translated into place — drawCrowWing() below calls this 5 times
+// per wing to fan them apart at the tip, the real bird's own "fingered"
+// wingtip (clearly separated feather tips, not one solid paddle shape) —
+// a direct reference-photo callout. `torn` bites a jagged notch out of
+// the tip instead of leaving it a clean point — the "hollow"/tattered
+// touch, now applied to an anatomically real feather shape instead of a
+// generic wing edge.
+function drawCrowPrimaryFeather(ctx, originX, originY, angle, length, width, torn) {
+  ctx.save();
+  ctx.translate(originX, originY);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, -width / 2);
+  if (torn) {
+    ctx.lineTo(length * 0.55, -width * 0.1);
+    ctx.lineTo(length * 0.35, 0);
+    ctx.lineTo(length * 0.6, width * 0.12);
+  } else {
+    ctx.lineTo(length, 0);
+  }
+  ctx.lineTo(0, width / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// One wing, swept back from the shoulder to a joint and then a tip — the
+// same 2-segment sweep drawCaveBirdBody's own wings use — but ending in 5
+// separated, fanned primary feathers instead of curving smoothly back to
+// a single point, per the flight reference photo's own "fingered"
+// wingtip. A soft purple/blue-green overlay along the leading edge reads
+// as the real bird's own oil-slick iridescent sheen rather than flat
+// matte black. 2 of the 5 primaries are drawn torn/notched — this map's
+// existing "hollow"/tattered touch, carried over onto the new real
+// feather shapes.
+function drawCrowWing(ctx, e, side) {
+  const r = e.radius;
+  const baseX = e.x;
+  const baseY = e.y + side * r * 0.15;
+  const jointX = e.x + r * 0.35;
+  const jointY = e.y + side * r * 0.78;
+  const tipX = e.x + r * 0.85;
+  const tipY = e.y + side * r * 1.12;
+
+  ctx.fillStyle = shadeColor(e.color, 6);
+  ctx.beginPath();
+  ctx.moveTo(baseX, baseY);
+  ctx.quadraticCurveTo(jointX, jointY, tipX, tipY);
+  ctx.quadraticCurveTo(e.x + r * 0.55, e.y + side * r * 0.55, baseX, baseY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(e.color, -30);
+  ctx.lineWidth = Math.max(1, r * 0.03);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(120, 90, 190, 0.22)';
+  ctx.beginPath();
+  ctx.moveTo(baseX, baseY);
+  ctx.quadraticCurveTo(jointX, jointY, tipX, tipY);
+  ctx.quadraticCurveTo(e.x + r * 0.48, e.y + side * r * 0.78, baseX, baseY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(70, 160, 140, 0.16)';
+  ctx.beginPath();
+  ctx.ellipse(jointX, jointY, r * 0.28, r * 0.12, Math.atan2(tipY - baseY, tipX - baseX), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, -8);
+  const sweepAngle = Math.atan2(tipY - jointY, tipX - jointX);
+  const fingerCount = 5;
+  for (let i = 0; i < fingerCount; i += 1) {
+    const t = i - (fingerCount - 1) / 2; // -2..2
+    const fanAngle = sweepAngle + t * (side * 0.17);
+    const length = r * (0.42 - Math.abs(t) * 0.07);
+    drawCrowPrimaryFeather(ctx, jointX, jointY, fanAngle, length, r * 0.22, i === 1 || i === 3);
+  }
+}
+
+// Boss (the stage's own true, climactic final boss, round 50): redrawn
+// from scratch as its own real crow anatomy (direct follow-up request,
+// from 2 real reference photos — a perched profile shot and a wings-
+// spread flight shot) rather than reusing the generic drawCaveBirdBody
+// every other Caves/Hollow bird shares, since the features called out
+// (a heavy hook-tipped beak, iridescent sheen, fingered wingtip
+// feathers, visible taloned legs, a flat-topped skull) are too crow-
+// specific to express through that shared shape's own small option set.
+// The existing "hollow" supernatural touches (glowing eye socket,
+// tattered wingtips) are layered ON TOP of this more anatomically-
+// correct base, not replacing it, per the request's own explicit
+// instruction — this same function also draws the splash screen's giant
+// hero version (see drawHollowSplashCrow in game.js), just at a much
+// bigger radius with its own extra aura wrapped around it.
 function drawHollowCrow(ctx, e) {
-  drawCaveBirdBody(ctx, e, { longWings: true, tailFork: true });
+  const r = e.radius;
 
-  ctx.fillStyle = 'rgba(230, 230, 220, 0.9)';
+  drawCrowWing(ctx, e, -1);
+  drawCrowWing(ctx, e, 1);
+
+  // Tail — a broad, fanned, rounded-square shape (per the flight
+  // reference photo) rather than a thin forked V.
+  ctx.fillStyle = e.color;
   ctx.beginPath();
-  ctx.arc(e.x - e.radius * 0.8, e.y, e.radius * 0.22, 0, Math.PI * 2);
+  ctx.moveTo(e.x + r * 0.55, e.y - r * 0.32);
+  ctx.quadraticCurveTo(e.x + r * 1.35, e.y - r * 0.38, e.x + r * 1.45, e.y);
+  ctx.quadraticCurveTo(e.x + r * 1.35, e.y + r * 0.38, e.x + r * 0.55, e.y + r * 0.32);
+  ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#000';
+  ctx.strokeStyle = shadeColor(e.color, -25);
+  ctx.lineWidth = 1;
+  [-0.6, -0.2, 0.2, 0.6].forEach((t) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x + r * 0.9, e.y + t * r * 0.32);
+    ctx.lineTo(e.x + r * 1.42, e.y + t * r * 0.36);
+    ctx.stroke();
+  });
+
+  // Body — glossy black with a diagonal iridescent sheen streak (real
+  // crow plumage catches light with a purplish/blue-green shimmer, not
+  // flat matte black) rather than one flat fill.
+  ctx.fillStyle = e.color;
   ctx.beginPath();
-  ctx.arc(e.x - e.radius * 0.8, e.y, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.ellipse(e.x, e.y, r * 0.8, r * 0.44, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(130, 100, 200, 0.2)';
+  ctx.beginPath();
+  ctx.ellipse(e.x + r * 0.1, e.y - r * 0.12, r * 0.55, r * 0.14, -0.25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(80, 170, 150, 0.15)';
+  ctx.beginPath();
+  ctx.ellipse(e.x - r * 0.15, e.y + r * 0.1, r * 0.4, r * 0.1, -0.25, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = shadeColor(e.color, 25);
+  // Head — flatter/more elongated than a round ball (a real corvid's own
+  // flat-topped skull profile, per the reference photos) rather than a
+  // perfect circle.
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x - r * 0.78, e.y, r * 0.34, r * 0.27, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Beak — thick and substantial relative to the head, straight-ish with
+  // a slight downward hook right at the tip, plus a few small bristle
+  // feathers near the base at the nostrils — not the old thin pointed
+  // triangle.
+  ctx.fillStyle = '#121212';
+  ctx.beginPath();
+  ctx.moveTo(e.x - r * 1.08, e.y - r * 0.17);
+  ctx.lineTo(e.x - r * 1.55, e.y - r * 0.04);
+  ctx.quadraticCurveTo(e.x - r * 1.68, e.y + r * 0.02, e.x - r * 1.58, e.y + r * 0.1);
+  ctx.lineTo(e.x - r * 1.08, e.y + r * 0.17);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#121212';
+  ctx.lineWidth = 1;
+  [-0.1, 0.02, 0.14].forEach((dy) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x - r * 1.05, e.y + dy * r);
+    ctx.lineTo(e.x - r * 0.98, e.y + dy * r * 1.4);
+    ctx.stroke();
+  });
+
+  // Legs + talons — drawn after the body/wings/tail (so they're never
+  // hidden underneath the wing panels, which span most of that same
+  // area) rather than before them. "Strong black legs with sharp, curved
+  // talons," not just small stick legs, one of the reference photos' own
+  // called-out traits.
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = Math.max(1.6, r * 0.11);
+  ctx.lineCap = 'round';
   [-1, 1].forEach((side) => {
-    for (let i = 0; i < 3; i += 1) {
-      const t = i / 3;
-      const nx = e.x + e.radius * (0.2 + t * 0.6);
-      const ny = e.y + side * e.radius * (1.0 + t * 0.3);
+    const footX = e.x - r * 0.05;
+    const footY = e.y + side * r * 0.56;
+    ctx.beginPath();
+    ctx.moveTo(e.x + r * 0.1, e.y + side * r * 0.2);
+    ctx.lineTo(footX, footY);
+    ctx.stroke();
+
+    ctx.fillStyle = '#0a0a0a';
+    [-1, 0, 1].forEach((toe) => {
+      const toeAngle = Math.PI * 0.5 + toe * 0.55;
       ctx.beginPath();
-      ctx.moveTo(nx, ny);
-      ctx.lineTo(nx + e.radius * 0.18, ny + side * e.radius * 0.15);
-      ctx.lineTo(nx - e.radius * 0.05, ny + side * e.radius * 0.25);
+      ctx.moveTo(footX, footY);
+      ctx.quadraticCurveTo(
+        footX - Math.cos(toeAngle) * r * 0.22, footY + side * Math.sin(toeAngle) * r * 0.22,
+        footX - Math.cos(toeAngle) * r * 0.34 - r * 0.05, footY + side * Math.sin(toeAngle) * r * 0.3
+      );
+      ctx.lineTo(footX - Math.cos(toeAngle) * r * 0.22 - r * 0.03, footY + side * Math.sin(toeAngle) * r * 0.2);
       ctx.closePath();
       ctx.fill();
-    }
+    });
   });
+
+  // The hollow supernatural touch, kept: a small (anatomically real eye
+  // size this time, not an oversized "googly eye" circle) pale, glowing
+  // socket where a real crow's small dark eye would sit, its glow doing
+  // the "eerie" work instead of the socket's own size. shadowBlur is
+  // capped rather than scaled straight off `r` — at the splash screen's
+  // own much bigger radius, an uncapped blur washed out most of the head.
+  ctx.save();
+  ctx.shadowColor = 'rgba(235, 230, 255, 0.9)';
+  ctx.shadowBlur = Math.min(16, Math.max(3, r * 0.18));
+  ctx.fillStyle = 'rgba(230, 230, 245, 0.95)';
+  ctx.beginPath();
+  ctx.arc(e.x - r * 0.82, e.y - r * 0.04, r * 0.13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(e.x - r * 0.82, e.y - r * 0.04, r * 0.055, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 const ENEMY_DRAW_FUNCTIONS = {
