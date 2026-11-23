@@ -252,6 +252,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       // to actually exercise theme.renderPathEffects/renderDecor through
       // the real rendering entry point rather than just checking data.
       TERRAIN_THEMES, renderMap,
+      // Pixel-grain texture pass: lets a test exercise the shared grain
+      // primitive directly (its own deterministic scatter, and that
+      // fillThemeBackground actually draws it) rather than only through
+      // renderMap()'s own "never throws" coverage.
+      buildGrainSpecks, drawGrain, GROUND_GRAIN_SPECKS, fillThemeBackground,
       getMapPaths: () => MAP_PATHS,
       getSelectedMap: () => selectedMap,
       setSelectedMap: (map) => { selectedMap = map; },

@@ -1888,6 +1888,75 @@ function renderHollowDecor(ctx, decor) {
 const HOLLOW_EVENT_PATH_COLORS = { outline: '#3a2614', fill: '#8a5a32' };
 
 // ---------------------------------------------------------------------------
+// Pixel-grain texture pass (direct request, relayed from the peer
+// session: "make the textures better... ground/terrain on every map:
+// add subtle color variation, noise/grain, or small detail marks...
+// should read as actual ground, not a solid rectangle" — then refined by
+// a direct follow-up: "make it slightly pixelated... render those
+// texture elements as small chunky square blocks (quantized to a coarse
+// pixel grid, e.g. draw with fillRect in a grid of ~2-4px cells instead
+// of soft gradients/blurred noise)"). One shared primitive, reused by
+// every terrain's own ground fill below rather than inventing a
+// different texture technique per map.
+//
+// buildGrainSpecks() scatters a fixed, deterministic set of small square
+// "grain" marks across a given area ONCE at module load — the same
+// sine-hash technique buildFallenLeafPositions (below) already uses for
+// its own decor scatter, and for the same reason: this is pure
+// decoration with no gameplay RNG involved, so it must NOT touch the
+// game's own seeded random() (random.js), or ground texture would shift
+// on every `?seed=`-reproduced run. Each speck's own (x, y) is snapped to
+// `cellSize` — the follow-up's own explicit "coarse pixel grid" ask —
+// and gets a light/dark shade variant plus its own modest alpha, so the
+// scatter reads as grain rather than a uniform dot pattern.
+function buildGrainSpecks(count, areaWidth, areaHeight, cellSize, seedX, seedY, seedShade) {
+  const specks = [];
+  for (let i = 0; i < count; i += 1) {
+    const hashX = Math.sin(i * seedX) * 43758.5453;
+    const hashY = Math.sin(i * seedY) * 12543.123;
+    const hashShade = Math.sin(i * seedShade) * 7853.254;
+    const fracX = hashX - Math.floor(hashX);
+    const fracY = hashY - Math.floor(hashY);
+    const fracShade = hashShade - Math.floor(hashShade);
+    specks.push({
+      x: Math.floor((fracX * areaWidth) / cellSize) * cellSize,
+      y: Math.floor((fracY * areaHeight) / cellSize) * cellSize,
+      shade: fracShade > 0.5 ? 1 : -1,
+      alpha: 0.07 + fracShade * 0.09,
+    });
+  }
+  return specks;
+}
+
+// Draws a precomputed grain layer over a rectangular area, tinted
+// lighter/darker than `baseColor` — sharp-edged square fillRect blocks
+// (never arcs/soft shapes, per the follow-up's own "chunky blocks, not
+// anti-aliased smooth variation" instruction), each already snapped to
+// its own coarse grid cell by buildGrainSpecks above. Cheap: a plain
+// `specks.length`-call loop of fillRect, no gradients/blur/shadow —
+// drawn fresh every frame since this project has no persistent/offscreen
+// canvas layer to cache it on, same as every other per-frame decor pass
+// in this file.
+function drawGrain(ctx, specks, originX, originY, baseColor, cellSize) {
+  ctx.save();
+  specks.forEach((speck) => {
+    ctx.fillStyle = shadeColor(baseColor, speck.shade * 22);
+    ctx.globalAlpha = speck.alpha;
+    ctx.fillRect(originX + speck.x, originY + speck.y, cellSize, cellSize);
+  });
+  ctx.restore();
+}
+
+// One shared scatter, reused by every terrain's own ground — the (x, y)
+// positions are terrain-agnostic (just a grid of grain marks across the
+// world), only the tint color passed to drawGrain() at render time
+// differs per theme. Sized for the real MAP_WORLD_WIDTH x
+// MAP_WORLD_HEIGHT play area; renderMapPreview() below draws this same
+// layer pre-scaled along with everything else in its own transform, so
+// it still lines up correctly at preview size.
+const GROUND_GRAIN_SPECKS = buildGrainSpecks(280, MAP_WORLD_WIDTH, MAP_WORLD_HEIGHT, 3, 12.9898, 78.233, 45.164);
+
+// ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/
 // renderMapPreview() below both dispatch through this rather than
@@ -1965,6 +2034,11 @@ function fillThemeBackground(ctx, theme, width, height) {
     ctx.fillStyle = theme.background;
     ctx.fillRect(0, 0, width, height);
   }
+  // Pixel-grain texture pass: every terrain's own ground gets this same
+  // grain layer, tinted off its own background color — including
+  // Whirlpool's vignette above, which still reads as water with some
+  // surface variation rather than a perfectly flat gradient.
+  drawGrain(ctx, GROUND_GRAIN_SPECKS, 0, 0, theme.background, 3);
 }
 
 // ---------------------------------------------------------------------------
