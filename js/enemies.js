@@ -2016,11 +2016,20 @@ function drawAnt(ctx, e) {
   drawAntBody(ctx, e);
 }
 
-// Same body plan as the plain Ant (just a different color, which alone
-// reads as a distinct enemy), plus a pair of visible mandibles up front —
-// a touch more aggressive-looking to match the name.
+// Enemy-art realism pass (direct request): a real fire ant's single most
+// recognizable trait is its two-tone body — a reddish-copper head/thorax
+// with a noticeably DARKER gaster (abdomen) — not just "a reddish ant,"
+// which is what the shared drawAntBody() alone produces (every part in
+// one flat color). Re-filled here, after the shared body, in a near-black
+// shade rather than inventing a second color field on the roster entry.
 function drawFireAnt(ctx, e) {
   drawAntBody(ctx, e);
+
+  ctx.fillStyle = shadeColor(e.color, -55);
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 0.8, e.radius * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.strokeStyle = '#3e1a0a';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -4589,34 +4598,95 @@ function drawMillipedeSegment(ctx, x, y, radius, color, heading, segmentIndex) {
 
 // Shared snake-family segment renderer: a smooth, legless tapering body
 // (no "leg" strokes — that look is millipede-specific) with a lighter
-// belly stripe down the underside, plus (segment 0, the head, only) a
-// pair of eyes and an occasionally-flicking forked tongue so the head end
-// reads as a snake's at a glance regardless of which of the 4 types it is.
-// `scaled` swaps the plain belly stripe for a line of diamond scale
-// plates instead — Armored Snake only, the one type whose own spec calls
-// for a visibly "plated/scaled" body distinct from the other three.
-function drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, scaled, time) {
+// belly highlight down the underside on every type, plus (segment 0, the
+// head, only) a pair of eyes and an occasionally-flicking forked tongue
+// so the head end reads as a snake's at a glance regardless of which of
+// the 4 types it is.
+//
+// Enemy-art realism pass (direct request: "redesign each one's canvas art
+// to actually look like its real-world namesake... not just a
+// recognizable blob in roughly the right color"): before this, all 4 of
+// Deep Forest's snakes routed through here with `scaled` either on or off
+// and were otherwise visually IDENTICAL but for color/size — exactly the
+// "shared helper at the cost of per-species accuracy" bug the user's own
+// olm/Texas-blind-salamander report (see drawOlm/drawTexasBlindSalamander
+// below) already flagged once before. `pattern` replaces that single
+// boolean with each snake's own real, distinguishing marking:
+//   - 'stripes'  (Gardener Snake): a garter snake's own single most
+//     recognizable trait — a pale dorsal stripe plus two lateral ones
+//     running the full body length, not a blotched or plain snake at all.
+//   - 'blotches' (Anaconda): a real green anaconda's own signature
+//     marking — large dark saddle-shaped blotches down the back,
+//     alternating side to side, with small pale eye-spot flecks along the
+//     flanks — plus a visibly BULKIER cross-section than the other 3,
+//     since anacondas are the most massive-bodied snake species in the
+//     world by weight, not merely "longer" (the earlier "way longer"
+//     follow-up already made it longer and gave it a bigger head radius;
+//     this adds the "thicker barrel of a body" half of that same real
+//     trait, on top of the per-segment pattern).
+//   - 'plated'   (Armored Snake): not a real species — its own spec calls
+//     for a visibly armored/plated look, now 2 overlapping scutes per
+//     segment (was 1) for a clearer armadillo/pangolin-style banded read.
+//   - 'plain'    (Banana Snake): no real "banana snake" species exists to
+//     match a pattern to — kept smooth/unpatterned (its own bright,
+//     uniform yellow is already its real distinguishing trait) rather
+//     than inventing a fictional marking.
+function drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, pattern, time) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
 
+  const bulky = pattern === 'blotches';
+  const bodyRx = bulky ? radius * 1.35 : radius * 1.15;
+  const bodyRy = bulky ? radius * 0.95 : radius * 0.75;
+
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.ellipse(0, 0, radius * 1.15, radius * 0.75, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, bodyRx, bodyRy, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (scaled) {
+  // Every real snake's underside reads paler than its back — drawn first,
+  // underneath, on every type (even Banana Snake's otherwise-unpatterned
+  // body) rather than only on the ones with a pattern.
+  ctx.fillStyle = shadeColor(color, 30);
+  ctx.beginPath();
+  ctx.ellipse(0, bodyRy * 0.45, bodyRx * 0.85, bodyRy * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (pattern === 'plated') {
     ctx.fillStyle = shadeColor(color, -25);
-    const offset = segmentIndex % 2 === 0 ? -radius * 0.25 : radius * 0.25;
-    ctx.save();
-    ctx.translate(offset, -radius * 0.05);
-    ctx.rotate(Math.PI / 4);
-    ctx.fillRect(-radius * 0.3, -radius * 0.3, radius * 0.6, radius * 0.6);
-    ctx.restore();
-  } else {
-    ctx.fillStyle = shadeColor(color, 30);
+    const baseOffset = segmentIndex % 2 === 0 ? -radius * 0.3 : radius * 0.3;
+    [-1, 1].forEach((side) => {
+      ctx.save();
+      ctx.translate(baseOffset + side * radius * 0.35, -radius * 0.05);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-radius * 0.26, -radius * 0.26, radius * 0.52, radius * 0.52);
+      ctx.restore();
+    });
+  } else if (pattern === 'stripes') {
+    ctx.strokeStyle = shadeColor(color, 55);
+    ctx.lineWidth = Math.max(1, radius * 0.22);
     ctx.beginPath();
-    ctx.ellipse(0, radius * 0.35, radius * 0.85, radius * 0.3, 0, 0, Math.PI * 2);
+    ctx.moveTo(-bodyRx, 0);
+    ctx.lineTo(bodyRx, 0);
+    ctx.stroke();
+    ctx.strokeStyle = shadeColor(color, 28);
+    ctx.lineWidth = Math.max(1, radius * 0.16);
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(-bodyRx, side * bodyRy * 0.55);
+      ctx.lineTo(bodyRx, side * bodyRy * 0.55);
+      ctx.stroke();
+    });
+  } else if (pattern === 'blotches') {
+    ctx.fillStyle = shadeColor(color, -35);
+    const side = segmentIndex % 2 === 0 ? -1 : 1;
+    ctx.beginPath();
+    ctx.ellipse(side * bodyRx * 0.08, -bodyRy * 0.1, bodyRx * 0.48, bodyRy * 0.58, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e8d44d';
+    ctx.beginPath();
+    ctx.arc(side * bodyRx * 0.55, bodyRy * 0.6, bodyRx * 0.11, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -4624,7 +4694,7 @@ function drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, scale
     ctx.fillStyle = '#1a1a1a';
     [-1, 1].forEach((side) => {
       ctx.beginPath();
-      ctx.arc(radius * 0.6, side * radius * 0.35, radius * 0.12, 0, Math.PI * 2);
+      ctx.arc(bodyRx * 0.55, side * bodyRy * 0.45, radius * 0.12, 0, Math.PI * 2);
       ctx.fill();
     });
     // The tongue only flicks out part of the time, not every frame —
@@ -4633,12 +4703,12 @@ function drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, scale
       ctx.strokeStyle = '#d32f2f';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(radius * 1.1, 0);
-      ctx.lineTo(radius * 1.4, 0);
-      ctx.moveTo(radius * 1.4, 0);
-      ctx.lineTo(radius * 1.55, -radius * 0.12);
-      ctx.moveTo(radius * 1.4, 0);
-      ctx.lineTo(radius * 1.55, radius * 0.12);
+      ctx.moveTo(bodyRx, 0);
+      ctx.lineTo(bodyRx * 1.3, 0);
+      ctx.moveTo(bodyRx * 1.3, 0);
+      ctx.lineTo(bodyRx * 1.45, -radius * 0.12);
+      ctx.moveTo(bodyRx * 1.3, 0);
+      ctx.lineTo(bodyRx * 1.45, radius * 0.12);
       ctx.stroke();
     }
   }
@@ -4650,20 +4720,20 @@ function drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, scale
 // above — these thin wrappers are what MILLIPEDE_BODY's segmentDrawFn
 // actually points at, since that field takes a plain
 // (ctx, x, y, radius, color, heading, segmentIndex, time) function and
-// `scaled` isn't part of that generic signature (only Armored Snake needs
-// it, so it's baked in here per type instead of threaded through the
-// whole shared mechanism for everyone else's benefit).
+// `pattern` isn't part of that generic signature, so each type's own
+// real marking is baked in here instead of threaded through the whole
+// shared mechanism for every caller's benefit.
 function drawGardenerSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
-  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, false, time);
+  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, 'stripes', time);
 }
 function drawBananaSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
-  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, false, time);
+  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, 'plain', time);
 }
 function drawArmoredSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
-  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, true, time);
+  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, 'plated', time);
 }
 function drawAnacondaSegment(ctx, x, y, radius, color, heading, segmentIndex, time) {
-  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, false, time);
+  drawSnakeSegment(ctx, x, y, radius, color, heading, segmentIndex, 'blotches', time);
 }
 
 // Electric Eel's own segment — shares drawSnakeSegment's basic "elongated
