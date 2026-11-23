@@ -84,25 +84,42 @@ test('reaching tier 4 on ANY of the 3 paths grants the option, not just path 0',
 
 test('the option names the right Prodigy per base type, at its own real cost', () => {
   const game = loadFullGameContext();
+  // Costs read from TOWER_TYPES itself (not hardcoded) — a balance pass
+  // (direct request: "don't overprice the top end") cut all 4 Prodigy
+  // costs by roughly a third; this test only cares that getProdigyOption
+  // reports whatever each Prodigy's own real, current cost is, not a
+  // specific dollar figure that would go stale the next time it's tuned.
   const sunflowerOption = game.getProdigyOption(maxedTower(game, 'sunflower'));
-  assert.deepEqual(sunflowerOption, { typeKey: 'sunlitConductor', name: 'The Sunlit Conductor', cost: 30000 });
+  assert.deepEqual(sunflowerOption, {
+    typeKey: 'sunlitConductor',
+    name: 'The Sunlit Conductor',
+    cost: game.TOWER_TYPES.sunlitConductor.cost,
+  });
 
   game.getTowers().length = 0;
   const roseOption = game.getProdigyOption(maxedTower(game, 'rose'));
-  assert.deepEqual(roseOption, { typeKey: 'mangler', name: 'The Mangler', cost: 45000 });
+  assert.deepEqual(roseOption, {
+    typeKey: 'mangler',
+    name: 'The Mangler',
+    cost: game.TOWER_TYPES.mangler.cost,
+  });
 
   game.getTowers().length = 0;
   const mushroomOption = game.getProdigyOption(maxedTower(game, 'mushroom'));
-  assert.deepEqual(mushroomOption, { typeKey: 'fungalMess', name: 'The Fungal Mess', cost: 60000 });
+  assert.deepEqual(mushroomOption, {
+    typeKey: 'fungalMess',
+    name: 'The Fungal Mess',
+    cost: game.TOWER_TYPES.fungalMess.cost,
+  });
 });
 
-test('Corpse Flower\'s maxed option is its own Prodigy, Amorphophallus titanum, at $100,000', () => {
+test("Corpse Flower's maxed option is its own Prodigy, Amorphophallus titanum, at its own real (current) cost", () => {
   const game = loadFullGameContext();
   const tower = maxedTower(game, 'corpseFlower');
   assert.deepEqual(game.getProdigyOption(tower), {
     typeKey: 'amorphophallusTitanum',
     name: 'Amorphophallus titanum',
-    cost: 100000,
+    cost: game.TOWER_TYPES.amorphophallusTitanum.cost,
   });
 });
 

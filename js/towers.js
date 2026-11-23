@@ -47,7 +47,17 @@ const TOWER_TYPES = {
             name: 'Solar Ray',
             description:
               'Sunflower turns neon; its ray ignites bugs it hits, dealing burn damage over time.',
-            cost: 1500,
+            // Balance pass (direct request: "review cost-to-value across
+            // every tier... a player never feels tier 3->4 is a worse
+            // deal than tier 1->2"). This tier adds no damageMultiplier
+            // of its own (just the flat 10 dps burn) — at the original
+            // $1500 that priced out to roughly 5-6x worse DPS-per-dollar
+            // than every earlier Solar Path tier, the single worst ratio
+            // in the whole tower roster. Cut to $900 (still pricier than
+            // Sun Ray's $650, so the path still escalates) rather than
+            // touching the burn effect itself.
+            cost: 900, // was 1500
+
             effects: {
               color: '#39ff14',
               burn: { damagePerSecond: 10, duration: 5 },
@@ -154,7 +164,10 @@ const TOWER_TYPES = {
             description:
               "A lightning-bolt mark appears on the sunflower's head; attack speed increases another 15%; range " +
               'doubles; periodically arcs a single-target jolt at the closest bug in range.',
-            cost: 300,
+            // Balance pass: a mild trim (part of smoothing Storm Path's
+            // own DPS-per-dollar curve — see Shockwave's own comment
+            // below for the full reasoning).
+            cost: 250, // was 300
             effects: {
               boltMark: true,
               attackIntervalMultiplier: 1 / 1.15,
@@ -170,7 +183,12 @@ const TOWER_TYPES = {
             description:
               'Sunflower doubles in size and gathers spinning storm clouds; attack speed increases another 25%; ' +
               'periodically unleashes a lightning shockwave that strikes every bug in range at once.',
-            cost: 750,
+            // Balance pass (direct request): Storm Path's own DPS-per-
+            // dollar declined tier over tier (Jolt/Shock/Conductor/
+            // Shockwave), with this tier the worst of the four. Trimmed
+            // alongside Conductor's own cost above to flatten the curve
+            // without touching either tier's actual effect.
+            cost: 500, // was 750
             effects: {
               sizeMultiplier: 2,
               attackIntervalMultiplier: 1 / 1.25,
@@ -348,7 +366,10 @@ const TOWER_TYPES = {
               'Rose gains a new ranged attack: shoots a thorn at the nearest bug for 2 damage every 1.5s, ' +
               "alongside its normal attack; the Rose's own (base) attack speed increases 20%. (Also: more " +
               'thorns would grow on the vines here — same inert caveat as Poke.)',
-            cost: 250,
+            // Balance pass: a mild trim — Projectile Path's own DPS-per-
+            // dollar dipped noticeably at tiers 2-3 before recovering at
+            // tier 4; see Even More Projectiles' own comment below.
+            cost: 200, // was 250
             effects: {
               // Introduces the thorn-shot subsystem once, at its own
               // starting damage/cadence — same pattern Thorn Path's `vine`
@@ -363,7 +384,12 @@ const TOWER_TYPES = {
             description:
               'The thorn-shot attack now fires 3 thorns at once instead of 1 (interpreted as "more thorns per ' +
               'volley", not a faster cadence); base attack speed increases another 20%; Rose turns greenish.',
-            cost: 450,
+            // Balance pass (direct request): trimmed alongside
+            // Projectiles' own cost above — this path's $/DPS dipped at
+            // tiers 2-3 before Poison Projectiles' own damage-doubling
+            // tier 4 recovered it, so these two middle tiers were the
+            // actual weak link, not the top end.
+            cost: 350, // was 450
             effects: { thornShotCountMultiplier: 3, attackIntervalMultiplier: 1 / 1.2, color: '#6b8e4e' },
           },
           {
@@ -417,7 +443,12 @@ const TOWER_TYPES = {
               'start until it either collides with a living bug (dealing 3 damage and exploding) or reaches the ' +
               'start (exploding harmlessly off-screen); Mushroom turns darker green, looks a little decayed, ' +
               'and grows taller again.',
-            cost: 750,
+            // Balance pass (direct request): this tier adds no direct
+            // damage number of its own (just the zombify proc chance +
+            // cosmetic growth), priced noticeably higher than Decay's own
+            // $250 opener for comparatively little measurable combat
+            // value. Trimmed; the proc mechanic itself is untouched.
+            cost: 550, // was 750
             effects: { zombifyChance: 0.2, zombieExplosionDamage: 3, color: '#2e7d32', capHeightMultiplier: 1.15 },
           },
           {
@@ -568,7 +599,12 @@ const TOWER_TYPES = {
             description:
               'Every second, each bug within range has a 30% chance to stop for 5 seconds. One-time effect: the ' +
               'instant this is bought, every other tower currently in range is destroyed — no refund.',
-            cost: 5000,
+            // Balance pass (direct request: "don't overprice the top
+            // end"): this tier already carries a built-in cost beyond its
+            // dollar price (it destroys every other tower in range, no
+            // refund), on top of being the single priciest tier in the
+            // whole path. Trimmed to better reflect that real total cost.
+            cost: 4000, // was 5000
             effects: { infectStun: { chance: 0.3, duration: 5 }, consumeTowersInRange: true },
           },
         ],
@@ -627,7 +663,11 @@ const TOWER_TYPES = {
             name: 'Eminent Chamber',
             description:
               'Corpse Flower glows, and the gas around it grows and now deals 5 damage every 0.2s (25 dps); its own attack becomes 30/sec.',
-            cost: 8500,
+            // Balance pass (direct request): Hazard Path's own DPS-per-
+            // dollar declined tier over tier, this one and Gas Leak below
+            // the worst of the four — trimmed together to flatten the
+            // curve, without touching either tier's attack/gas numbers.
+            cost: 6500, // was 8500
             effects: {
               attackDamage: 30,
               glow: '#8bc34a',
@@ -638,7 +678,10 @@ const TOWER_TYPES = {
             name: 'Gas Leak',
             description:
               'Corpse Flower grows taller, turns yellow, and glows more; its gas turns bright yellow and now deals 7 damage every 0.2s (35 dps); its own attack becomes 45/sec.',
-            cost: 15000,
+            // Balance pass (direct request: "don't overprice the top
+            // end") — see Eminent Chamber's own comment above for the
+            // full reasoning; this was the worst $/DPS tier in the path.
+            cost: 11000, // was 15000
             effects: {
               attackDamage: 45,
               color: '#c9a227',
@@ -705,7 +748,10 @@ const TOWER_TYPES = {
             name: 'Acidtonics',
             description:
               'The acid turns red and the plant starts growing extra petals, turning darker; the slow now reaches 35% and the acid deals 15 damage, with its base attack dealing 20 damage.',
-            cost: 8500,
+            // Balance pass (direct request): trimmed alongside
+            // Dissolvable Mixture's own cost below — see its comment for
+            // the full reasoning.
+            cost: 6500, // was 8500
             effects: {
               attackDamage: 20,
               color: '#331208',
@@ -716,7 +762,14 @@ const TOWER_TYPES = {
             name: 'Dissolvable Mixture',
             description:
               'The acid glows red and the flower grows more petals and taller; the acid now lasts 7 seconds, still dealing 15 damage and a 35% slow, with its base attack still dealing 20 damage. The acid is its own separate projectile, fired once every 2 seconds.',
-            cost: 15000,
+            // Balance pass (direct request: "don't overprice the top
+            // end"): this tier adds neither more attack damage nor more
+            // acid damage — only +2s of slow duration — so at the
+            // original $15000 it priced out to literally zero marginal
+            // DPS-per-dollar, the single worst value in the whole
+            // roster. Cut substantially; the slow-duration effect itself
+            // is untouched.
+            cost: 8000, // was 15000
             effects: {
               attackDamage: 20,
               glow: '#ff5252',
@@ -767,14 +820,18 @@ const TOWER_TYPES = {
             name: 'Giantness',
             description:
               'Corpse Flower grows taller still and sprouts two more stems, each with its own small flower; base attack damage becomes 70/sec.',
-            cost: 8500,
+            // Balance pass: a mild trim, alongside Titan Arum's own cost
+            // below, to smooth Growth Path's own DPS-per-dollar curve.
+            cost: 7000, // was 8500
             effects: { attackDamage: 70 },
           },
           {
             name: 'Titan Arum',
             description:
               "Corpse Flower's flowers all turn purple and it deals a lot more damage; base attack damage becomes 120/sec.",
-            cost: 15000,
+            // Balance pass (direct request: "don't overprice the top
+            // end") — see Giantness' own comment above.
+            cost: 12000, // was 15000
             effects: { attackDamage: 120, color: '#6a1b9a' },
           },
         ],
@@ -852,7 +909,10 @@ const TOWER_TYPES = {
             description:
               'Enemies hit slow down a brutal 90%; Arctic Willow deals more damage, grows taller again, and gains ' +
               'an icicle ring that circles around it.',
-            cost: 1500,
+            // Balance pass (direct request: "don't overprice the top
+            // end") — a modest trim; most of this tier's value is the
+            // slow-strength increase itself (left untouched).
+            cost: 1200, // was 1500
             effects: { slow: { multiplier: 0.1, duration: 3 }, damageMultiplier: 1.6, hasIcicleRing: true },
           },
         ],
@@ -934,7 +994,10 @@ const TOWER_TYPES = {
             description:
               'The plant starts glowing purple and gains ice cubes on its body. The freeze now deals 5 damage ' +
               'every quarter-second, and the base attack deals 9 damage.',
-            cost: 650,
+            // Balance pass: a mild trim, alongside Cryo-fracture's own
+            // cost below, to smooth Brittle Path's own DPS-per-dollar dip
+            // at these two middle tiers.
+            cost: 550, // was 650
             effects: { glow: '#9c4dcc', hasIceCubes: true, freeze: { duration: 1, tickDamage: 5 }, attackDamage: 9 },
           },
           {
@@ -942,7 +1005,9 @@ const TOWER_TYPES = {
             description:
               'Arctic Willow grows bigger, still glowing purple. The freeze now deals a devastating 10 damage ' +
               'every quarter-second, and the base attack deals 12 damage.',
-            cost: 1500,
+            // Balance pass (direct request) — see Fractured Ice's own
+            // comment above.
+            cost: 1300, // was 1500
             effects: { sizeMultiplier: 1.2, freeze: { duration: 1, tickDamage: 10 }, attackDamage: 12 },
           },
         ],
@@ -975,7 +1040,15 @@ const TOWER_TYPES = {
   // the whole point of spending real money on an "ultimate" upgrade.
   sunlitConductor: {
     name: 'The Sunlit Conductor',
-    cost: 30000, // the price of the Prodigy UPGRADE itself — see getProdigyOption() in game.js
+    // Balance pass (direct request: "don't overprice the top end... clearly
+    // premium but still attainable with normal late-game cash flow"). The
+    // original $30k/$45k/$60k/$100k ladder priced every Prodigy at 8-25x
+    // the full cost of maxing the base tower's own best path (e.g. a
+    // maxed Fire Path Sunflower is well under $4,000 all in) — cut by
+    // roughly a third across all 4 Prodigies, keeping the same relative
+    // ladder (Conductor cheapest, Titan Arum priciest) so each still
+    // reads as a genuine, clearly-premium step up, not a minor add-on.
+    cost: 20000, // was 30000 — the price of the Prodigy UPGRADE itself, see getProdigyOption() in game.js
     baseStats: {
       damage: 150, // was 65
       size: 32,
@@ -988,7 +1061,7 @@ const TOWER_TYPES = {
   },
   mangler: {
     name: 'The Mangler',
-    cost: 45000,
+    cost: 28000, // was 45000 — balance pass, see sunlitConductor's own comment above
     baseStats: {
       damage: 100, // was 40
       size: 30,
@@ -1008,7 +1081,7 @@ const TOWER_TYPES = {
   },
   fungalMess: {
     name: 'The Fungal Mess',
-    cost: 60000,
+    cost: 38000, // was 60000 — balance pass, see sunlitConductor's own comment above
     baseStats: {
       damage: 130, // was 50
       size: 30,
@@ -1033,10 +1106,14 @@ const TOWER_TYPES = {
   // this"): Corpse Flower never got one in the original Prodigy rollout
   // (see getProdigyOption()'s own comment in game.js, and the now-
   // outdated "Corpse Flower never gets a Prodigy option" test this change
-  // also updates) — this is that missing 4th Prodigy. $100,000 — the
-  // costliest tower in the game, roughly double The Fungal Mess's
-  // $60,000, matching the user's own literal number rather than following
-  // the other 3 Prodigies' $30k/$45k/$60k ladder.
+  // also updates) — this is that missing 4th Prodigy. Originally $100,000
+  // (the user's own literal number, roughly double The Fungal Mess's then-
+  // $60,000, rather than following the other 3 Prodigies' $30k/$45k/$60k
+  // ladder) — brought down to $65,000 in a later balance pass (direct
+  // request: "don't overprice the top end... still attainable with
+  // normal late-game cash flow"), alongside a matching ~1/3 cut to the
+  // other 3 Prodigies above, while keeping this one clearly the costliest
+  // of the 4.
   //
   // Three things the spec called for, each its own mechanic:
   // 1. A giant corpse flower that "looks like" the reference photo — a
@@ -1057,13 +1134,13 @@ const TOWER_TYPES = {
   //    updateTowerBloom()/spawnBloomAcidProjectile() in game.js.
   amorphophallusTitanum: {
     name: 'Amorphophallus titanum',
-    cost: 100000,
+    cost: 65000, // was 100000 — balance pass, see the comment above this tower
     baseStats: {
       damage: 200,
       size: 40, // the largest Prodigy — "giant" is explicit in the spec
       color: '#5c1a3d', // deep maroon/burgundy, matching the reference photo's spathe
       range: 220,
-      attackInterval: 0.4, // 200 damage every 0.4s = 500 dps base — the highest base dps of any tower, matching its $100,000 price
+      attackInterval: 0.4, // 200 damage every 0.4s = 500 dps base — the highest base dps of any tower, matching its being the priciest Prodigy
     },
     // See updateTowerGasRing() in game.js — ticks on the same
     // GAS_CLOUD_TICK_INTERVAL cadence as Hazard Path's gasCloud, but only
