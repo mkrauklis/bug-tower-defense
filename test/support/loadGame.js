@@ -261,6 +261,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       // specific texture functions/data directly.
       drawWaterShimmer, WHIRLPOOL_SHIMMER_SPECKS, PUDDLE_SHIMMER_UNIT_SPECKS,
       drawMudPuddle, renderWhirlpoolCaustics, renderCavesPathEffects, renderMarshDecor,
+      // Texture pass, part 3 (foliage/rock depth shading): lets a test
+      // call applyBlobShading() directly and confirm every touched decor
+      // function still renders without throwing.
+      applyBlobShading, drawMapTree, drawMapBush, drawMangrove, drawSandstoneFormation,
+      drawOceanRock, drawSnowBoulder, drawObsidianRock, drawCaveFormation, drawHollowTree, drawHollowBush,
       getMapPaths: () => MAP_PATHS,
       getSelectedMap: () => selectedMap,
       setSelectedMap: (map) => { selectedMap = map; },

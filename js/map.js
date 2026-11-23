@@ -42,6 +42,30 @@ function strokeMapPath(ctx, waypoints) {
 // just regrouped under a terrain theme rather than being the only map).
 // ---------------------------------------------------------------------------
 
+// Texture pass, part 3 (direct request, relayed from the peer session:
+// "Trees/bushes/rock formations/stalagmites on every map: more depth —
+// shading/highlight variation within the shape instead of one flat color
+// per foliage blob, so they read as having volume" — in the same
+// pixelated-chunky-block style the rest of this pass uses, per the
+// direct follow-up that landed before this part was built). A small
+// cluster of light blocks on the upper-left + dark blocks on the
+// lower-right of any roughly round/blob decor shape — trees, bushes,
+// rock formations, stalagmites across every map — standing in for a
+// directional light source without a real gradient. Cheap (6 fillRect
+// calls) and reused everywhere rather than a bespoke shading pass per
+// decor function.
+function applyBlobShading(ctx, x, y, r) {
+  const blockSize = Math.max(1.5, r * 0.12);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+  [[-0.3, -0.35], [-0.15, -0.5], [-0.45, -0.18]].forEach(([dx, dy]) => {
+    ctx.fillRect(x + dx * r - blockSize / 2, y + dy * r - blockSize / 2, blockSize, blockSize);
+  });
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+  [[0.3, 0.35], [0.45, 0.18], [0.15, 0.5]].forEach(([dx, dy]) => {
+    ctx.fillRect(x + dx * r - blockSize / 2, y + dy * r - blockSize / 2, blockSize, blockSize);
+  });
+}
+
 function drawMapTree(ctx, x, y, r) {
   ctx.fillStyle = '#2e1f14';
   ctx.fillRect(x - r * 0.15, y, r * 0.3, r * 0.9);
@@ -61,6 +85,8 @@ function drawMapTree(ctx, x, y, r) {
   ctx.beginPath();
   ctx.arc(x - r * 0.3, y - r * 0.6, r * 0.35, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y - r * 0.4, r);
 }
 
 function drawMapBush(ctx, x, y, r) {
@@ -74,6 +100,8 @@ function drawMapBush(ctx, x, y, r) {
   ctx.beginPath();
   ctx.arc(x, y - r * 0.3, r * 0.75, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y - r * 0.1, r);
 }
 
 function drawGrassTuft(ctx, x, y) {
@@ -320,6 +348,8 @@ function drawMangrove(ctx, x, y, r) {
   ctx.beginPath();
   ctx.arc(x - r * 0.2, y - r * 0.8, r * 0.3, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y - r * 0.5, r);
 }
 
 const MARSHLAND_WAYPOINTS = [
@@ -493,6 +523,8 @@ function drawSandstoneFormation(ctx, x, y, r) {
   ctx.beginPath();
   ctx.ellipse(x - r * 0.1, y - r * 0.35, r * 0.3, r * 0.18, -0.2, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y, r);
 }
 
 // Marks one of Savanah's two independent goals (each path now ends at
@@ -978,6 +1010,8 @@ function drawOceanRock(ctx, x, y, r) {
   ctx.beginPath();
   ctx.ellipse(x - r * 0.1, y - r * 0.3, r * 0.25, r * 0.15, -0.2, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y, r);
 }
 
 function drawShell(ctx, x, y, size) {
@@ -1200,6 +1234,8 @@ function drawSnowBoulder(ctx, x, y, r) {
   ctx.beginPath();
   ctx.ellipse(x - r * 0.1, y - r * 0.42, r * 0.32, r * 0.16, -0.2, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y, r);
 }
 
 // Marks one of Tundra's two independent goals (each path ends at its own
@@ -1409,6 +1445,8 @@ function drawObsidianRock(ctx, x, y, r) {
   ctx.beginPath();
   ctx.ellipse(x - r * 0.15, y - r * 0.4, r * 0.18, r * 0.06, -0.3, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y, r);
 }
 
 // A small cracked vent in the obsidian with a faint, slowly rising wisp of
@@ -1687,6 +1725,8 @@ function drawCaveFormation(ctx, x, y, size, hanging) {
   ctx.beginPath();
   ctx.ellipse(x - size * 0.1, y - size * 0.2, size * 0.08, size * 0.22, 0.15, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y, size * 0.55);
 }
 
 // Angular, faceted crystal spikes (the request's own called-out trait:
@@ -1839,6 +1879,8 @@ function drawHollowTree(ctx, x, y, r) {
   ctx.beginPath();
   ctx.arc(x - r * 0.3, y - r * 0.6, r * 0.35, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y - r * 0.4, r);
 }
 
 function drawHollowBush(ctx, x, y, r) {
@@ -1852,6 +1894,8 @@ function drawHollowBush(ctx, x, y, r) {
   ctx.beginPath();
   ctx.arc(x, y - r * 0.3, r * 0.75, 0, Math.PI * 2);
   ctx.fill();
+
+  applyBlobShading(ctx, x, y - r * 0.1, r);
 }
 
 const FALLEN_LEAF_COLORS = ['#c9742e', '#a84a28', '#d4942f'];
