@@ -2342,6 +2342,12 @@ let menuTrophyEnemies = null;
 // simulated. Advanced by loop() only while gameState is 'hollowSplash'.
 let hollowSplashTime = 0;
 
+// Same real-elapsed-time role as hollowSplashTime above, but for the main
+// menu itself — drives the pulsing glow on the "Events" button's own
+// fancy title treatment (see renderMenu). Advanced by loop() only while
+// gameState is 'menu', alongside updateMenuTrophyEnemies().
+let menuGlowTime = 0;
+
 // A defeated key could be from either map's roster — looked up against
 // both (boss keys are already terrain-prefixed, so only one ever matches)
 // rather than assuming it came from whichever map is currently active.
@@ -2517,13 +2523,17 @@ function renderMenu(ctx) {
   const x = logicalWidth / 2 - buttonWidth / 2;
 
   [
-    { id: 'start:play', label: 'Play', description: 'Pick a map, then a mode, and start defending.' },
-    // "Adventures" (direct request): a new top-level entry alongside
-    // Play, not a 3rd option tucked inside Map/Mode select — it skips
-    // straight to the one special-event stage (The Hollow Event) rather
-    // than offering a map or mode choice. See activateRegion()'s own
-    // 'start:adventure' handler.
-    { id: 'start:adventure', label: 'Adventures', description: 'A single special event stage: The Hollow Event.' },
+    { id: 'start:play', label: 'Play', description: 'Pick a map, then a mode, and start defending.', accent: '#8bc34a' },
+    // "Events" (direct request, relayed from the peer session — renamed
+    // from this entry's original "Adventures" label, and given its own
+    // fiery hover accent plus a jagged glowing title treatment on the
+    // button label itself, echoing drawHollowEventLogo()'s cover-art
+    // title further down this file): a top-level entry alongside Play
+    // that skips straight to the one special-event stage (The Hollow
+    // Event) rather than offering a map or mode choice. See
+    // activateRegion()'s own 'start:adventure' handler — the internal id
+    // is unchanged, only the on-screen label/styling moved.
+    { id: 'start:adventure', label: 'Events', description: 'A single special event stage: The Hollow Event.', accent: '#ff6e14', fancy: true },
   ].forEach((entry, i) => {
     const y = startY + i * (buttonHeight + gap);
     const hovered = hoverRegion && hoverRegion.id === entry.id;
@@ -2533,19 +2543,35 @@ function renderMenu(ctx) {
     ctx.fill();
     uiButtonBevel(ctx, x, y, buttonWidth, buttonHeight, 8);
     if (hovered) {
-      ctx.shadowColor = 'rgba(139, 195, 74, 0.5)';
+      ctx.shadowColor = `${entry.accent}80`;
       ctx.shadowBlur = 12;
     }
-    ctx.strokeStyle = hovered ? '#8bc34a' : '#3a4050';
+    ctx.strokeStyle = hovered ? entry.accent : (entry.fancy ? '#5a3420' : '#3a4050');
     ctx.lineWidth = hovered ? 2 : 1;
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = '#f0f0f0';
-    ctx.font = 'bold 17px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(entry.label, x + 18, y + 12);
+    if (entry.fancy) {
+      // A pulsing glow plus a dark offset "carved" backing — the same
+      // jagged-title-card technique drawHollowEventLogo() uses for the
+      // splash screen's own title, scaled down to button size instead
+      // of a full cover-art logo.
+      const pulse = 0.5 + 0.5 * Math.sin(menuGlowTime * 2.2);
+      ctx.font = "italic bold 19px Impact, 'Arial Narrow', sans-serif";
+      ctx.shadowColor = `rgba(255, ${110 + Math.round(pulse * 50)}, 20, ${0.8 + pulse * 0.2})`;
+      ctx.shadowBlur = 10 + pulse * 6;
+      ctx.fillStyle = '#2b0a02';
+      ctx.fillText(entry.label, x + 20, y + 10);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffb74d';
+      ctx.fillText(entry.label, x + 18, y + 9);
+    } else {
+      ctx.fillStyle = '#f0f0f0';
+      ctx.font = 'bold 17px sans-serif';
+      ctx.fillText(entry.label, x + 18, y + 12);
+    }
 
     ctx.font = '12px sans-serif';
     const lines = uiWrapText(ctx, entry.description, buttonWidth - 36);
@@ -3778,8 +3804,9 @@ function loop(timestamp) {
       update(FIXED_DT);
       accumulator -= FIXED_DT;
     }
-  } else if (gameState === 'menu' && menuTrophyEnemies) {
-    updateMenuTrophyEnemies(frameTime);
+  } else if (gameState === 'menu') {
+    menuGlowTime += frameTime;
+    if (menuTrophyEnemies) updateMenuTrophyEnemies(frameTime);
   } else if (gameState === 'hollowSplash') {
     // The splash's own glow pulses/ember drift (see renderHollowSplash)
     // are cosmetic only, so — same as the menu trophy trail above — this

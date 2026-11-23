@@ -314,6 +314,16 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       renderMapSelect,
       getMapCarouselIndex: () => mapCarouselIndex,
       setMapCarouselIndex: (value) => { mapCarouselIndex = value; },
+      // "Adventures" -> "Events" rename + fancy glowing title treatment
+      // (direct request): lets a test exercise the real renderMenu() draw
+      // code, force the hover state it reads, and control its cosmetic
+      // glow clock the same way getHollowSplashTime above does for the
+      // splash screen's own clock.
+      renderMenu,
+      getHoverRegion: () => hoverRegion,
+      setHoverRegion: (region) => { hoverRegion = region; },
+      getMenuGlowTime: () => menuGlowTime,
+      setMenuGlowTime: (value) => { menuGlowTime = value; },
     };
     `,
     context
