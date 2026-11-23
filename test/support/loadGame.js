@@ -257,6 +257,10 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       // fillThemeBackground actually draws it) rather than only through
       // renderMap()'s own "never throws" coverage.
       buildGrainSpecks, drawGrain, GROUND_GRAIN_SPECKS, fillThemeBackground,
+      // Texture pass, part 2 (water): lets a test exercise the water-
+      // specific texture functions/data directly.
+      drawWaterShimmer, WHIRLPOOL_SHIMMER_SPECKS, PUDDLE_SHIMMER_UNIT_SPECKS,
+      drawMudPuddle, renderWhirlpoolCaustics, renderCavesPathEffects, renderMarshDecor,
       getMapPaths: () => MAP_PATHS,
       getSelectedMap: () => selectedMap,
       setSelectedMap: (map) => { selectedMap = map; },

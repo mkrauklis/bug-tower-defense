@@ -190,7 +190,7 @@ function drawOrganicBlobPath(ctx, cx, cy, r, seed, flatten = 1) {
 const MUD_PUDDLE_OUTER_COLOR = '#0d1c1a';
 const MUD_PUDDLE_INNER_COLOR = '#17362f';
 
-function drawMudPuddle(ctx, x, y, r) {
+function drawMudPuddle(ctx, x, y, r, time = 0) {
   // Seeds the blob's own wobble phase off its position, so two different
   // ponds (different x/y) get visibly different silhouettes "for free"
   // without needing a stored per-pond shape or true randomness.
@@ -203,6 +203,27 @@ function drawMudPuddle(ctx, x, y, r) {
   ctx.fillStyle = MUD_PUDDLE_INNER_COLOR;
   drawOrganicBlobPath(ctx, x, y - r * 0.05, r * 0.82, seed + 0.9, 0.68);
   ctx.fill();
+
+  // Texture pass, part 2 (direct follow-up: "more visible texture/
+  // movement in the fill itself — ripple lines, varying translucency
+  // bands"): a pixelated shimmer scattered across the puddle's own
+  // surface (clipped to its own inner blob so it never spills onto the
+  // surrounding ground), plus 2 slowly pulsing ripple rings — both new,
+  // on top of the single static highlight arc this already had.
+  ctx.save();
+  drawOrganicBlobPath(ctx, x, y - r * 0.05, r * 0.82, seed + 0.9, 0.68);
+  ctx.clip();
+  drawWaterShimmer(ctx, PUDDLE_SHIMMER_UNIT_SPECKS, x, y, '#bfe8d8', Math.max(2, r * 0.045), time, 0.9, r);
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(190, 230, 210, 0.18)';
+  ctx.lineWidth = Math.max(1, r * 0.02);
+  [0.35, 0.55].forEach((rippleT, i) => {
+    const pulse = 0.5 + 0.5 * Math.sin(time * 0.7 + seed + i * 2);
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * rippleT * (0.9 + pulse * 0.1), r * rippleT * (0.9 + pulse * 0.1) * 0.7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  });
 
   // A thin highlight arc so the puddle reads as water, not a flat stain.
   ctx.strokeStyle = 'rgba(200, 220, 180, 0.2)';
@@ -394,10 +415,10 @@ const MARSHLAND_DECOR = {
   cattails: MARSHLAND_CATTAILS,
 };
 
-function renderMarshDecor(ctx, decor) {
+function renderMarshDecor(ctx, decor, time = 0) {
   decor.duckweed.forEach((patch) => drawDuckweedPatch(ctx, patch.x, patch.y, patch.r));
   decor.cattails.forEach((cattail) => drawCattail(ctx, cattail.x, cattail.y, cattail.size));
-  decor.puddles.forEach((puddle) => drawMudPuddle(ctx, puddle.x, puddle.y, puddle.r));
+  decor.puddles.forEach((puddle) => drawMudPuddle(ctx, puddle.x, puddle.y, puddle.r, time));
   decor.lilyPads.forEach((pad) => drawLilyPad(ctx, pad.x, pad.y, pad.r));
   decor.mangroves.forEach((tree) => drawMangrove(ctx, tree.x, tree.y, tree.r));
 }
@@ -772,6 +793,15 @@ function renderWhirlpoolCaustics(ctx, width, height, time) {
     ctx.stroke();
   }
   ctx.restore();
+
+  // Texture pass, part 2 (direct follow-up: "more visible texture/
+  // movement in the fill itself... beyond what you've already done for
+  // 'flowing' look"): a pixelated shimmer layer on top of the smooth
+  // diagonal caustic streaks above — small chunky blocks whose own
+  // brightness travels in a wave, reading as sunlight glinting off a
+  // moving water surface rather than a second copy of the same smooth
+  // streak effect.
+  drawWaterShimmer(ctx, WHIRLPOOL_SHIMMER_SPECKS, 0, 0, '#d8f4ff', 4, time, 1.1);
 }
 
 // --- Whirlpool Easter eggs -------------------------------------------------
@@ -1762,6 +1792,20 @@ function renderCavesPathEffects(ctx, paths, pathWidth, time = 0) {
   ctx.lineDashOffset = -time * 70;
   paths.forEach((path) => strokeMapPath(ctx, path));
 
+  // Texture pass, part 2 (direct follow-up: "more visible texture/
+  // movement in the fill itself... beyond what you've already done for
+  // 'flowing' look"): a 3rd layer of short, squarish dashes (dash length
+  // close to its own line width, rather than a long smooth streak) —
+  // reads as small chunks of current tumbling along the flow, the same
+  // "pixelated, not soft gradient" language the ground/Whirlpool grain
+  // above already follows, applied here via dash geometry instead of
+  // fillRect blocks since this has to hug a curved path.
+  ctx.strokeStyle = 'rgba(220, 255, 255, 0.35)';
+  ctx.lineWidth = Math.max(2, pathWidth * 0.1);
+  ctx.setLineDash([pathWidth * 0.1, pathWidth * 0.22]);
+  ctx.lineDashOffset = -time * 46;
+  paths.forEach((path) => strokeMapPath(ctx, path));
+
   ctx.restore();
 }
 
@@ -1955,6 +1999,52 @@ function drawGrain(ctx, specks, originX, originY, baseColor, cellSize) {
 // layer pre-scaled along with everything else in its own transform, so
 // it still lines up correctly at preview size.
 const GROUND_GRAIN_SPECKS = buildGrainSpecks(280, MAP_WORLD_WIDTH, MAP_WORLD_HEIGHT, 3, 12.9898, 78.233, 45.164);
+
+// Whirlpool's own water-shimmer scatter — different seeds from
+// GROUND_GRAIN_SPECKS above so the two layers' own positions don't just
+// line up on top of each other, and a bigger 4px cell since this covers
+// the whole map (water IS the terrain here), not a sparse accent.
+const WHIRLPOOL_SHIMMER_SPECKS = buildGrainSpecks(200, MAP_WORLD_WIDTH, MAP_WORLD_HEIGHT, 4, 33.74, 91.11, 17.91);
+
+// Marshland's own puddle-shimmer scatter — built once in a NORMALIZED
+// [-1, 1) x [-1, 1) box (buildGrainSpecks' own output shifted to center
+// on 0) rather than one fixed world-space size, since every puddle in
+// MARSHLAND_PUDDLES has its own radius; drawMudPuddle() below scales
+// this same normalized set by its own `r` at draw time instead of
+// needing a separate precomputed scatter per puddle.
+const PUDDLE_SHIMMER_UNIT_SPECKS = buildGrainSpecks(26, 2, 2, 0.07, 51.23, 19.77, 8.46).map((speck) => ({
+  ...speck,
+  x: speck.x - 1,
+  y: speck.y - 1,
+}));
+
+// Texture pass, part 2: water (Marshland/Whirlpool/Caves) — "more visible
+// texture/movement in the fill itself... beyond what you've already done
+// for 'flowing' look," in the same pixelated-chunky-block style as the
+// ground grain above. drawWaterShimmer() reuses a plain grain scatter
+// (any of buildGrainSpecks' own output works — position alone, same as
+// drawGrain) but modulates each speck's alpha with a traveling sine wave
+// instead of a fixed one, so the whole layer reads as moving water
+// catching the light in bands rather than a static speckle — "movement
+// in the fill itself," not just grain sitting still on top of it.
+// Deliberately still plain fillRect blocks (no gradients/blur), same
+// "chunky, not smooth" requirement the ground grain follows.
+// `scale` (default 1) multiplies each speck's own x/y before placing it —
+// lets a caller reuse one small NORMALIZED scatter (PUDDLE_SHIMMER_UNIT_
+// SPECKS below) against many differently-sized shapes without allocating
+// a freshly-scaled copy of the array every frame.
+function drawWaterShimmer(ctx, specks, originX, originY, tint, cellSize, time, speed, scale = 1) {
+  ctx.save();
+  ctx.fillStyle = tint;
+  specks.forEach((speck) => {
+    const px = speck.x * scale;
+    const py = speck.y * scale;
+    const wave = 0.5 + 0.5 * Math.sin(px * 0.03 + py * 0.02 + time * speed);
+    ctx.globalAlpha = speck.alpha * wave * 1.6;
+    ctx.fillRect(originX + px, originY + py, cellSize, cellSize);
+  });
+  ctx.restore();
+}
 
 // ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
