@@ -751,7 +751,24 @@ const HOLLOW_ROSTER = {
     // (27, versus Great White's 24 and Giant Arctic Wolf Spider's 23),
     // the standout-silhouette half of the request's own "standout visual"
     // ask.
-    2: { name: 'The Hollow Crow', speedMultiplier: 0.35, health: 800, color: '#1c1c1c', radius: 27, bounty: 400 },
+    // Stat tweak (direct follow-up request, relayed from the peer
+    // session): "cut its movement speed way down... a real lumbering/
+    // inevitable-feeling final boss" and "multiply its current health by
+    // 20x." speedMultiplier 0.35 -> 0.1 — well below every other boss in
+    // the game (the previous slowest, Electric Eel's 0.22 and Blind
+    // Cavefish's 0.28, both stay faster than this), unambiguously the
+    // slowest thing in the whole roster rather than just "a bit slower."
+    // health 800 -> 16000 (20x), literal. Damage/bounty/armor left
+    // untouched, per the request's own default — the one place this
+    // needed a real judgment call (whether the health change "suddenly
+    // breaks" anything) was update()'s own leak-damage mechanic
+    // (maxHealth-based damage when an enemy reaches the goal): that was
+    // ALREADY effectively "instant game over" at the OLD 800 health
+    // (past PLAYER_STARTING_HEALTH's 500), so 16000 doesn't newly break
+    // anything there — letting the stage's own final boss through was
+    // already meant to be catastrophic, not something this change
+    // introduces.
+    2: { name: 'The Hollow Crow', speedMultiplier: 0.1, health: 16000, color: '#1c1c1c', radius: 27, bounty: 400 },
   },
   order: ['oakleafButterfly', 'deadleafMantis', 'bufftipMoth'],
   orderTier2: ['orbWeaver', 'easternRedBat', 'redEasternScreechOwl'],
