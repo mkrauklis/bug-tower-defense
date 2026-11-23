@@ -266,6 +266,10 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       // function still renders without throwing.
       applyBlobShading, drawMapTree, drawMapBush, drawMangrove, drawSandstoneFormation,
       drawOceanRock, drawSnowBoulder, drawObsidianRock, drawCaveFormation, drawHollowTree, drawHollowBush,
+      // Texture pass, part 4 (tower bodies): lets a test call
+      // applyStemBarkTexture() directly and confirm every touched tower
+      // still renders without throwing.
+      applyStemBarkTexture, drawSunflower, drawRose, drawMushroom, drawCorpseFlower, drawArcticWillow,
       getMapPaths: () => MAP_PATHS,
       getSelectedMap: () => selectedMap,
       setSelectedMap: (map) => { selectedMap = map; },

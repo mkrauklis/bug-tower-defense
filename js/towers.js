@@ -1849,6 +1849,30 @@ function shadeColor(hex, percent) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+// Texture pass, part 4 (direct request, relayed from the peer session:
+// "Tower bodies: similar treatment where it makes sense (bark texture on
+// stems, petal shading, mushroom cap texture, etc.) without undoing the
+// per-path color theming you already built" — in the same pixelated-
+// chunky-block style the rest of this pass uses). A row of short,
+// alternating-side bark ticks along a stem's own rectangle, reading as
+// rough bark grain instead of one flat-colored bar — reused by every
+// stem-bodied tower (Sunflower/Rose/Mushroom/Arctic Willow) rather than
+// a bespoke texture pass per stem. Plain fillRect ticks, no gradients —
+// and drawn in `shadeColor(stemColor, -18)` rather than a fixed color,
+// so it still reads as "this tower's own bark" after a path recolors the
+// stem, never undoing the per-path color theming already built.
+function applyStemBarkTexture(ctx, stemX, stemY, stemWidth, stemHeight, stemColor) {
+  const tickCount = Math.max(2, Math.round(stemHeight / 9));
+  const tickWidth = stemWidth * 0.55;
+  const tickHeight = Math.max(1, stemWidth * 0.18);
+  ctx.fillStyle = shadeColor(stemColor, -18);
+  for (let i = 0; i < tickCount; i += 1) {
+    const ty = stemY + ((i + 0.5) * stemHeight) / tickCount;
+    const tx = i % 2 === 0 ? stemX : stemX + stemWidth - tickWidth;
+    ctx.fillRect(tx, ty - tickHeight / 2, tickWidth, tickHeight);
+  }
+}
+
 // Visuals, kept alongside each tower's data so a new tower type brings its
 // own look with it. Canvas primitives only, no external art. `time` is the
 // game's own deterministic simulation clock (seconds), used for idle
@@ -2185,7 +2209,9 @@ function drawSunflower(ctx, x, y, size, color, glow, time, flashAmount) {
   ctx.lineWidth = 1;
   ctx.fillRect(x - size * 0.08, y, size * 0.16, stemHeight);
   ctx.strokeRect(x - size * 0.08, y, size * 0.16, stemHeight);
+  applyStemBarkTexture(ctx, x - size * 0.08, y, size * 0.16, stemHeight, '#2e7d32');
 
+  ctx.fillStyle = '#2e7d32';
   ctx.beginPath();
   ctx.ellipse(x - size * 0.35, y + stemHeight * 0.5, size * 0.3, size * 0.12, -0.4, 0, Math.PI * 2);
   ctx.fill();
@@ -2226,6 +2252,7 @@ function drawSunflower(ctx, x, y, size, color, glow, time, flashAmount) {
     ctx.arc(x, y, size * 0.55 * (1 - i * 0.22), 0, Math.PI * 2);
     ctx.fill();
   });
+  applyBlobShading(ctx, x, y, size * 0.6);
 
   ctx.restore();
 }
@@ -2256,7 +2283,9 @@ function drawRose(ctx, x, y, size, color, glow, time, flashAmount, tallStem, bod
   ctx.lineWidth = 1;
   ctx.fillRect(x - size * 0.07, y, size * 0.14, stemHeight);
   ctx.strokeRect(x - size * 0.07, y, size * 0.14, stemHeight);
+  applyStemBarkTexture(ctx, x - size * 0.07, y, size * 0.14, stemHeight, '#2e7d32');
 
+  ctx.fillStyle = '#2e7d32';
   ctx.beginPath();
   ctx.ellipse(x - size * 0.3, y + stemHeight * 0.45, size * 0.26, size * 0.11, -0.5, 0, Math.PI * 2);
   ctx.fill();
@@ -2305,6 +2334,7 @@ function drawRose(ctx, x, y, size, color, glow, time, flashAmount, tallStem, bod
   ctx.beginPath();
   ctx.arc(x, y, size * 0.14, 0, Math.PI * 2);
   ctx.fill();
+  applyBlobShading(ctx, x, y, size * 0.5);
 
   ctx.restore();
 }
@@ -2503,6 +2533,12 @@ function drawMushroom(
   ctx.beginPath();
   ctx.ellipse(x, y, capWidth, size * 0.14, 0, 0, Math.PI, false);
   ctx.fill();
+
+  // Texture pass, part 4 (direct request: "mushroom cap texture") — the
+  // same light/dark blob-shading cluster map.js's own foliage/rock decor
+  // uses, reused here for the cap's own dome rather than a bespoke
+  // texture; still reads fine on a dome, not just a flat circle.
+  applyBlobShading(ctx, x, y - size * 0.15, capWidth * 0.7);
 
   // Range tier and up: extra gill lines fanning out under the (now wider)
   // cap — the detail the "Range" tier's description asks for alongside
@@ -2871,6 +2907,11 @@ function drawCorpseFlowerHead(ctx, x, y, size, color, hasSpikes, acidTier = 0) {
     drawCorpseFlowerPetal(ctx, size, color);
     ctx.restore();
   }
+  // Texture pass, part 4 (direct request: "petal shading... without
+  // undoing the per-path color theming") — the same light/dark cluster
+  // map.js's own foliage/rock decor uses, giving the petals some overall
+  // volume on top of their own existing flat per-petal color.
+  applyBlobShading(ctx, x, y, size * 1.1);
 
   // Acidic Mixture Path tier 3+: smaller extra petals growing into the
   // gaps between the original 5 — "the plant starts growing extra
@@ -3005,6 +3046,7 @@ function drawCorpseFlower(
   ctx.lineWidth = 1;
   ctx.fillRect(x - size * 0.1, y, size * 0.2, stemHeight);
   ctx.strokeRect(x - size * 0.1, y, size * 0.2, stemHeight);
+  applyStemBarkTexture(ctx, x - size * 0.1, y, size * 0.2, stemHeight, '#4a3a2a');
 
   ctx.translate(x, y);
   ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
@@ -3224,6 +3266,7 @@ function drawArcticWillow(
   ctx.lineWidth = 1;
   ctx.fillRect(x - size * 0.07, y, size * 0.14, stemHeight);
   ctx.strokeRect(x - size * 0.07, y, size * 0.14, stemHeight);
+  applyStemBarkTexture(ctx, x - size * 0.07, y, size * 0.14, stemHeight, '#6d4c35');
 
   ctx.fillStyle = '#4a7c3a';
   ctx.beginPath();
