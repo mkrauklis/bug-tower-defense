@@ -1249,6 +1249,100 @@ function updateTowerVines(tower, x, y, deltaSeconds) {
   }
 }
 
+// Open-field rework, part 2: autonomous tower movement. "The user didn't
+// specify player-directed control, so default to autonomous movement —
+// towers reposition themselves to stay useful... rather than needing
+// manual player control" (peer's own stated default, confirmed via the
+// relayed request). A tower chases the nearest living enemy within a
+// generous "interest" radius (its own range x2.5), slowing to a stop
+// once within its own effective attack range rather than walking right
+// into melee with it; with nothing nearby, it drifts — more slowly,
+// since there's nothing urgent — toward whatever point on the straight
+// line from the spawn edge's own midpoint to the goal structure is
+// closest to it, so an idle tower naturally migrates toward where the
+// action will be instead of standing wherever it was first placed
+// forever. Returns null when there's nothing to walk toward right now
+// (already close enough to its target, or already sitting on the
+// corridor), which updateTowerMovement() below reads as "hold position."
+function getTowerMovementTarget(tower) {
+  // Defensive, not just an optimization — MAP_GOAL/MAP_SPAWN_EDGE are
+  // null on every map before Deep Forest (see setActiveMap(), map.js),
+  // so reading them further down would throw if this were ever called
+  // directly on one rather than only through update()'s own outer
+  // `if (MAP_OPEN_FIELD)` guard.
+  if (!MAP_OPEN_FIELD) return null;
+  const interestRadius = tower.stats.range * 2.5;
+  let nearestEnemy = null;
+  let nearestDist = Infinity;
+  activeEnemies.forEach((enemy) => {
+    if (enemy.health <= 0 || !enemy.spawned) return;
+    const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
+    if (dist < interestRadius && dist < nearestDist) {
+      nearestEnemy = enemy;
+      nearestDist = dist;
+    }
+  });
+
+  if (nearestEnemy) {
+    const standoff = tower.stats.range * 0.7;
+    if (nearestDist <= standoff) return null; // already close enough to attack from — hold position
+    const dx = nearestEnemy.x - tower.x;
+    const dy = nearestEnemy.y - tower.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    return { x: nearestEnemy.x - (dx / dist) * standoff, y: nearestEnemy.y - (dy / dist) * standoff, idle: false };
+  }
+
+  const spawnMidX = (MAP_SPAWN_EDGE.x1 + MAP_SPAWN_EDGE.x2) / 2;
+  const spawnMidY = (MAP_SPAWN_EDGE.y1 + MAP_SPAWN_EDGE.y2) / 2;
+  const dx = MAP_GOAL.x - spawnMidX;
+  const dy = MAP_GOAL.y - spawnMidY;
+  const lengthSq = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((tower.x - spawnMidX) * dx + (tower.y - spawnMidY) * dy) / lengthSq));
+  const targetX = spawnMidX + t * dx;
+  const targetY = spawnMidY + t * dy;
+  if (Math.hypot(targetX - tower.x, targetY - tower.y) < 4) return null; // already on the corridor — hold position
+  return { x: targetX, y: targetY, idle: true };
+}
+
+// A single-frame "try the straight step, then each sideways slide, then
+// just hold still" check is enough for a slow-moving tower reacting to a
+// handful of static logs — no pathfinding needed, since unlike an enemy
+// (which must eventually arrive somewhere) a stuck tower can just wait
+// for its own target to change next frame. Obstacles block tower
+// movement exactly like they block enemy movement — the follow-up's own
+// stated rule ("towers can't walk through them either once mobile").
+const TOWER_OBSTACLE_CLEARANCE = 10;
+
+function updateTowerMovement(tower, deltaSeconds) {
+  const target = getTowerMovementTarget(tower);
+  if (!target) return; // nothing to walk toward right now — legs stay idle (walkPhase untouched)
+
+  const speed = getTowerWalkSpeed(tower.type) * (target.idle ? 0.5 : 1); // idle drift is calmer than actually closing on a target
+  const dx = target.x - tower.x;
+  const dy = target.y - tower.y;
+  const dist = Math.hypot(dx, dy);
+  const step = Math.min(dist, speed * deltaSeconds);
+  if (step <= 0) return;
+  const dirX = dx / dist;
+  const dirY = dy / dist;
+
+  const visualSize = getTowerVisualSize(tower);
+  const margin = visualSize * 0.4 + TOWER_OBSTACLE_CLEARANCE;
+  const blocked = (x, y) => MAP_OBSTACLES.some((obstacle) => distanceToObstacle(x, y, obstacle) < margin);
+
+  const candidates = [
+    { x: tower.x + dirX * step, y: tower.y + dirY * step }, // straight toward the target
+    { x: tower.x - dirY * step, y: tower.y + dirX * step }, // slide perpendicular, one way
+    { x: tower.x + dirY * step, y: tower.y - dirX * step }, // slide perpendicular, the other way
+  ];
+  const next = candidates.find((candidate) => !blocked(candidate.x, candidate.y));
+  if (!next) return; // boxed in this frame — just hold position, try again next frame
+
+  tower.x = Math.max(visualSize, Math.min(WORLD_WIDTH - visualSize, next.x));
+  tower.y = Math.max(visualSize, Math.min(WORLD_HEIGHT - visualSize, next.y));
+  tower.walkPhase += deltaSeconds * (speed / 6); // legs animate faster for a faster-walking tower
+}
+
 function update(deltaSeconds) {
   animationTime += deltaSeconds;
   updateWildlife(wildlife, deltaSeconds);
@@ -1288,6 +1382,11 @@ function update(deltaSeconds) {
     }
   }
 
+  // Open-field rework, part 2: towers reposition themselves BEFORE
+  // attacking this same frame, so a tower that just walked into range
+  // can fire immediately rather than waiting a frame. No-op on every
+  // map before Deep Forest.
+  if (MAP_OPEN_FIELD) towers.forEach((tower) => updateTowerMovement(tower, deltaSeconds));
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
   updateProjectiles(deltaSeconds);
   updateConsumedTowerEffects(deltaSeconds);

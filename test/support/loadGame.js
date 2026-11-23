@@ -243,6 +243,8 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getRound: () => round,
       getGameSpeed: () => gameSpeed,
       getTowers: () => towers,
+      setTowers: (value) => { towers = value; },
+      findTowerAt,
       startGame, GAME_MODES,
       getGameState: () => gameState,
       getCurrentMode: () => currentMode,
@@ -339,6 +341,14 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       setHoverRegion: (region) => { hoverRegion = region; },
       getMenuGlowTime: () => menuGlowTime,
       setMenuGlowTime: (value) => { menuGlowTime = value; },
+      // Open-field rework, part 2 (walking towers): lets a test drive the
+      // actual movement/legs code directly rather than only inferring it
+      // through update()'s side effects.
+      updateTowerMovement, getTowerMovementTarget, getTowerWalkSpeed, getTowerLegCount, applyWalkingLegs,
+      getIsOpenField: () => MAP_OPEN_FIELD,
+      getMapGoal: () => MAP_GOAL,
+      getMapObstacles: () => MAP_OBSTACLES,
+      getMapSpawnEdge: () => MAP_SPAWN_EDGE,
     };
     `,
     context

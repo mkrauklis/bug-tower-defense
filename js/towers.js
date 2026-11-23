@@ -1288,6 +1288,13 @@ function createTower(typeKey) {
     chosenPath: null,
     upgradesPurchased: 0, // count of upgrades bought within the chosen path
     stats: { ...type.baseStats },
+    // Open-field rework, part 2: this tower's own walk-cycle clock, in
+    // radians — advanced by game.js's updateTowerMovement() only while
+    // the tower is actually moving (so an idle/stationary tower holds a
+    // static leg pose instead of marching in place), and read by
+    // applyWalkingLegs() (this file) to drive the alternating-stride leg
+    // animation. 0 and unused on every map before Deep Forest.
+    walkPhase: 0,
     // Lifetime damage this specific placed tower has personally inflicted
     // (direct request: a running per-tower damage counter, shown in the
     // Selected Tower panel). Incremented in exactly one place — damageEnemy()
@@ -1873,6 +1880,89 @@ function applyStemBarkTexture(ctx, stemX, stemY, stemWidth, stemHeight, stemColo
   }
 }
 
+// ---------------------------------------------------------------------------
+// Open-field rework, part 2 (core mechanic replacement, confirmed with the
+// user as "replace it everywhere"): "Towers (plants) are no longer static
+// placements — they get legs and walk around the map, each tower type
+// with its own distinct movement speed (slow heavy towers vs. faster
+// light ones, your judgment on which fits which)." Built on Deep Forest
+// only, same as part 1 (goal structure/obstacles/enemy movement) — every
+// other map's towers stay completely static, gated the same way, on
+// MAP_OPEN_FIELD (see updateTowerMovement()/renderTower() in game.js).
+// ---------------------------------------------------------------------------
+
+// Judgment call, documented per the peer's own request: a stouter/denser
+// plant is slower and planted on fewer, thicker legs; a lighter one is
+// faster and more skittery on more, thinner legs. Keyed by the 5 base
+// tower types; a Prodigy (sunlitConductor/mangler/fungalMess/
+// amorphophallusTitanum) looks up its own base type's numbers via
+// PRODIGY_BASE_TYPE below rather than getting its own bespoke entry —
+// same "rarer, end-game-only, already has its own elaborate effects"
+// scope cut the texture pass made for these 4 earlier, now applied to
+// movement/legs too.
+const TOWER_WALK_SPEED = {
+  sunflower: 24, // light, open bloom on a thin stem — the fastest walker
+  rose: 18, // vines/thorns add some heft, but still a flexible stem
+  mushroom: 11, // a stout, dense fungal body — the slowest, heaviest walker
+  corpseFlower: 13, // a large, heavy bloom, only slightly nimbler than the mushroom
+  arcticWillow: 16, // a small tree — more mass than a flower, less than a fungal mass
+};
+const TOWER_LEG_COUNT = {
+  sunflower: 4,
+  rose: 4,
+  mushroom: 2, // a single stout toadstool body reads better hopping on 2 stubby legs than splayed across 4
+  corpseFlower: 4,
+  arcticWillow: 4,
+};
+const DEFAULT_TOWER_WALK_SPEED = 14;
+const DEFAULT_TOWER_LEG_COUNT = 4;
+
+function getTowerWalkSpeed(typeKey) {
+  const baseType = PRODIGY_BASE_TYPE[typeKey] || typeKey;
+  return TOWER_WALK_SPEED[baseType] || DEFAULT_TOWER_WALK_SPEED;
+}
+
+function getTowerLegCount(typeKey) {
+  const baseType = PRODIGY_BASE_TYPE[typeKey] || typeKey;
+  return TOWER_LEG_COUNT[baseType] || DEFAULT_TOWER_LEG_COUNT;
+}
+
+// Simple alternating-stride legs drawn below a tower's own body — "simple
+// animated leg movement (2-4 legs depending on tower, alternating
+// stride)... not static sliding," per the request. Each leg is a plain
+// 2-segment stroked line (hip->knee->foot), split evenly around the
+// tower's own center and lifted by a sine wave offset per leg index so
+// alternating legs are out of phase with each other (the classic
+// walk-cycle look) rather than all stepping in lockstep. `phase` is the
+// tower's own walkPhase (game.js's updateTowerMovement advances it only
+// while actually moving, so idle towers hold a static stance instead of
+// endlessly marching in place), `color` a darker shade of the tower's
+// own stem/body color so legs read as part of the same plant rather
+// than a foreign add-on.
+function applyWalkingLegs(ctx, x, y, size, legCount, phase, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1.5, size * 0.07);
+  ctx.lineCap = 'round';
+  const baseY = y + size * 0.55;
+  for (let i = 0; i < legCount; i += 1) {
+    const spread = (i - (legCount - 1) / 2) * (size * 0.5);
+    const stridePhase = phase + i * Math.PI;
+    const lift = Math.max(0, Math.sin(stridePhase)) * size * 0.2;
+    const hipX = x + spread * 0.25;
+    const kneeX = x + spread * 0.55;
+    const kneeY = baseY + size * 0.1 - lift * 0.5;
+    const footX = x + spread;
+    const footY = baseY + size * 0.3 - lift;
+    ctx.beginPath();
+    ctx.moveTo(hipX, baseY);
+    ctx.lineTo(kneeX, kneeY);
+    ctx.lineTo(footX, footY);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // Visuals, kept alongside each tower's data so a new tower type brings its
 // own look with it. Canvas primitives only, no external art. `time` is the
 // game's own deterministic simulation clock (seconds), used for idle
@@ -1898,6 +1988,13 @@ function getTowerVisualSize(tower) {
 function renderTower(ctx, tower, x, y, time) {
   const size = getTowerVisualSize(tower);
   const flashAmount = tower.attackFlash / ATTACK_FLASH_DURATION;
+  // Open-field rework, part 2: legs drawn first (so the body renders
+  // over their hips, same draw-order idea Rose's vines already use for
+  // its own rooted appendages), only on a map that actually has mobile
+  // towers — zero visual change on every map before Deep Forest.
+  if (MAP_OPEN_FIELD) {
+    applyWalkingLegs(ctx, x, y, size, getTowerLegCount(tower.type), tower.walkPhase, shadeColor(tower.stats.color, -32));
+  }
   if (tower.type === 'sunflower') {
     drawSunflower(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
   } else if (tower.type === 'rose') {
