@@ -3640,7 +3640,7 @@ function drawHaleakalaMecyclothoraxBeetle(ctx, e) {
 // snout tip (Marine Iguana's real white salt-crusted nose — it excretes
 // excess salt through its nose, the one trait that visibly sets it apart
 // from the other 3 at a glance).
-function drawIguanaBody(ctx, e, { crested = false, snoutColor = null } = {}) {
+function drawIguanaBody(ctx, e, { crested = false, snoutColor = null, banded = false } = {}) {
   ctx.strokeStyle = shadeColor(e.color, -25);
   ctx.lineWidth = Math.max(1.5, e.radius * 0.16);
   ctx.lineCap = 'round';
@@ -3668,6 +3668,15 @@ function drawIguanaBody(ctx, e, { crested = false, snoutColor = null } = {}) {
   ctx.ellipse(e.x + e.radius * 1.0, e.y, e.radius * 0.35, e.radius * 0.26, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  if (banded) {
+    ctx.fillStyle = shadeColor(e.color, -35);
+    [-0.5, -0.1, 0.35].forEach((t) => {
+      ctx.beginPath();
+      ctx.ellipse(e.x + t * e.radius, e.y, e.radius * 0.12, e.radius * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
   if (snoutColor) {
     ctx.fillStyle = snoutColor;
     ctx.beginPath();
@@ -3693,12 +3702,21 @@ function drawIguanaBody(ctx, e, { crested = false, snoutColor = null } = {}) {
   }
 }
 
+// Real land iguanas (Conolophus subcristatus) have a relatively plain,
+// stocky body — no crest, no banding — so the shared body's own default
+// (everything off) is already the right look, not a missing feature.
 function drawLandIguana(ctx, e) {
   drawIguanaBody(ctx, e);
 }
 
+// Enemy-art realism pass (direct request): this used to call the shared
+// body with zero options too — identical geometry to Land Iguana, only
+// its color differed. The real pink iguana (Conolophus marthae, the
+// species this one's named for) has a genuinely distinguishing trait
+// beyond its rosy color: dark crossbands running across its back, which
+// `banded` now draws in.
 function drawPinkIguana(ctx, e) {
-  drawIguanaBody(ctx, e);
+  drawIguanaBody(ctx, e, { banded: true });
 }
 
 // Real lava lizards have a faint rough dorsal ridge — reuses the shared
