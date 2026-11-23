@@ -249,6 +249,13 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       triggerStageComplete,
       getStageCompleteStats: () => stageCompleteStats,
       MAP_TYPE_ORDER, MENU_MODE_ORDER,
+      // The Hollow Event's own title/cover screen (direct follow-up
+      // request): renderHollowSplash lets a test exercise its actual draw
+      // code (same "renderX never throws" pattern as renderMap/renderUI
+      // above) and getHollowSplashTime lets a test confirm 'start:adventure'
+      // resets its cosmetic clock back to 0 each time the screen is entered.
+      renderHollowSplash,
+      getHollowSplashTime: () => hollowSplashTime,
       getTowersInRange, consumeTowersInRange, getOtherTowersOfSameType, destroyTowers,
       getConsumedTowerEffects: () => consumedTowerEffects,
       getProdigyOption, getProdigyTypeKeyFor,

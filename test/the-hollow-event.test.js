@@ -182,6 +182,59 @@ test('stagecomplete:menu returns to the main menu, same as gameover:menu', () =>
   assert.equal(game.getGameState(), 'menu');
 });
 
+// --- The Hollow Event's own title/cover screen -----------------------------
+// Direct follow-up request, relayed from the peer session: "Adventures"
+// now shows a dedicated gothic-horror title/splash screen for The Hollow
+// Event (gameState === 'hollowSplash', see renderHollowSplash() in
+// game.js) before the actual round-1 run starts, instead of dropping
+// straight into it — reached via 'start:adventure', with its own
+// 'hollowsplash:play' (starts the run) and 'hollowsplash:menu' (back to
+// the main menu) regions.
+
+test("'start:adventure' now opens the splash screen first, instead of starting the run directly", () => {
+  const game = loadFullGameContext();
+  game.activateRegion({ id: 'start:adventure', data: {} });
+
+  assert.equal(game.getGameState(), 'hollowSplash');
+  // The run itself hasn't started yet — startGame() was never called.
+  assert.equal(game.getMoney(), game.STARTING_MONEY);
+  assert.equal(game.getRound(), 1);
+  assert.equal(game.getCurrentMode(), null);
+});
+
+test("entering the splash screen resets its own cosmetic clock back to 0", () => {
+  const game = loadFullGameContext();
+  game.activateRegion({ id: 'start:adventure', data: {} });
+  assert.equal(game.getHollowSplashTime(), 0);
+});
+
+test("the splash screen's own Play button ('hollowsplash:play') is what actually starts the run", () => {
+  const game = loadFullGameContext();
+  game.activateRegion({ id: 'start:adventure', data: {} });
+  game.activateRegion({ id: 'hollowsplash:play', data: {} });
+
+  assert.equal(game.getGameState(), 'playing');
+  assert.equal(game.getSelectedMap().id, 'theHollowEvent');
+  assert.equal(game.getCurrentMode().name, 'The Hollow Event');
+  assert.equal(game.getRound(), 1);
+});
+
+test("the splash screen's own back button ('hollowsplash:menu') returns to the main menu without starting anything", () => {
+  const game = loadFullGameContext();
+  game.activateRegion({ id: 'start:adventure', data: {} });
+  game.activateRegion({ id: 'hollowsplash:menu', data: {} });
+
+  assert.equal(game.getGameState(), 'menu');
+  assert.equal(game.getCurrentMode(), null);
+});
+
+test('renderHollowSplash never throws, at any point along its own cosmetic clock', () => {
+  const game = loadFullGameContext();
+  game.activateRegion({ id: 'start:adventure', data: {} });
+  const ctx = new Proxy({}, { get: () => () => {} });
+  assert.doesNotThrow(() => game.renderHollowSplash(ctx));
+});
+
 // --- Generic UI safety ------------------------------------------------------
 
 test('renderUI never throws during an Adventure run, including right at round 50', () => {

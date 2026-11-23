@@ -1367,6 +1367,7 @@ function render() {
     else if (gameState === 'mapSelect') renderMapSelect(ctx);
     else if (gameState === 'modeSelect') renderModeSelect(ctx);
     else if (gameState === 'stageComplete') renderStageComplete(ctx);
+    else if (gameState === 'hollowSplash') renderHollowSplash(ctx);
     else renderGameOver(ctx);
     return;
   }
@@ -1981,7 +1982,10 @@ function renderSandboxSpawnSection(ctx, x, width, startY) {
 // also a full-screen UI state with no world/panel split, so it shares this
 // set too despite the name — every input handler below just cares "is the
 // whole canvas UI right now," not specifically "is this a menu."
-const MENU_STATES = new Set(['menu', 'mapSelect', 'modeSelect', 'gameOver', 'stageComplete']);
+// 'hollowSplash' (see renderHollowSplash below) joins this set too — the
+// Hollow Event's own title/cover screen, shown between clicking
+// "Adventures" on the main menu and the run itself actually starting.
+const MENU_STATES = new Set(['menu', 'mapSelect', 'modeSelect', 'gameOver', 'stageComplete', 'hollowSplash']);
 const MENU_MODE_ORDER = ['medium', 'horde', 'sandbox'];
 
 // `skipBackground` lets renderMenu() paint its own forest-trail backdrop
@@ -2029,6 +2033,13 @@ function drawMenuTooltip(ctx) {
 // call, and invalidated (set back to null) there whenever the defeated set
 // actually grows.
 let menuTrophyEnemies = null;
+
+// Real-elapsed-time clock for the Hollow Event's own splash screen (see
+// renderHollowSplash below) — drives its glow pulses/drifting embers,
+// same "cosmetic, not deterministic simulation" role animationTime plays
+// for in-game rendering, just for a screen where nothing is actually
+// simulated. Advanced by loop() only while gameState is 'hollowSplash'.
+let hollowSplashTime = 0;
 
 // A defeated key could be from either map's roster — looked up against
 // both (boss keys are already terrain-prefixed, so only one ever matches)
@@ -2235,6 +2246,410 @@ function renderMenu(ctx) {
 
     uiRegisterRegion(entry.id, x, y, buttonWidth, buttonHeight, {});
   });
+
+  drawMenuTooltip(ctx);
+}
+
+// ---------------------------------------------------------------------------
+// The Hollow Event's own title/cover screen (gameState === 'hollowSplash',
+// direct follow-up request relayed from the peer session): shown between
+// clicking "Adventures" on the main menu and the run itself actually
+// starting, instead of dropping straight into round 1. "Build it with your
+// own canvas-drawn art, same as everything else on this site" — every
+// shape below is drawn with plain 2D canvas primitives (fills/strokes/
+// shadowBlur glow, the same glow technique wildlife/tower auras already
+// use elsewhere in this file), nothing imported. Moody dark gothic-horror
+// cover art rather than another plain UI list: a night sky with a glowing
+// moon and drifting embers, distant graveyard/fence and twisted bare-tree
+// silhouettes (thematically tied to the stage's own autumn/hollow forest,
+// just rendered as a dark "cover art" scene instead of in-game assets), a
+// jagged glowing title treatment, The Hollow Crow itself drawn big and
+// menacing front-and-center, and its own standout ornate Play button.
+// Reuses MENU_STATES/uiRegisterRegion/hoverRegion exactly like every other
+// full-screen menu state, so hover/click/tooltip routing just works here
+// for free — see activateRegion()'s 'hollowsplash:play'/'hollowsplash:menu'
+// handlers.
+// ---------------------------------------------------------------------------
+
+// Deterministic pseudo-scatter for the splash's own stars/embers — same
+// sine-hash technique map.js's buildFallenLeafPositions uses for its
+// fallen-leaf decor, and for the same reason: this is pure decoration with
+// no gameplay RNG involved, so it must NOT touch the game's own seeded
+// random() (random.js) and must look identical on every load. Returns
+// fractional (0..1) coordinates rather than world-space ones, since this
+// screen's own canvas size varies with layoutMode/viewport (logicalWidth/
+// logicalHeight), unlike a fixed-size map.
+function buildHollowSplashScatter(count, seedX, seedY, seedPhase) {
+  const points = [];
+  for (let i = 0; i < count; i += 1) {
+    const hashX = Math.sin(i * seedX) * 43758.5453;
+    const hashY = Math.sin(i * seedY) * 12543.123;
+    const hashPhase = Math.sin(i * seedPhase) * 7853.254;
+    points.push({
+      xFrac: hashX - Math.floor(hashX),
+      yFrac: hashY - Math.floor(hashY),
+      phase: (hashPhase - Math.floor(hashPhase)) * Math.PI * 2,
+    });
+  }
+  return points;
+}
+
+const HOLLOW_SPLASH_STARS = buildHollowSplashScatter(90, 12.9898, 78.233, 39.425);
+const HOLLOW_SPLASH_EMBERS = buildHollowSplashScatter(22, 31.731, 94.653, 17.233);
+
+function drawHollowSplashStars(ctx, w, skyHeight, time) {
+  ctx.save();
+  HOLLOW_SPLASH_STARS.forEach((star) => {
+    const twinkle = 0.35 + 0.65 * Math.abs(Math.sin(time * 1.4 + star.phase));
+    ctx.fillStyle = `rgba(230, 230, 245, ${twinkle})`;
+    ctx.beginPath();
+    ctx.arc(star.xFrac * w, star.yFrac * skyHeight, 1 + (star.phase % 1), 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+// Slow-drifting embers rising up out of the ground band — the "particle
+// accent" half of the request's own Play-button ask, but spread across the
+// whole scene rather than clipped tightly to the button so the cover art
+// reads as one continuous atmosphere instead of an isolated button effect.
+function drawHollowSplashEmbers(ctx, w, sceneHeight, time) {
+  ctx.save();
+  HOLLOW_SPLASH_EMBERS.forEach((ember, i) => {
+    const speed = 0.04 + (i % 5) * 0.015;
+    const riseFrac = (ember.yFrac + time * speed) % 1;
+    const x = ember.xFrac * w + Math.sin(time * 0.6 + ember.phase) * 10;
+    const y = sceneHeight * (1 - riseFrac);
+    const alpha = 0.15 + 0.55 * Math.sin(riseFrac * Math.PI); // fades in near the ground, out near the top
+    ctx.fillStyle = `rgba(255, ${140 + Math.round(60 * Math.sin(ember.phase))}, 40, ${Math.max(0, alpha)})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 1.5 + (i % 3) * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawHollowSplashMoon(ctx, x, y, radius, time) {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 0.8);
+  ctx.save();
+  // Soft halo — layered translucent rings rather than a canvas gradient,
+  // so this never depends on createRadialGradient/addColorStop being
+  // available on whatever ctx this is drawn against.
+  for (let i = 3; i >= 1; i -= 1) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius * (1 + i * 0.5 + pulse * 0.08), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(246, 231, 184, ${0.05 * i})`;
+    ctx.fill();
+  }
+
+  ctx.shadowColor = 'rgba(246, 231, 184, 0.8)';
+  ctx.shadowBlur = 20 + pulse * 10;
+  ctx.fillStyle = '#f0e2b4';
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // A couple of dark craters so it doesn't read as a flat disc.
+  ctx.fillStyle = 'rgba(180, 160, 110, 0.5)';
+  ctx.beginPath();
+  ctx.arc(x - radius * 0.3, y - radius * 0.2, radius * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + radius * 0.35, y + radius * 0.3, radius * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// A single twisted, bare (leafless) tree silhouette — the splash's own
+// "dark cover art" take on the stage's autumn trees (drawHollowTree,
+// map.js draws those full and orange; this is the night-silhouette version
+// of the same forest). `seed` varies each tree's fork angles so a row of
+// several doesn't look like the same tree copy-pasted sideways.
+function drawGothicTree(ctx, baseX, baseY, height, seed) {
+  ctx.save();
+  ctx.strokeStyle = '#040208';
+  ctx.lineCap = 'round';
+
+  const leanX = Math.sin(seed) * height * 0.1;
+  ctx.lineWidth = Math.max(4, height * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(baseX, baseY);
+  ctx.lineTo(baseX + leanX, baseY - height * 0.55);
+  ctx.stroke();
+
+  const branchCount = 5;
+  for (let i = 0; i < branchCount; i += 1) {
+    const t = 0.3 + (i / branchCount) * 0.65;
+    const bx = baseX + leanX * t;
+    const by = baseY - height * 0.55 * t;
+    const angle = -Math.PI / 2 + Math.sin(seed * 3 + i * 1.7) * 1.0;
+    const len = height * (0.22 + 0.16 * Math.abs(Math.sin(seed * 5 + i)));
+    const ex = bx + Math.cos(angle) * len;
+    const ey = by + Math.sin(angle) * len;
+
+    ctx.lineWidth = Math.max(1.5, height * 0.022);
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(ex, ey);
+    const forkAngle = angle + Math.sin(seed * 7 + i) * 0.7;
+    const forkLen = len * 0.5;
+    ctx.lineTo(ex + Math.cos(forkAngle) * forkLen, ey + Math.sin(forkAngle) * forkLen);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// A few leaning iron-fence posts with pointed tips, far off in the
+// mid-ground — distant graveyard dressing, per the request's own "maybe
+// distant graveyard/fence shapes."
+function drawGothicFence(ctx, x, y, width, scale) {
+  ctx.save();
+  ctx.strokeStyle = '#040208';
+  ctx.fillStyle = '#040208';
+  ctx.lineWidth = Math.max(1, 2 * scale);
+
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + width, y);
+  ctx.stroke();
+
+  const postCount = Math.max(2, Math.round(width / (11 * scale)));
+  for (let i = 0; i <= postCount; i += 1) {
+    const px = x + (i / postCount) * width;
+    ctx.beginPath();
+    ctx.moveTo(px, y + 5 * scale);
+    ctx.lineTo(px, y - 9 * scale);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(px - 2.5 * scale, y - 9 * scale);
+    ctx.lineTo(px, y - 13 * scale);
+    ctx.lineTo(px + 2.5 * scale, y - 9 * scale);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// A cluster of small rounded-top headstones, same silhouette color as the
+// fence — "distant graveyard... shapes," kept small/simple since this is
+// background atmosphere, not a focal element.
+function drawGothicGraveyard(ctx, x, y, scale) {
+  ctx.save();
+  ctx.fillStyle = '#040208';
+  for (let i = 0; i < 4; i += 1) {
+    const hx = x + i * 15 * scale;
+    const hh = (9 + (i % 2) * 5) * scale;
+    const hw = 5 * scale;
+    ctx.beginPath();
+    ctx.moveTo(hx - hw, y);
+    ctx.lineTo(hx - hw, y - hh);
+    ctx.arc(hx, y - hh, hw, Math.PI, 0);
+    ctx.lineTo(hx + hw, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// The bold, jagged, glowing "cover art" title treatment — "a large,
+// stylized logo... bold, jagged/spiky lettering with a glowing
+// outline/drop-shadow, like a horror-game title card... rather than a
+// plain system font." A real custom letterform set is out of scope, so
+// this layers a heavy font with a pulsing shadowBlur glow, a dark offset
+// "carved" backing for a beveled look, and a row of jagged triangular
+// spikes measured against the text's own drawn width — the same
+// "canvas-drawn, not a literal asset" approach as everything else here.
+function drawHollowEventLogo(ctx, cx, y, time) {
+  const text = 'THE HOLLOW EVENT';
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.8);
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = "bold 50px Impact, 'Arial Narrow', sans-serif";
+
+  ctx.shadowColor = `rgba(255, ${80 + Math.round(pulse * 60)}, 20, ${0.75 + pulse * 0.25})`;
+  ctx.shadowBlur = 26 + pulse * 10;
+  ctx.fillStyle = '#1a0603';
+  ctx.fillText(text, cx, y);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#2b0a02';
+  ctx.fillText(text, cx + 3, y + 4);
+
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#3a0d02';
+  ctx.strokeText(text, cx, y);
+  ctx.fillStyle = '#f1d9a0';
+  ctx.fillText(text, cx, y);
+
+  // measureText can come back undefined against a minimal stub ctx (no
+  // real text metrics) — fall back to a reasonable guessed width rather
+  // than throwing, same defensive pattern as every renderUI-never-throws
+  // test elsewhere in this project.
+  const metrics = ctx.measureText(text);
+  const textWidth = (metrics && metrics.width) || 420;
+  const left = cx - textWidth / 2;
+  const spikeCount = 9;
+  ctx.fillStyle = '#f1d9a0';
+  for (let i = 0; i < spikeCount; i += 1) {
+    const t = (i + 0.5) / spikeCount;
+    const sx = left + t * textWidth;
+    const spikeHeight = 7 + 6 * Math.abs(Math.sin(i * 2.7 + 1));
+    ctx.beginPath();
+    ctx.moveTo(sx - 5, y - 32);
+    ctx.lineTo(sx, y - 32 - spikeHeight);
+    ctx.lineTo(sx + 5, y - 32);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// The Hollow Crow itself, drawn big and front-and-center — "lean into its
+// existing 'hollow' look... scale it up dramatically for this screen
+// specifically, maybe with added menacing flourishes... that don't need to
+// match its small in-game sprite." Reuses drawHollowCrow (enemies.js) for
+// the actual body — same silhouette as the real round-50 fight — wrapped
+// in a bigger pulsing blood-red aura and a brighter glowing-eye flare that
+// only this splash screen ever draws; drawHollowCrow itself, and the real
+// in-game boss, are untouched.
+function drawHollowSplashCrow(ctx, cx, cy, radius, time) {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 2.2);
+  const boss = MAP_ROSTERS.hollow.bossTypes[2]; // The Hollow Crow — same color the real fight uses
+
+  ctx.save();
+  for (let i = 3; i >= 1; i -= 1) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * (1.15 + i * 0.22 + pulse * 0.05), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(160, 20, 10, ${0.05 * i})`;
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = `rgba(255, 60, 20, ${0.6 + pulse * 0.3})`;
+  ctx.shadowBlur = 40 + pulse * 20;
+  drawHollowCrow(ctx, { x: cx, y: cy, radius, color: boss.color });
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(255, 250, 220, 0.9)';
+  ctx.shadowBlur = 18 + pulse * 10;
+  ctx.fillStyle = `rgba(255, 255, 240, ${0.5 + pulse * 0.4})`;
+  ctx.beginPath();
+  ctx.arc(cx - radius * 0.8, cy, radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// The splash's own standout Play button — "ornate border/frame, a glow or
+// particle accent, distinct from the plain menu buttons used everywhere
+// else," deliberately NOT built from the shared uiDrawButton() every other
+// screen's buttons use (uiRoundRect is still reused for the rounded-rect
+// path itself, just filled/stroked by hand here).
+function drawHollowSplashPlayButton(ctx, x, y, w, h, hovered, time) {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 3);
+  ctx.save();
+
+  ctx.shadowColor = `rgba(255, 140, 30, ${0.5 + pulse * 0.3})`;
+  ctx.shadowBlur = hovered ? 30 : 18;
+  uiRoundRect(ctx, x, y, w, h, 10);
+  ctx.fillStyle = hovered ? '#3a1406' : '#2a0e05';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.strokeStyle = '#120402';
+  ctx.lineWidth = 4;
+  uiRoundRect(ctx, x, y, w, h, 10);
+  ctx.stroke();
+  ctx.strokeStyle = `rgba(255, ${140 + Math.round(pulse * 60)}, 50, 0.9)`;
+  ctx.lineWidth = 2;
+  uiRoundRect(ctx, x + 4, y + 4, w - 8, h - 8, 7);
+  ctx.stroke();
+
+  ctx.fillStyle = `rgba(255, 200, 100, ${0.7 + pulse * 0.3})`;
+  [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([cornerX, cornerY]) => {
+    ctx.save();
+    ctx.translate(cornerX, cornerY);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-3, -3, 6, 6);
+    ctx.restore();
+  });
+
+  ctx.fillStyle = '#f8e3b0';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Begin the Hollow Event', x + w / 2, y + h / 2 + 1);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.restore();
+}
+
+function renderHollowSplash(ctx) {
+  uiBeginFrame();
+
+  const w = logicalWidth;
+  const h = logicalHeight;
+  // Lays the whole composition out at a fixed, sane aspect regardless of
+  // logicalHeight — which on a narrow "stacked" mobile layout is much
+  // taller than this scene needs (it's sized to fit the game panel below
+  // it too) — same reasoning renderMenu()'s own fixed pixel offsets
+  // already lean on; anything below sceneHeight is just more
+  // ground/darkness (see the full-height ground fill below), not
+  // stretched artwork.
+  const sceneHeight = Math.min(h, 680);
+  const t = hollowSplashTime;
+
+  ctx.fillStyle = '#07060b';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(120, 50, 10, 0.08)';
+  ctx.fillRect(0, sceneHeight * 0.32, w, sceneHeight * 0.3);
+
+  drawHollowSplashStars(ctx, w, sceneHeight * 0.7, t);
+  drawHollowSplashMoon(ctx, w * 0.78, sceneHeight * 0.14, sceneHeight * 0.07, t);
+
+  const groundY = sceneHeight * 0.76;
+  drawGothicFence(ctx, w * 0.05, groundY - 8, w * 0.2, 1.2);
+  drawGothicGraveyard(ctx, w * 0.08, groundY - 2, 1.3);
+  [
+    { xFrac: 0.02, seed: 0.6 },
+    { xFrac: 0.15, seed: 2.3 },
+    { xFrac: 0.87, seed: 4.1 },
+    { xFrac: 0.96, seed: 5.8 },
+  ].forEach((tree) => {
+    drawGothicTree(ctx, w * tree.xFrac, groundY + 4, sceneHeight * 0.32, tree.seed);
+  });
+
+  ctx.fillStyle = '#0a0604';
+  ctx.fillRect(0, groundY, w, h - groundY);
+
+  drawHollowSplashEmbers(ctx, w, sceneHeight, t);
+
+  drawHollowEventLogo(ctx, w / 2, sceneHeight * 0.17, t);
+
+  ctx.fillStyle = '#c9a877';
+  ctx.font = 'italic 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('A single continuous run to round 50. The Hollow Crow is waiting.', w / 2, sceneHeight * 0.17 + 26);
+  ctx.textAlign = 'left';
+
+  drawHollowSplashCrow(ctx, w / 2, sceneHeight * 0.48, sceneHeight * 0.17, t);
+
+  const buttonWidth = Math.min(380, w - 60);
+  const buttonHeight = 56;
+  const buttonX = w / 2 - buttonWidth / 2;
+  const buttonY = groundY + 16;
+  const playHovered = Boolean(hoverRegion) && hoverRegion.id === 'hollowsplash:play';
+  drawHollowSplashPlayButton(ctx, buttonX, buttonY, buttonWidth, buttonHeight, playHovered, t);
+  uiRegisterRegion('hollowsplash:play', buttonX, buttonY, buttonWidth, buttonHeight, {});
+
+  const backWidth = 150;
+  const backHovered = Boolean(hoverRegion) && hoverRegion.id === 'hollowsplash:menu';
+  uiDrawButton(ctx, { x: 20, y: 20, w: backWidth, h: 32, label: '← Main Menu', hovered: backHovered });
+  uiRegisterRegion('hollowsplash:menu', 20, 20, backWidth, 32, {});
 
   drawMenuTooltip(ctx);
 }
@@ -2599,6 +3014,8 @@ function getTooltipLines(region) {
 
   if (region.id === 'start:play') return ['Pick a map, then a mode.'];
   if (region.id === 'start:adventure') return ['A single run to round 50 — The Hollow Crow awaits.'];
+  if (region.id === 'hollowsplash:play') return ['Begin the run at round 1.'];
+  if (region.id === 'hollowsplash:menu') return ['Back to the main menu.'];
   if (region.id === 'gameover:menu') return ['Back to the main menu.'];
   if (region.id === 'stagecomplete:menu') return ['Back to the main menu.'];
 
@@ -2735,8 +3152,24 @@ function activateRegion(region) {
   }
 
   if (region.id === 'start:adventure') {
+    // Direct follow-up request: show the Hollow Event's own title/cover
+    // screen first, rather than dropping straight into round 1 — the
+    // actual run only starts once its own 'hollowsplash:play' button
+    // (below) is clicked. selectedMap/startGame('adventure') deliberately
+    // aren't called here anymore.
+    hollowSplashTime = 0;
+    gameState = 'hollowSplash';
+    return;
+  }
+
+  if (region.id === 'hollowsplash:play') {
     selectedMap = MAP_TYPES.theHollowEvent;
     startGame('adventure');
+    return;
+  }
+
+  if (region.id === 'hollowsplash:menu') {
+    gameState = 'menu';
     return;
   }
 
@@ -3025,6 +3458,11 @@ function loop(timestamp) {
     }
   } else if (gameState === 'menu' && menuTrophyEnemies) {
     updateMenuTrophyEnemies(frameTime);
+  } else if (gameState === 'hollowSplash') {
+    // The splash's own glow pulses/ember drift (see renderHollowSplash)
+    // are cosmetic only, so — same as the menu trophy trail above — this
+    // runs on real elapsed time rather than the fixed-step accumulator.
+    hollowSplashTime += frameTime;
   }
 
   render();
