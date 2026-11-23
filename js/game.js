@@ -543,6 +543,12 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
     // attack every tower already fires — tower.slow is null for every
     // tower without it, so this is a no-op for everyone else.
     slow: tower.slow || null,
+    // Arctic Willow's Avalanche Path: the exact same generalization
+    // pipeline as slow/freeze — tower.splash is null for every tower
+    // without it, so this is a no-op for everyone else. See
+    // resolveProjectile()'s own `if (projectile.splash)` branch and
+    // applyAvalancheSplash() below.
+    splash: tower.splash || null,
     // Arctic Willow's Brittle Path (direct follow-up request): the exact
     // same generalization pipeline as slow just above, now for a full
     // freeze instead of a partial slow — see resolveProjectile()'s own
@@ -650,6 +656,23 @@ function spawnBloomAcidProjectile(tower, target) {
   });
 }
 
+// Arctic Willow's Avalanche Path: a generic AoE splash that rides along
+// on the tower's own ordinary attack — the exact same "retarget
+// damageEnemy() generically, no per-effect special-casing" approach
+// every other AoE effect in the game already uses (gasCloud/gasRing/
+// puddle/shockwave all reuse getEnemiesInRadius()+damageEnemy() too, see
+// their own call sites in this file). Deliberately excludes the primary
+// target itself (already took the full direct hit in resolveProjectile,
+// right before this is called) so splash reads as "also hits nearby
+// enemies," not "double-dips the one you aimed at."
+function applyAvalancheSplash(x, y, excludeTarget, splash, sourceTower) {
+  getEnemiesInRadius(x, y, splash.radius).forEach((enemy) => {
+    if (enemy === excludeTarget) return;
+    damageEnemy(enemy, splash.damage, sourceTower);
+    if (splash.slow) applySlow(enemy, splash.slow);
+  });
+}
+
 function resolveProjectile(projectile) {
   const { target } = projectile;
   // A zombie is a separate state machine (turnIntoZombie()/
@@ -675,6 +698,17 @@ function resolveProjectile(projectile) {
   // enemies.js) — the same per-tower damage-dealt counter every other
   // damage source in the game already feeds.
   if (projectile.freeze) applyFreeze(target, projectile.freeze, projectile.sourceTower);
+  // Arctic Willow's Avalanche Path: the splash itself, plus (tier 3+) a
+  // chance for the eruption to burst a second time at the same point —
+  // "a chain feel, without literally chaining to new targets... just a
+  // bigger single eruption," read literally as a 2nd full splash
+  // application rather than a new jump-to-next-enemy mechanic.
+  if (projectile.splash) {
+    applyAvalancheSplash(target.x, target.y, target, projectile.splash, projectile.sourceTower);
+    if (projectile.splash.reburstChance && random() < projectile.splash.reburstChance) {
+      applyAvalancheSplash(target.x, target.y, target, projectile.splash, projectile.sourceTower);
+    }
+  }
 
   // Zombify: only a spore's own killing blow counts (never any other
   // damage source — burn, a root, another tower entirely, etc. — and never
@@ -1469,6 +1503,13 @@ const PATH_THEMES = {
   'Growth Path': { base: '#d81b94', peak: '#6a1b9a', motif: 'bloom' },
   'Frosted Path': { base: '#81d4fa', peak: '#e1f5fe', motif: 'crystal' },
   'Brittle Path': { base: '#b39ddb', peak: '#9c4dcc', motif: 'shatter' },
+  // A different icy identity from Frosted Path's smooth pale crystal and
+  // Brittle Path's cracked purple one — a saturated "impact" blue, since
+  // this path's whole identity is AoE splash damage, not more ice on the
+  // tower itself. Peak color matches Glacial Collapse's own glow
+  // ('#8ecae6'-adjacent) brightened into a more saturated, "struck"
+  // blue.
+  'Avalanche Path': { base: '#eaf6ff', peak: '#1976d2', motif: 'burst' },
 };
 const DEFAULT_PATH_THEME = { base: '#8bc34a', peak: '#8bc34a', motif: 'default' };
 
@@ -1613,6 +1654,18 @@ function drawPathMotifMark(ctx, cx, cy, r, motif) {
       ctx.lineWidth = Math.max(1, r * 0.3);
       ctx.strokeStyle = '#1a0a2e';
       ctx.stroke();
+      break;
+    case 'burst': // Avalanche Path — a small splash/impact burst: a core dot plus 4 short radiating ticks
+      ctx.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, r * 0.3);
+      for (let tick = 0; tick < 4; tick += 1) {
+        const angle = (tick / 4) * Math.PI * 2 + Math.PI / 4;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(angle) * r * 0.6, cy + Math.sin(angle) * r * 0.6);
+        ctx.lineTo(cx + Math.cos(angle) * r * 1.05, cy + Math.sin(angle) * r * 1.05);
+        ctx.stroke();
+      }
       break;
     default:
       ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);

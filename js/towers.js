@@ -1012,7 +1012,104 @@ const TOWER_TYPES = {
           },
         ],
       },
-      null,
+      // Avalanche Path (direct follow-up request): Arctic Willow's 3rd
+      // and final path, mutually exclusive with Frosted/Brittle above.
+      // Frosted Path is single-target %-slow and Brittle Path is
+      // single-target freeze+tick-damage — this one fills the gap
+      // neither covers: AoE splash damage, a crowd-clearing option
+      // instead of single-target control. `splash` is a whole-object
+      // replace each tier (same convention slow/freeze above already
+      // use) riding along on the tower's own ordinary attack via the
+      // same generalized projectile pipeline — see spawnProjectile()/
+      // resolveProjectile()'s own `if (projectile.splash)` branch and
+      // applyAvalancheSplash() in game.js. Deliberately reuses
+      // getEnemiesInRadius()+damageEnemy() exactly like every other AoE
+      // effect in the game (gasCloud/gasRing/puddle/shockwave) rather
+      // than inventing a parallel damage pathway — "retarget
+      // damageEnemy() generically, no per-effect special-casing," the
+      // request's own explicit instruction.
+      //
+      // Splash damage/radius escalate every tier (40/2 -> 60/5 -> 80/9
+      // -> 120/20), while the direct-hit damageMultiplier chain stays
+      // modest throughout (1.3/1.3/1.4/1.3, well under Frosted Path's
+      // own 1.3/1.4/1.5/1.6) — the splash is this path's real power, not
+      // the direct hit, matching its own "crowd-clearing" identity.
+      // Tier 2's splash also applies a brief, minor slow (0.85x for
+      // 1.5s) — noticeably shorter/weaker than Frosted Path's own tier-1
+      // slow (0.7x for 3s), a secondary flavor effect only, not meant to
+      // compete with that path's own crowd control. Tier 3 adds
+      // `reburstChance` (25%): a second full splash application at the
+      // same point on a hit, "a chain feel, without literally chaining
+      // to new targets — just a bigger single eruption," read literally.
+      // Tier 4's splash radius (120, close to the tower's own 170 range)
+      // and damage (20, close to a maxed direct hit) make "every attack
+      // is now a large freezing explosion hitting all enemies in a wide
+      // radius" true in practice without needing a structurally
+      // different attack — same generic splash field, just bigger
+      // numbers — and brings back tier 2's own minor slow on top.
+      //
+      // Costs set via the same DPS-per-dollar methodology the recent
+      // pricing pass used (splash damage folded in as its own steady-
+      // state bonus DPS, same simplification that pass applied to every
+      // other AoE/secondary-mechanic path) rather than the request's own
+      // rough "match your tier-1 cost scale" numbers — tuned so the
+      // curve doesn't crash tier to tier the way that pass found (and
+      // fixed) in several older paths, not copied from Frosted/Brittle's
+      // own $50/$250/$650/$1500 scale outright.
+      {
+        name: 'Avalanche Path',
+        upgrades: [
+          {
+            name: 'Snowball',
+            description:
+              'Every hit now also deals a smaller splash of cold damage to enemies near the primary target; the ' +
+              'base attack also deals slightly more damage. Small icicle/snowball clusters form at the branch tips.',
+            cost: 50,
+            effects: { damageMultiplier: 1.3, splash: { radius: 40, damage: 2 }, hasSnowballClusters: true },
+          },
+          {
+            name: 'Snowdrift',
+            description:
+              'The splash grows in both radius and damage, and now briefly slows whatever it catches (shorter and ' +
+              'weaker than Frosted Path\'s own slow); snowdrifts pile up around the base and the bark turns frostier.',
+            cost: 220,
+            effects: {
+              damageMultiplier: 1.3,
+              splash: { radius: 60, damage: 5, slow: { multiplier: 0.85, duration: 1.5 } },
+              hasSnowdrift: true,
+            },
+          },
+          {
+            name: 'Avalanche',
+            description:
+              'The splash grows again, dealing even more damage, and now has a chance to erupt a second time at ' +
+              'the same spot; the tower grows taller, with cascading snow and ice draping off the branches.',
+            cost: 550,
+            effects: {
+              damageMultiplier: 1.4,
+              sizeMultiplier: 1.25,
+              splash: { radius: 80, damage: 9, reburstChance: 0.25 },
+              hasSnowDrape: true,
+            },
+          },
+          {
+            name: 'Glacial Collapse',
+            description:
+              'Every attack is now a large freezing explosion, hitting every enemy in a wide radius for heavy ' +
+              'damage plus a brief slow; the tower becomes a towering, ice-encrusted willow glowing pale blue, ' +
+              'with falling snow and ice shards drifting off it even at rest.',
+            cost: 1000,
+            effects: {
+              damageMultiplier: 1.3,
+              sizeMultiplier: 1.3,
+              color: '#cfe8f5',
+              glow: '#8ecae6',
+              splash: { radius: 120, damage: 20, slow: { multiplier: 0.85, duration: 1.5 } },
+              hasFallingIceShards: true,
+            },
+          },
+        ],
+      },
     ],
   },
   // Prodigies (direct request, reworked from an earlier standalone-tower
@@ -1376,6 +1473,23 @@ function createTower(typeKey) {
     freeze: null,
     hasBrittleStems: false,
     hasIceCubes: false,
+    // Arctic Willow's Avalanche Path only (mutually exclusive with
+    // Frosted/Brittle above). splash is a whole-object {radius, damage,
+    // slow?, reburstChance?} replace each tier, null until the path's
+    // first tier — same "rides along on the tower's own ordinary attack
+    // via the generalized projectile pipeline" convention slow/freeze
+    // above already use, see spawnProjectile()/resolveProjectile() in
+    // game.js. hasSnowballClusters (tier 1)/hasSnowdrift (tier 2)/
+    // hasSnowDrape (tier 3)/hasFallingIceShards (tier 4) are purely
+    // visual, drawn by drawArcticWillow()/drawArcticWillowCatkin() in
+    // this file — "grows taller" (tiers 3/4) and "glowing pale blue"
+    // (tier 4) reuse the already-generic sizeMultiplier/glow effects
+    // instead of needing fields of their own.
+    splash: null,
+    hasSnowballClusters: false,
+    hasSnowdrift: false,
+    hasSnowDrape: false,
+    hasFallingIceShards: false,
     // The Mangler (Rose's Prodigy) only: every grabInterval seconds,
     // grabs one random non-boss enemy in range for grabDamage bonus
     // damage, holding it immobilized for grabDuration — on top of (not
@@ -1617,6 +1731,18 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.freeze) tower.freeze = effects.freeze;
   if (effects.hasBrittleStems) tower.hasBrittleStems = true;
   if (effects.hasIceCubes) tower.hasIceCubes = true;
+  // Arctic Willow's Avalanche Path: splash is a whole-object replace,
+  // same convention as slow/freeze above — no cooldown of its own to
+  // reset, since (also like slow/freeze) it isn't a separate periodic
+  // shot, it just rides along on the tower's ordinary attack from here
+  // on (see spawnProjectile() in game.js). The 4 has* flags are purely
+  // visual, same boolean-flag convention as hasBrittleStems/hasIceCubes
+  // above.
+  if (effects.splash) tower.splash = effects.splash;
+  if (effects.hasSnowballClusters) tower.hasSnowballClusters = true;
+  if (effects.hasSnowdrift) tower.hasSnowdrift = true;
+  if (effects.hasSnowDrape) tower.hasSnowDrape = true;
+  if (effects.hasFallingIceShards) tower.hasFallingIceShards = true;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -1826,6 +1952,11 @@ function renderTower(ctx, tower, x, y, time) {
     // same "ambient circling effect renders under the tower's own body"
     // convention Corpse Flower's own gasCloud/gas ring already use.
     if (tower.hasIcicleRing) drawIcicleRing(ctx, x, y, size, time);
+    // Glacial Collapse (Avalanche Path tier 4): falling snow/ice shards
+    // drift off the tower continuously, even at rest — drawn first/
+    // behind the tower itself, same "ambient effect renders under the
+    // tower's own body" convention drawIcicleRing above already uses.
+    if (tower.hasFallingIceShards) drawAvalancheIceShards(ctx, x, y, size, time);
     drawArcticWillow(
       ctx,
       x,
@@ -1841,7 +1972,10 @@ function renderTower(ctx, tower, x, y, time) {
       // upgradesPurchased gating every other tower's own tiered art uses.
       tower.chosenPath === 0 ? tower.upgradesPurchased : 0,
       tower.hasBrittleStems,
-      tower.hasIceCubes
+      tower.hasIceCubes,
+      tower.hasSnowballClusters,
+      tower.hasSnowdrift,
+      tower.hasSnowDrape
     );
   } else if (tower.type === 'sunlitConductor') {
     drawSunlitConductor(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount);
@@ -2921,7 +3055,7 @@ const WILLOW_CATKIN_MARK_COUNT = 10;
 // 3) — deliberately a different read from the icicles above (loose vs.
 // a neat radiating ring), matching the user's own "icicles on its body"
 // vs. "ice spikes pointing outward" distinction.
-function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes, hasIceCubes) {
+function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes, hasIceCubes, hasSnowballClusters, hasSnowDrape) {
   const catkinHeight = size * 1.5;
   const catkinWidth = size * 0.55;
 
@@ -3016,6 +3150,45 @@ function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpike
       ctx.stroke();
     });
   }
+
+  // Avalanche Path tier 1 ("Snowball") — small round snowball clusters at
+  // the branch tips, a deliberately different silhouette from every other
+  // ice decoration above (tapered icicle drops, radiating spike
+  // triangles, square-ish ice cubes) so this path's own look never reads
+  // as a reuse of Frosted/Brittle's.
+  if (hasSnowballClusters) {
+    ctx.fillStyle = '#eaf6ff';
+    ctx.strokeStyle = '#b3e0f5';
+    ctx.lineWidth = 1;
+    [[-0.38, 0.1], [0.32, 0.05], [-0.08, -0.15]].forEach(([dx, dt]) => {
+      const sx = x + dx * catkinWidth;
+      const sy = y - catkinHeight * (0.68 + dt);
+      const sr = size * 0.11;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  // Avalanche Path tier 3 ("Avalanche") — cascading snow/ice draping off
+  // each branch tip, a drooping curved shape rather than any of the
+  // straight/radiating ice shapes above, reading as snow actually
+  // hanging/sliding off the plant.
+  if (hasSnowDrape) {
+    ctx.fillStyle = 'rgba(234, 246, 255, 0.92)';
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(x + side * catkinWidth * 0.5, y - catkinHeight * 0.35);
+      ctx.quadraticCurveTo(
+        x + side * catkinWidth * 0.8, y - catkinHeight * 0.05,
+        x + side * catkinWidth * 0.5, y + catkinHeight * 0.18
+      );
+      ctx.quadraticCurveTo(x + side * catkinWidth * 0.35, y - catkinHeight * 0.05, x + side * catkinWidth * 0.3, y - catkinHeight * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    });
+  }
 }
 
 // Arctic Willow's full tower: a short woody stem with a couple of green
@@ -3031,7 +3204,11 @@ function drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpike
 // leaf cluster beyond the base tower's usual 2, in a purple-tinted green
 // so it reads as this path's own growth rather than identical to the
 // plain leaves either path starts with.
-function drawArcticWillow(ctx, x, y, size, color, glow, time, flashAmount, icicleCount, hasIceSpikes, frostTier, hasBrittleStems, hasIceCubes) {
+function drawArcticWillow(
+  ctx, x, y, size, color, glow, time, flashAmount,
+  icicleCount, hasIceSpikes, frostTier, hasBrittleStems, hasIceCubes,
+  hasSnowballClusters, hasSnowdrift, hasSnowDrape
+) {
   const heightMultiplier = frostTier >= 4 ? 1.5 : frostTier >= 3 ? 1.3 : frostTier >= 1 ? 1.15 : 1;
   const stemHeight = size * 1.1 * heightMultiplier;
   const groundY = y + stemHeight;
@@ -3068,6 +3245,26 @@ function drawArcticWillow(ctx, x, y, size, color, glow, time, flashAmount, icicl
     ctx.fill();
   }
 
+  // Avalanche Path tier 2 ("Snowdrift") — snowdrifts piling up around the
+  // tower's own base, plus a pale frosty streak down the bark itself
+  // ("the bark turns frostier"), distinct from Brittle Path's own
+  // purple-tinted 3rd stem above.
+  if (hasSnowdrift) {
+    ctx.fillStyle = 'rgba(240, 248, 255, 0.85)';
+    [[-0.4, 0], [0.05, 0.08], [0.35, -0.04]].forEach(([dx, dy]) => {
+      ctx.beginPath();
+      ctx.ellipse(x + dx * size, groundY + dy * size, size * 0.24, size * 0.11, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.strokeStyle = 'rgba(224, 242, 254, 0.85)';
+    ctx.lineWidth = Math.max(1, size * 0.035);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y + stemHeight * 0.15);
+    ctx.lineTo(x, groundY);
+    ctx.stroke();
+  }
+
   ctx.translate(x, y);
   ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
   ctx.translate(-x, -y);
@@ -3077,9 +3274,39 @@ function drawArcticWillow(ctx, x, y, size, color, glow, time, flashAmount, icicl
     ctx.shadowBlur = 20;
   }
 
-  drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes, hasIceCubes);
+  drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes, hasIceCubes, hasSnowballClusters, hasSnowDrape);
 
   ctx.restore();
+}
+
+// Avalanche Path tier 4 ("Glacial Collapse") only: small ice-shard
+// particles continuously drifting down and off the tower, even at rest —
+// "falling snow and ice shards drifting off it even at rest," read
+// literally as an always-on ambient effect rather than only showing up
+// mid-attack. Each shard loops its own fall on a gentle offset per index
+// so they don't all fall in visible lockstep.
+function drawAvalancheIceShards(ctx, x, y, size, time) {
+  const shardCount = 6;
+  for (let i = 0; i < shardCount; i += 1) {
+    const seed = i * 1.7;
+    const fallT = (time * 0.3 + i / shardCount) % 1;
+    const sx = x + Math.sin(seed) * size * 1.3 + Math.sin(time * 0.6 + seed) * size * 0.15;
+    const sy = y - size * 1.6 + fallT * size * 3.2;
+    const alpha = Math.sin(fallT * Math.PI); // fades in at the top of its fall, out at the bottom
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.fillStyle = '#cfefff';
+    ctx.translate(sx, sy);
+    ctx.rotate(seed + time * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.09);
+    ctx.lineTo(size * 0.04, 0);
+    ctx.lineTo(0, size * 0.09);
+    ctx.lineTo(-size * 0.04, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 // Frosterizer (tier 4) only: a ring of small icicles slowly orbiting the

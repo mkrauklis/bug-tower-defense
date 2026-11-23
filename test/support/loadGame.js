@@ -218,6 +218,12 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getSelectedShopItem: () => selectedShopItem,
       setSelectedShopItem: (item) => { selectedShopItem = item; },
       SHOP_ITEMS, getShopItemCost, isTowerPlacementBlocked, getTowerVisualSize,
+      // Avalanche Path (Arctic Willow's 3rd path) follow-up: lets a test
+      // exercise the real tower-rendering dispatch directly, the same
+      // "renderX never throws" pattern this test suite already uses
+      // elsewhere, rather than only reaching individual draw functions
+      // that aren't otherwise exported.
+      renderTower,
       STARTING_MONEY,
       getRound: () => round,
       getGameSpeed: () => gameSpeed,
