@@ -2585,11 +2585,38 @@ function drawSandworm(ctx, e) {
   ctx.fill();
 }
 
-// Same body plan as the Deep Forest ants (drawAntBody) — only the color
-// (set in SAVANAH_ROSTER) needs to differ to read as a distinct enemy,
-// same precedent Fire Ant/Armored Ant already set.
+// Enemy-art realism pass (direct request): this used to be the one
+// exception to Fire Ant/Armored Ant's own precedent — THEY each add a
+// real distinguishing feature on top of the shared ant body (mandibles,
+// an armor plate), this one added nothing but a color swap. Real desert
+// ants (e.g. the Saharan silver ant, genus Cataglyphis) have a famous
+// adaptation for this exact environment: a silvery, reflective sheen on
+// the abdomen that helps them survive scorching surface temperatures —
+// drawn here as a pale metallic highlight — alongside visibly longer legs
+// than the plain Ant, matching this roster's own fastest tier-1 enemy
+// (Cataglyphis is also the fastest-running ant genus known, for the same
+// real heat-survival reason).
 function drawDesertAnt(ctx, e) {
   drawAntBody(ctx, e);
+
+  ctx.strokeStyle = shadeColor(e.color, 10);
+  ctx.lineWidth = 1.2;
+  [-1, 1].forEach((i) => {
+    const kneeY = e.y + i * e.radius * 0.65;
+    ctx.beginPath();
+    ctx.moveTo(e.x - e.radius * 1.1, e.y + i * e.radius * 0.55);
+    ctx.lineTo(e.x - e.radius * 1.7, kneeY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(e.x + e.radius * 1.1, e.y + i * e.radius * 0.55);
+    ctx.lineTo(e.x + e.radius * 1.7, kneeY);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = 'rgba(230, 225, 210, 0.55)';
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.1, e.y - e.radius * 0.15, e.radius * 0.45, e.radius * 0.2, -0.2, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Big folded hind legs (the real insect's signature silhouette), drawn
@@ -3216,8 +3243,22 @@ function drawDuneScorpion(ctx, e) {
   });
 }
 
+// Enemy-art realism pass (direct request): unlike its two tier-3
+// siblings (Striped Scorpion's banding, Dune Scorpion's mottled
+// camouflage specks), this one used to call the shared body with zero
+// options at all — a flat color swap and nothing else. Many real
+// reddish-brown scorpion species (e.g. Hadrurus/Vaejovis) have a notably
+// smoother, glossier cuticle than banded/mottled desert species — drawn
+// here as a glossy highlight stripe down the back — plus slightly bigger
+// pincers than its own tier-3 siblings, reading as the toughest of the 3
+// regular scorpions (same "bigger claws = tougher" language Emperor
+// Scorpion's own, even-larger pincers already use one tier up).
 function drawRedScorpion(ctx, e) {
-  drawScorpionBody(ctx, e);
+  drawScorpionBody(ctx, e, { pincerScale: 1.15 });
+  ctx.fillStyle = shadeColor(e.color, 35);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.1, e.y - e.radius * 0.15, e.radius * 0.4, e.radius * 0.15, -0.15, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Larger, darker, with visibly bigger pincers than the other three — the

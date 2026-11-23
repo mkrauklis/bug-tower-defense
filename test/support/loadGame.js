@@ -67,6 +67,11 @@ function loadGameContext() {
       // have caught the real bug (their SHAPES were identical too, not
       // just coincidentally-similar colors).
       ENEMY_DRAW_FUNCTIONS,
+      // Enemy-art realism pass follow-up: some species-accurate fixes
+      // (e.g. Emperor Scorpion, a boss retrofit reusing a regular
+      // enemy's own art) need this to exercise/assert on the actual draw
+      // function a boss key resolves to.
+      BOSS_DRAW_FUNCTIONS,
     };
     `,
     context
