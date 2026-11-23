@@ -1411,22 +1411,57 @@ function getInitialPathHeading(path) {
   return Math.atan2(dy, dx);
 }
 
+// Open-field rework: the one read-site change that lets every existing
+// waypoint-follow/zombie-backward-walk/leak-detection call below keep
+// working completely unchanged for BOTH kinds of map. An open-field
+// enemy (createEnemyInstance below) carries its own route — built once at
+// spawn by buildOpenFieldRoute() (map.js), already routed around that
+// map's obstacles — instead of sharing one of MAP_PATHS' hand-authored
+// waypoint arrays; this is the one place that decides which of the two
+// an enemy actually walks. Every other function in this file (the
+// forward-movement loop, updateZombieMovement, the leak/removal filters)
+// calls this instead of reading MAP_PATHS[enemy.pathIndex] directly.
+function getEnemyPath(enemy) {
+  return enemy.path || MAP_PATHS[enemy.pathIndex || 0];
+}
+
 // Shared by spawnWave() and spawnSingleEnemy() (Sandbox mode) so the two
 // spawning paths can't drift apart on the enemy object's own shape —
 // that's bitten this file before (immobilizedRemaining was added in one
 // place and had to be remembered everywhere else enemies get created).
 function createEnemyInstance(entry, spawnDelay) {
-  // Multi-path maps (Savanah): each enemy independently rolls which of the
-  // map's paths it spawns onto, via the game's own seeded random() — the
-  // simplest rule that needed no extra shared state (an alternating/evenly-
-  // split rule would need a counter threaded through every spawn call
-  // site). For a single-path map this is always 0, the only option, so
-  // Deep Forest/Marshland enemies behave exactly as before. The enemy
-  // keeps this path for its whole life — see updateEnemies()/
-  // updateZombieMovement() below, both of which read MAP_PATHS[pathIndex]
-  // rather than a single shared MAP_PATH_WAYPOINTS.
-  const pathIndex = Math.floor(random() * MAP_PATHS.length);
-  const path = MAP_PATHS[pathIndex];
+  // Open-field rework: an open-field map has no shared MAP_PATHS to pick
+  // from at all — instead, this enemy gets its own route, from a
+  // randomly-rolled point along the map's spawn edge (same seeded
+  // random() the multi-path roll below already uses, so it stays
+  // reproducible under ?seed=) to the map's goal structure, threaded
+  // around that map's obstacles by buildOpenFieldRoute() (map.js) once
+  // here at spawn time. `path` stays null for every ordinary map — see
+  // getEnemyPath()'s own comment for how that null falls back to the
+  // pathIndex/MAP_PATHS system below unchanged.
+  let path = null;
+  let pathIndex = 0;
+  if (MAP_OPEN_FIELD) {
+    const edge = MAP_SPAWN_EDGE;
+    const t = random();
+    const spawnX = edge.x1 + (edge.x2 - edge.x1) * t;
+    const spawnY = edge.y1 + (edge.y2 - edge.y1) * t;
+    path = buildOpenFieldRoute(spawnX, spawnY, MAP_GOAL.x, MAP_GOAL.y, MAP_OBSTACLES, entry.radius);
+  } else {
+    // Multi-path maps (Savanah): each enemy independently rolls which of
+    // the map's paths it spawns onto, via the game's own seeded random()
+    // — the simplest rule that needed no extra shared state (an
+    // alternating/evenly-split rule would need a counter threaded
+    // through every spawn call site). For a single-path map this is
+    // always 0, the only option, so Marshland enemies behave exactly as
+    // before. The enemy keeps this path for its whole life — see
+    // getEnemyPath() above, read by updateEnemies()/
+    // updateZombieMovement() below instead of MAP_PATHS[pathIndex]
+    // directly.
+    pathIndex = Math.floor(random() * MAP_PATHS.length);
+    path = MAP_PATHS[pathIndex];
+  }
+  const spawnPoint = path[0];
   return {
     enemyKey: entry.enemyKey,
     name: entry.name,
@@ -1439,8 +1474,11 @@ function createEnemyInstance(entry, spawnDelay) {
     bounty: entry.bounty,
     waypointIndex: 0,
     pathIndex,
-    x: path[0].x,
-    y: path[0].y,
+    // null for every ordinary map (see getEnemyPath()); an open-field
+    // enemy's own spawn-to-goal route otherwise.
+    path: MAP_OPEN_FIELD ? path : null,
+    x: spawnPoint.x,
+    y: spawnPoint.y,
     heading: getInitialPathHeading(path),
     spawnDelay,
     spawned: false,
@@ -1851,11 +1889,12 @@ function updateEnemies(deltaSeconds) {
       return;
     }
 
-    // Falls back to path 0 for any enemy without its own pathIndex (a
-    // synthetic test fixture, say) — harmless on every built-in map so far
-    // since path 0 always exists, and exactly matches the old single-path
-    // behavior for Deep Forest/Marshland.
-    const path = MAP_PATHS[enemy.pathIndex || 0];
+    // getEnemyPath() prefers this enemy's own open-field route
+    // (enemy.path) when it has one; otherwise falls back to path 0 for
+    // any enemy without its own pathIndex (a synthetic test fixture,
+    // say) — harmless on every ordinary built-in map, and exactly
+    // matches the old single-path behavior for Marshland.
+    const path = getEnemyPath(enemy);
     const effectiveSpeed = enemy.slow ? enemy.speed * enemy.slow.multiplier : enemy.speed;
     let remaining = effectiveSpeed * deltaSeconds;
     while (remaining > 0 && enemy.waypointIndex < path.length - 1) {
@@ -1896,16 +1935,17 @@ function updateEnemies(deltaSeconds) {
   // own return value, so every existing caller/test that already destructures
   // "the killed array" out of that return value keeps working unchanged.
   lastLeakedEnemies = activeEnemies.filter(
-    (enemy) =>
-      !enemy.isZombie && enemy.health > 0 && enemy.waypointIndex >= MAP_PATHS[enemy.pathIndex || 0].length - 1
+    (enemy) => !enemy.isZombie && enemy.health > 0 && enemy.waypointIndex >= getEnemyPath(enemy).length - 1
   );
 
-  // Drop enemies that died or reached the final waypoint (the base/goal) —
-  // or, for a zombie, that it exploded (collided with a living enemy, or
-  // reached the path's start) this frame.
+  // Drop enemies that died or reached the final waypoint (the base/goal —
+  // an open-field enemy's own route's last waypoint IS the goal
+  // structure's position, see createEnemyInstance()) — or, for a zombie,
+  // that it exploded (collided with a living enemy, or reached the
+  // path's/route's start) this frame.
   activeEnemies = activeEnemies.filter((enemy) => {
     if (enemy.isZombie) return !enemy.markedForRemoval;
-    return enemy.health > 0 && enemy.waypointIndex < MAP_PATHS[enemy.pathIndex || 0].length - 1;
+    return enemy.health > 0 && enemy.waypointIndex < getEnemyPath(enemy).length - 1;
   });
 
   return killed;
@@ -1957,7 +1997,12 @@ const ZOMBIE_COLLISION_RADIUS = 18;
 // than setting health <= 0, which the normal sweep would treat as a real
 // kill — whether it reached the start or blew up on something.
 function updateZombieMovement(enemy, deltaSeconds) {
-  const path = MAP_PATHS[enemy.pathIndex || 0];
+  // Same getEnemyPath() preference as the forward-movement loop above —
+  // an open-field zombie walks backward through its own spawn-to-goal
+  // route (the exact one it walked forward through), reaching "the
+  // start" (waypointIndex < 0, below) exactly when it's back at its own
+  // spawn point, with zero other changes needed here.
+  const path = getEnemyPath(enemy);
   let remaining = enemy.speed * deltaSeconds;
   while (remaining > 0 && enemy.waypointIndex >= 0) {
     const target = path[enemy.waypointIndex];

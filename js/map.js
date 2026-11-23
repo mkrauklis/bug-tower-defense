@@ -126,7 +126,33 @@ const DEEP_FOREST_WAYPOINTS = [
   { x: 980, y: 180 },
 ];
 
+// Open-field rework's own data for Deep Forest: the goal structure
+// (cabin, the user's own example) on the side opposite the spawn edge,
+// a handful of fallen-log obstacles scattered through the middle for
+// "actual tactical shape instead of an empty box" (the follow-up
+// request's own phrase), and the spawn edge itself — a line segment
+// along the LEFT side of the world (roughly where the old path used to
+// enter), facing the cabin on the right. DEEP_FOREST_WAYPOINTS above is
+// deliberately left completely untouched: The Hollow Event ("Adventures")
+// reuses that exact same array for its own fixed waypoint path (see
+// MAP_TYPES.theHollowEvent below) and is NOT part of this open-field
+// conversion, so nothing here may mutate or remove it.
+const DEEP_FOREST_CABIN = { x: 860, y: 320, size: 46, radius: 56 };
+
+const DEEP_FOREST_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
+
+const DEEP_FOREST_LOGS = [
+  { x1: 220, y1: 150, x2: 310, y2: 190, radius: 14 },
+  { x1: 380, y1: 420, x2: 480, y2: 380, radius: 16 },
+  { x1: 540, y1: 140, x2: 520, y2: 240, radius: 14 },
+  { x1: 280, y1: 460, x2: 380, y2: 500, radius: 15 },
+  { x1: 600, y1: 480, x2: 690, y2: 440, radius: 14 },
+  { x1: 460, y1: 250, x2: 420, y2: 330, radius: 13 },
+];
+
 const DEEP_FOREST_DECOR = {
+  cabin: DEEP_FOREST_CABIN,
+  logs: DEEP_FOREST_LOGS,
   trees: [
     { x: 60, y: 180, r: 26 },
     { x: 130, y: 460, r: 30 },
@@ -159,10 +185,173 @@ const DEEP_FOREST_DECOR = {
   ],
 };
 
-function renderForestDecor(ctx, decor) {
+// Open-field rework (core mechanic replacement, relayed from the peer
+// session, confirmed with the user as "replace it everywhere" — built
+// first on Deep Forest only, per the peer's own suggested sequencing,
+// before rolling out to the other 6 maps one at a time): no more fixed
+// waypoint path. Enemies spawn along one edge and the goal becomes a
+// themed structure on the opposite side — Deep Forest's own goal is "a
+// cabin," the user's own example. drawForestCabin() is pure canvas-vector
+// art, same style/technique as every other hand-drawn structure in this
+// file (see drawLavaVent/drawCaveWaterPool's own "goal gets its own
+// drawn landmark" role) — log walls, a peaked roof, a lit doorway/window
+// (it's the thing enemies are attacking, so it reads as an inhabited,
+// defended structure rather than a plain target marker), and a lazily
+// drifting smoke wisp from the chimney for a touch of life.
+function drawForestCabin(ctx, x, y, size, time = 0) {
+  ctx.save();
+
+  // Chimney smoke — a few soft-drifting puffs, same "deterministic phase
+  // from position, not real randomness" convention this file's other
+  // animated decor (drawMudPuddle's ripples, etc.) already uses.
+  for (let i = 0; i < 3; i += 1) {
+    const t = ((time * 0.15 + i * 0.34) % 1);
+    const puffX = x + size * 0.32 + Math.sin(time * 0.6 + i * 2) * size * 0.08;
+    const puffY = y - size * 0.95 - t * size * 0.7;
+    ctx.fillStyle = `rgba(210, 210, 215, ${0.35 * (1 - t)})`;
+    ctx.beginPath();
+    ctx.arc(puffX, puffY, size * (0.1 + t * 0.12), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Log walls — a simple rectangular cabin body, with a few horizontal
+  // bark-tick lines (shadeColor, the same universal lighten/darken helper
+  // towers.js's own applyStemBarkTexture uses) so the walls read as
+  // stacked logs rather than one flat plank.
+  const wallW = size * 1.5;
+  const wallH = size * 1.05;
+  const wallX = x - wallW / 2;
+  const wallY = y - wallH;
+  ctx.fillStyle = '#5a3c22';
+  ctx.fillRect(wallX, wallY, wallW, wallH);
+  ctx.strokeStyle = shadeColor('#5a3c22', -20);
+  ctx.lineWidth = Math.max(1.5, size * 0.04);
+  for (let row = 1; row < 5; row += 1) {
+    const ly = wallY + (row / 5) * wallH;
+    ctx.beginPath();
+    ctx.moveTo(wallX, ly);
+    ctx.lineTo(wallX + wallW, ly);
+    ctx.stroke();
+  }
+
+  // Peaked roof, two tone (a darker ridge shadow on the near-facing slope).
+  ctx.fillStyle = '#3a2416';
+  ctx.beginPath();
+  ctx.moveTo(wallX - size * 0.18, wallY);
+  ctx.lineTo(x, wallY - size * 0.75);
+  ctx.lineTo(wallX + wallW + size * 0.18, wallY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+  ctx.beginPath();
+  ctx.moveTo(x, wallY - size * 0.75);
+  ctx.lineTo(wallX + wallW + size * 0.18, wallY);
+  ctx.lineTo(x, wallY);
+  ctx.closePath();
+  ctx.fill();
+
+  // A warm lit doorway — the structure's own "this is what's being
+  // defended" focal point, glowing so it reads clearly as the goal even
+  // among the surrounding trees/logs.
+  const doorW = size * 0.34;
+  const doorH = size * 0.6;
+  ctx.shadowColor = 'rgba(255, 190, 90, 0.8)';
+  ctx.shadowBlur = size * 0.3;
+  ctx.fillStyle = '#ffb84d';
+  ctx.fillRect(x - doorW / 2, y - doorH, doorW, doorH);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#2e1c0f';
+  ctx.lineWidth = Math.max(1.5, size * 0.035);
+  ctx.strokeRect(x - doorW / 2, y - doorH, doorW, doorH);
+
+  // A small lit window on each side of the door.
+  ctx.fillStyle = '#ffcf7a';
+  [-1, 1].forEach((side) => {
+    const winX = x + side * wallW * 0.32;
+    ctx.fillRect(winX - size * 0.09, wallY + wallH * 0.3, size * 0.18, size * 0.18);
+  });
+
+  // Chimney, drawn last so it sits in front of the roof's near slope.
+  ctx.fillStyle = '#4a4a4a';
+  ctx.fillRect(x + size * 0.24, wallY - size * 0.55, size * 0.16, size * 0.5);
+
+  applyBlobShading(ctx, x, y - wallH * 0.5, wallW * 0.5);
+  ctx.restore();
+}
+
+// A fallen log obstacle (follow-up request, relayed from the peer
+// session: "each map needs its own impassable obstacle terrain... Deep
+// Forest: fallen logs... enemies can't walk through any of these
+// obstacles (must go around), towers can't walk through them either once
+// mobile, and towers can't be placed on top of them"). Modeled as a
+// capsule — a straight segment (x1,y1)-(x2,y2) plus a radius — both for
+// the art (drawn as a rotated rounded rectangle, the natural capsule
+// shape) and, more importantly, for the actual collision/placement/
+// routing math every open-field map obstacle shares (see
+// isPointInObstacle()/buildOpenFieldRoute() below, which both read this
+// exact same {x1,y1,x2,y2,radius} shape generically — nothing map-
+// specific about them). A thin cut-log end cap at each tip plus a few
+// short cross-hatch bark ticks (same "a couple of short perpendicular
+// strokes read as bark/wood-grain" idea towers.js's own
+// applyStemBarkTexture uses for stems) is enough to read as a log rather
+// than a plain capsule.
+function drawFallenLog(ctx, obstacle) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  ctx.fillStyle = '#5a3c22';
+  ctx.beginPath();
+  ctx.moveTo(-length / 2, -radius);
+  ctx.lineTo(length / 2, -radius);
+  ctx.arc(length / 2, 0, radius, -Math.PI / 2, Math.PI / 2);
+  ctx.lineTo(-length / 2, radius);
+  ctx.arc(-length / 2, 0, radius, Math.PI / 2, -Math.PI / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor('#5a3c22', -22);
+  ctx.lineWidth = Math.max(1, radius * 0.16);
+  for (let i = 1; i < 4; i += 1) {
+    const tx = -length / 2 + (i / 4) * length;
+    ctx.beginPath();
+    ctx.moveTo(tx, -radius * 0.7);
+    ctx.lineTo(tx, radius * 0.7);
+    ctx.stroke();
+  }
+
+  // Cut end cap — a lighter ellipse showing the log's own wood-grain rings.
+  ctx.fillStyle = shadeColor('#5a3c22', 16);
+  ctx.beginPath();
+  ctx.ellipse(length / 2, 0, radius * 0.4, radius, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = shadeColor('#5a3c22', -14);
+  ctx.lineWidth = Math.max(1, radius * 0.12);
+  ctx.beginPath();
+  ctx.ellipse(length / 2, 0, radius * 0.22, radius * 0.55, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function renderForestDecor(ctx, decor, time = 0) {
   decor.grassTufts.forEach((tuft) => drawGrassTuft(ctx, tuft.x, tuft.y));
   decor.bushes.forEach((bush) => drawMapBush(ctx, bush.x, bush.y, bush.r));
   decor.trees.forEach((tree) => drawMapTree(ctx, tree.x, tree.y, tree.r));
+  // Open-field obstacles/goal, present only on Deep Forest's own decor —
+  // every map before this (and The Hollow Event, which reuses Deep
+  // Forest's path shape but not its decor object) has neither field, so
+  // this is a no-op for them with zero special-casing needed, same
+  // "defaults to an empty/absent value" convention isPointInMagmaPool()
+  // already uses for magma pools.
+  if (decor.logs) decor.logs.forEach((log) => drawFallenLog(ctx, log));
+  if (decor.cabin) drawForestCabin(ctx, decor.cabin.x, decor.cabin.y, decor.cabin.size, time);
 }
 
 const FOREST_PATH_COLORS = { outline: '#3e2a1a', fill: '#6b4a2f' };
@@ -2195,6 +2384,19 @@ const MAP_TYPES = {
     pathColors: FOREST_PATH_COLORS,
     terrain: 'forest',
     decor: DEEP_FOREST_DECOR,
+    // Open-field rework (core mechanic replacement, confirmed with the
+    // user as "replace it everywhere," built first on Deep Forest only —
+    // see this file's own DEEP_FOREST_CABIN/DEEP_FOREST_LOGS/
+    // DEEP_FOREST_SPAWN_EDGE comment above). `paths` above is kept as a
+    // harmless, unused fallback (and so The Hollow Event's own identical-
+    // looking entry further down, which still uses the fixed-path system,
+    // needed no changes at all) — every reader that cares about
+    // open-field-ness checks `openField` first; see setActiveMap()'s own
+    // MAP_OPEN_FIELD/MAP_GOAL/MAP_OBSTACLES/MAP_SPAWN_EDGE bindings below.
+    openField: true,
+    goal: DEEP_FOREST_CABIN,
+    obstacles: DEEP_FOREST_LOGS,
+    spawnEdge: DEEP_FOREST_SPAWN_EDGE,
   },
   marshland: {
     id: 'marshland',
@@ -2322,12 +2524,28 @@ let activeMap = MAP_TYPES.deepForest;
 let MAP_PATHS = activeMap.paths;
 let MAP_PATH_WAYPOINTS = MAP_PATHS[0];
 let MAP_PATH_WIDTH = activeMap.pathWidth;
+// Open-field rework: 4 more "read at call time, reassigned by
+// setActiveMap()" bindings, same convention as the 3 above — MAP_OPEN_FIELD
+// is what every other file checks before treating a map as open-field at
+// all (enemies.js's createEnemyInstance/updateEnemies, game.js's tower-
+// movement update and placement checks); MAP_GOAL/MAP_OBSTACLES/
+// MAP_SPAWN_EDGE default to null/[]/null for every map that doesn't set
+// them (every map except Deep Forest, for now), so nothing needs to
+// special-case "this map has none of this" beyond that default.
+let MAP_OPEN_FIELD = Boolean(activeMap.openField);
+let MAP_GOAL = activeMap.goal || null;
+let MAP_OBSTACLES = activeMap.obstacles || [];
+let MAP_SPAWN_EDGE = activeMap.spawnEdge || null;
 
 function setActiveMap(map) {
   activeMap = map;
   MAP_PATHS = map.paths;
   MAP_PATH_WAYPOINTS = MAP_PATHS[0];
   MAP_PATH_WIDTH = map.pathWidth;
+  MAP_OPEN_FIELD = Boolean(map.openField);
+  MAP_GOAL = map.goal || null;
+  MAP_OBSTACLES = map.obstacles || [];
+  MAP_SPAWN_EDGE = map.spawnEdge || null;
 }
 
 function getActiveMap() {
@@ -2340,6 +2558,14 @@ function getActiveMap() {
 // correctly block tower placement; for a single-path map this is exactly
 // the same check as before.
 function isPointOnPath(x, y, margin = 0) {
+  // Open-field maps have no meaningful fixed path to block placement
+  // against — MAP_PATHS still technically holds the map's old waypoint
+  // data (kept around harmlessly, see MAP_TYPES.deepForest's own
+  // comment), but it no longer means anything gameplay-wise once
+  // MAP_OPEN_FIELD is true, so this always reads as "clear" here;
+  // isPointInObstacle()/isPointInGoal() below are what actually restrict
+  // placement on an open-field map instead.
+  if (MAP_OPEN_FIELD) return false;
   const halfWidth = MAP_PATH_WIDTH / 2 + margin;
   return MAP_PATHS.some((path) => {
     for (let i = 0; i < path.length - 1; i += 1) {
@@ -2349,6 +2575,161 @@ function isPointOnPath(x, y, margin = 0) {
     }
     return false;
   });
+}
+
+// Open-field rework: the distance from a point to one obstacle's own
+// capsule shape (a straight segment plus a radius — see drawFallenLog()'s
+// own comment for why every obstacle, regardless of map, shares this one
+// {x1,y1,x2,y2,radius} shape) — negative once the point is inside it.
+// Reuses distanceToSegment() exactly like isPointOnPath() above does for
+// the old path-width check, just against a single short segment instead
+// of a whole waypoint chain.
+function distanceToObstacle(x, y, obstacle) {
+  return distanceToSegment(x, y, obstacle.x1, obstacle.y1, obstacle.x2, obstacle.y2) - obstacle.radius;
+}
+
+// Whether a point sits inside (or within `margin` of) any of the active
+// map's obstacles — used to keep towers off fallen logs (and whatever
+// obstacle type each later map gets) when placing them, same
+// "defaults to an empty array, zero special-casing for maps without any"
+// convention isPointInMagmaPool() above already established for magma
+// pools.
+function isPointInObstacle(x, y, margin = 0) {
+  return MAP_OBSTACLES.some((obstacle) => distanceToObstacle(x, y, obstacle) <= margin);
+}
+
+// Whether a point sits inside (or within `margin` of) the active map's
+// own goal structure — keeps a tower from being placed directly on top
+// of the cabin itself. null-safe (MAP_GOAL is null on every map that
+// hasn't been converted to the open-field system yet).
+function isPointInGoal(x, y, margin = 0) {
+  return Boolean(MAP_GOAL) && Math.hypot(MAP_GOAL.x - x, MAP_GOAL.y - y) < MAP_GOAL.radius + margin;
+}
+
+// Open-field rework: builds one enemy's own route from its spawn point to
+// the map's goal, routed around every obstacle by a grid+BFS pathfind —
+// NOT the per-frame steering/avoidance the follow-up's own phrasing
+// suggested, after 3 different geometric "detour around the obstacles
+// the direct line crosses" attempts (a single fixed detour per obstacle;
+// detours re-derived per blocked segment; a bounding-circle vs. a real-
+// capsule-shape too-close test) each got caught live clipping an
+// obstacle, oscillating into 100+ near-duplicate waypoints, or getting
+// stuck in a correction loop that grew a waypoint's offset by hundreds
+// of pixels with zero effect because the segment actually at fault
+// didn't even touch that waypoint. A grid+BFS pathfind has none of that
+// risk — it's the standard, unconditionally-terminating way to solve
+// "a route around static obstacles" — and is still computed ONCE per
+// enemy at spawn time, not a per-frame force, so it stays cheap despite
+// being more thorough: a ~40x27 cell grid (cellSize 24 over the
+// 960x640 world) with 8-directional BFS is on the order of a few
+// thousand cheap operations, once, when an enemy is created.
+//
+// A cell counts as blocked if its own center sits within `enemyRadius +
+// a flat margin` of any obstacle's REAL capsule shape (distanceToObstacle()
+// — not a bounding circle, which over-approximates an elongated log
+// badly enough to wall off routes that had plenty of real room). BFS
+// then finds any shortest (by cell-step count) path from the spawn
+// cell to the goal cell; a "string pulling" pass afterward drops any
+// waypoint a later one is already in a straight, obstacle-clear line
+// from, which turns the grid's natural staircase into a small number of
+// clean, direct segments — the same "fewer, straighter waypoints read
+// better than a dense zigzag" idea a hand-authored path would already
+// have. If somehow no path exists at all (every map before Deep Forest
+// never exercises this; even here, obstacles are too sparse to ever
+// wall off the field), this falls back to a plain straight line rather
+// than throwing.
+//
+// The result is an ordinary waypoint array — exactly the same shape
+// MAP_PATHS' own hand-authored paths already are — so enemies.js's
+// entire existing waypoint-follow/zombie-backward-walk/leak-detection
+// machinery keeps working completely unchanged; see enemies.js's
+// getEnemyPath() for the one small read-site change that makes an enemy
+// prefer its own route (enemy.path) over a shared MAP_PATHS entry when
+// it has one.
+function buildOpenFieldRoute(spawnX, spawnY, goalX, goalY, obstacles, enemyRadius = 10) {
+  const cellSize = 24;
+  const cols = Math.ceil(MAP_WORLD_WIDTH / cellSize);
+  const rows = Math.ceil(MAP_WORLD_HEIGHT / cellSize);
+  const requiredClearance = enemyRadius + 14;
+  const key = (col, row) => row * cols + col;
+
+  function isCellBlocked(col, row) {
+    const cx = col * cellSize + cellSize / 2;
+    const cy = row * cellSize + cellSize / 2;
+    return obstacles.some((obstacle) => distanceToObstacle(cx, cy, obstacle) < requiredClearance);
+  }
+
+  const startCol = Math.max(0, Math.min(cols - 1, Math.floor(spawnX / cellSize)));
+  const startRow = Math.max(0, Math.min(rows - 1, Math.floor(spawnY / cellSize)));
+  const goalCol = Math.max(0, Math.min(cols - 1, Math.floor(goalX / cellSize)));
+  const goalRow = Math.max(0, Math.min(rows - 1, Math.floor(goalY / cellSize)));
+
+  const DIRECTIONS = [
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [1, 1], [1, -1], [-1, 1], [-1, -1],
+  ];
+  const cameFrom = new Array(cols * rows).fill(-1);
+  const visited = new Array(cols * rows).fill(false);
+  const queue = [[startCol, startRow]];
+  visited[key(startCol, startRow)] = true;
+  let reached = startCol === goalCol && startRow === goalRow;
+
+  for (let head = 0; head < queue.length && !reached; head += 1) {
+    const [col, row] = queue[head];
+    for (let d = 0; d < DIRECTIONS.length && !reached; d += 1) {
+      const nextCol = col + DIRECTIONS[d][0];
+      const nextRow = row + DIRECTIONS[d][1];
+      if (nextCol < 0 || nextCol >= cols || nextRow < 0 || nextRow >= rows) continue;
+      const nextKey = key(nextCol, nextRow);
+      if (visited[nextKey] || isCellBlocked(nextCol, nextRow)) continue;
+      visited[nextKey] = true;
+      cameFrom[nextKey] = key(col, row);
+      queue.push([nextCol, nextRow]);
+      if (nextCol === goalCol && nextRow === goalRow) reached = true;
+    }
+  }
+
+  if (!reached) return [{ x: spawnX, y: spawnY }, { x: goalX, y: goalY }]; // no path found — straight line beats throwing
+
+  const cellPath = [];
+  for (let cur = key(goalCol, goalRow); cur !== -1; cur = cameFrom[cur]) {
+    const col = cur % cols;
+    const row = Math.floor(cur / cols);
+    cellPath.push({ x: col * cellSize + cellSize / 2, y: row * cellSize + cellSize / 2 });
+    if (col === startCol && row === startRow) break;
+  }
+  cellPath.reverse();
+  cellPath[0] = { x: spawnX, y: spawnY };
+  cellPath[cellPath.length - 1] = { x: goalX, y: goalY };
+
+  function segmentClearsEveryObstacle(a, b) {
+    for (let s = 0; s <= 12; s += 1) {
+      const t = s / 12;
+      const px = a.x + (b.x - a.x) * t;
+      const py = a.y + (b.y - a.y) * t;
+      if (obstacles.some((obstacle) => distanceToObstacle(px, py, obstacle) < requiredClearance)) return false;
+    }
+    return true;
+  }
+
+  // String pulling: from each anchor, jump straight to the FARTHEST
+  // later waypoint still reachable in a clear straight line, skipping
+  // every grid waypoint in between.
+  const simplified = [cellPath[0]];
+  let anchor = 0;
+  while (anchor < cellPath.length - 1) {
+    let farthest = anchor + 1;
+    for (let candidate = cellPath.length - 1; candidate > anchor + 1; candidate -= 1) {
+      if (segmentClearsEveryObstacle(cellPath[anchor], cellPath[candidate])) {
+        farthest = candidate;
+        break;
+      }
+    }
+    simplified.push(cellPath[farthest]);
+    anchor = farthest;
+  }
+
+  return simplified;
 }
 
 // Whether a point sits inside any of the ACTIVE map's magma pools — an
@@ -2383,24 +2764,33 @@ function renderMap(ctx, canvas, time = 0) {
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
 
-  // All paths' outlines first, then all paths' fills — rather than each
-  // path's outline+fill one after another — so that where two paths
-  // overlap or converge (Savanah's temple goal), the fill layer always
-  // wins over any path's outline there instead of however the paths
-  // happen to be ordered in the array. For a single-path map this is
-  // pixel-identical to the old two-call sequence.
-  const colors = activeMap.pathColors;
-  MAP_PATHS.forEach((path) => {
-    ctx.strokeStyle = colors.outline;
-    ctx.lineWidth = MAP_PATH_WIDTH + 10;
-    strokeMapPath(ctx, path);
-  });
-  MAP_PATHS.forEach((path) => {
-    ctx.strokeStyle = colors.fill;
-    ctx.lineWidth = MAP_PATH_WIDTH;
-    strokeMapPath(ctx, path);
-  });
-  if (theme.renderPathEffects) theme.renderPathEffects(ctx, MAP_PATHS, MAP_PATH_WIDTH, time);
+  // Open-field maps have no fixed dirt-path geometry worth drawing
+  // (MAP_PATHS still technically holds the map's old waypoint data —
+  // see MAP_TYPES.deepForest's own comment — but it no longer means
+  // anything gameplay-wise once MAP_OPEN_FIELD is true), so this whole
+  // path-stroke block is skipped entirely; the obstacles/goal structure
+  // drawn by theme.renderDecor below carry the terrain's own shape
+  // instead.
+  if (!MAP_OPEN_FIELD) {
+    // All paths' outlines first, then all paths' fills — rather than each
+    // path's outline+fill one after another — so that where two paths
+    // overlap or converge (Savanah's temple goal), the fill layer always
+    // wins over any path's outline there instead of however the paths
+    // happen to be ordered in the array. For a single-path map this is
+    // pixel-identical to the old two-call sequence.
+    const colors = activeMap.pathColors;
+    MAP_PATHS.forEach((path) => {
+      ctx.strokeStyle = colors.outline;
+      ctx.lineWidth = MAP_PATH_WIDTH + 10;
+      strokeMapPath(ctx, path);
+    });
+    MAP_PATHS.forEach((path) => {
+      ctx.strokeStyle = colors.fill;
+      ctx.lineWidth = MAP_PATH_WIDTH;
+      strokeMapPath(ctx, path);
+    });
+    if (theme.renderPathEffects) theme.renderPathEffects(ctx, MAP_PATHS, MAP_PATH_WIDTH, time);
+  }
 
   theme.renderDecor(ctx, activeMap.decor, time);
 }
@@ -2439,19 +2829,23 @@ function renderMapPreview(ctx, map, x, y, width, height, time = 0) {
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  // Same all-outlines-then-all-fills ordering as renderMap(), and for the
-  // same reason — see its own comment.
-  map.paths.forEach((path) => {
-    ctx.strokeStyle = map.pathColors.outline;
-    ctx.lineWidth = map.pathWidth + 10;
-    strokeMapPath(ctx, path);
-  });
-  map.paths.forEach((path) => {
-    ctx.strokeStyle = map.pathColors.fill;
-    ctx.lineWidth = map.pathWidth;
-    strokeMapPath(ctx, path);
-  });
-  if (theme.renderPathEffects) theme.renderPathEffects(ctx, map.paths, map.pathWidth, time);
+  // Same "skip the path stroke on an open-field map" guard renderMap()
+  // itself uses, and for the same reason — see its own comment.
+  if (!map.openField) {
+    // Same all-outlines-then-all-fills ordering as renderMap(), and for the
+    // same reason — see its own comment.
+    map.paths.forEach((path) => {
+      ctx.strokeStyle = map.pathColors.outline;
+      ctx.lineWidth = map.pathWidth + 10;
+      strokeMapPath(ctx, path);
+    });
+    map.paths.forEach((path) => {
+      ctx.strokeStyle = map.pathColors.fill;
+      ctx.lineWidth = map.pathWidth;
+      strokeMapPath(ctx, path);
+    });
+    if (theme.renderPathEffects) theme.renderPathEffects(ctx, map.paths, map.pathWidth, time);
+  }
 
   theme.renderDecor(ctx, map.decor, time);
 

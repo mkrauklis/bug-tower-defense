@@ -1435,6 +1435,8 @@ function render() {
       canAfford(getShopItemCost(selectedShopItem)) &&
       !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
       !isPointInMagmaPool(mouseX, mouseY) &&
+      !isPointInObstacle(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
+      !isPointInGoal(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
       !isTowerPlacementBlocked(mouseX, mouseY, selectedShopItem.typeKey);
     ctx.fillStyle = buildable ? 'rgba(76, 175, 80, 0.4)' : 'rgba(229, 57, 53, 0.4)';
     ctx.beginPath();
@@ -3589,6 +3591,15 @@ function handleCanvasTap(x, y) {
     if (!canAfford(cost)) return;
     if (isPointOnPath(x, y, PLACEMENT_PATH_MARGIN)) return;
     if (isPointInMagmaPool(x, y)) return;
+    // Open-field rework: obstacles (Deep Forest's fallen logs) and the
+    // goal structure itself are both off-limits for placement — same
+    // "towers can't be placed on top of them" rule the follow-up request
+    // stated for every map's obstacle type, plus the goal structure for
+    // the same reason magma pools/the old path itself were already
+    // off-limits. Both are no-ops (MAP_OBSTACLES empty, MAP_GOAL null) on
+    // every map before this conversion.
+    if (isPointInObstacle(x, y, PLACEMENT_PATH_MARGIN)) return;
+    if (isPointInGoal(x, y, PLACEMENT_PATH_MARGIN)) return;
     if (isTowerPlacementBlocked(x, y, selectedShopItem.typeKey)) return;
 
     const tower = createTower(selectedShopItem.typeKey);

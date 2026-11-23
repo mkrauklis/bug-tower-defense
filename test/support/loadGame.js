@@ -72,6 +72,17 @@ function loadGameContext() {
       // enemy's own art) need this to exercise/assert on the actual draw
       // function a boss key resolves to.
       BOSS_DRAW_FUNCTIONS,
+      // Open-field rework (core mechanic replacement, confirmed with the
+      // user as "replace it everywhere," built first on Deep Forest only):
+      // lets a test exercise the actual route-building/obstacle-placement
+      // functions directly, and read the "currently active map" bindings
+      // these touch. Getters, not plain bindings, for the same reason
+      // getMapPaths above is one — setActiveMap() reassigns all 4.
+      buildOpenFieldRoute, distanceToObstacle, isPointInObstacle, isPointInGoal, renderMap,
+      getIsOpenField: () => MAP_OPEN_FIELD,
+      getMapGoal: () => MAP_GOAL,
+      getMapObstacles: () => MAP_OBSTACLES,
+      getMapSpawnEdge: () => MAP_SPAWN_EDGE,
     };
     `,
     context
