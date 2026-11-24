@@ -1562,6 +1562,15 @@ function createEnemyInstance(entry, spawnDelay) {
     // null (not []) for everything else, so the cheap `enemy.trail &&` check
     // in updateEnemies skips non-millipede enemies with no work at all.
     trail: MILLIPEDE_FAMILY_KEYS.has(entry.enemyKey) ? [] : null,
+    // Hop correction (direct follow-up request: frogs were sliding
+    // forward continuously with a hop animation layered on top, instead
+    // of actually pausing at ground level between hops). A stable
+    // per-enemy phase offset, rolled once at spawn via the game's own
+    // seeded random() (not derived from enemy.x/y, which change as it
+    // moves — a position-derived seed would make the hop cycle itself
+    // jitter every frame) — see getHopState() below for how this is
+    // used. Harmless/unused on every non-hopping enemy.
+    hopSeed: random() * HOP_PERIOD,
     // Mushroom's Zombify: a spore kill can raise a non-boss enemy as a
     // zombie instead of removing it — see turnIntoZombie()/
     // updateZombieMovement() below. zombieExplosionDamage is carried per-
@@ -1824,6 +1833,7 @@ function applyFreeze(enemy, freeze, sourceTower) {
 }
 
 function updateEnemies(deltaSeconds) {
+  enemyMovementClock += deltaSeconds;
   activeEnemies.forEach((enemy) => {
     // A zombie (Mushroom's Zombify) is a completely separate little state
     // machine — it shambles backward toward the path's start instead of
@@ -1937,6 +1947,18 @@ function updateEnemies(deltaSeconds) {
     const path = getEnemyPath(enemy);
     const effectiveSpeed = enemy.slow ? enemy.speed * enemy.slow.multiplier : enemy.speed;
     let remaining = effectiveSpeed * deltaSeconds;
+    // Hop correction (direct follow-up request): a frog-type enemy's
+    // ACTUAL position only advances during the airborne portion of its
+    // own hop cycle (getHopState(), above) — completely still the rest
+    // of the time, a real pause at ground level rather than just a
+    // visual bob layered on top of continuous movement. Boosted by
+    // 1/HOP_AIRBORNE_FRACTION while airborne so its configured speed stat
+    // still determines its average progress over a full cycle, same as
+    // every other enemy, instead of quietly becoming slower just because
+    // part of each cycle is motionless.
+    if (HOPPING_ENEMY_KEYS.has(enemy.enemyKey)) {
+      remaining = getHopState(enemy, enemyMovementClock).isAirborne ? remaining / HOP_AIRBORNE_FRACTION : 0;
+    }
     while (remaining > 0 && enemy.waypointIndex < path.length - 1) {
       const target = path[enemy.waypointIndex + 1];
       const dx = target.x - enemy.x;
@@ -5452,12 +5474,59 @@ function drawZombieMushroomCap(ctx, x, y, size) {
 // hopping; checked against the full roster, not just memory of it, per
 // the request's own instruction). A periodic jump arc — rises and falls
 // with each stride rather than smoothly sliding along its route — with a
-// brief squash on landing. Phased by position (same "seeded by where it
-// is, not real randomness" convention this project's other periodic
-// animations already use) so multiple frogs hopping at once don't all
-// land in lockstep.
+// brief squash on landing.
+//
+// REVISED on direct follow-up ("frogs should be completely stationary
+// between hops... right now it sounds like they're continuously sliding
+// forward with a hop animation layered on top"). The first version only
+// ever added a render-time visual bob/squash on top of the enemy's own
+// continuously-advancing position — a real hop needs the ACTUAL movement
+// gated to the airborne portion of the cycle too, with a genuine pause
+// at ground level in between, not just a soft landing. getHopState()
+// below is the single source of truth both updateEnemies() (gates how
+// far this frame's movement actually advances) and renderEnemies() (the
+// visual lift/squash) read, so the two always agree: it's airborne, and
+// only airborne, exactly when it's actually moving. Each enemy's own
+// hopSeed (set once at spawn, see createEnemyInstance) phases its cycle
+// so multiple frogs hopping at once don't all land in lockstep.
 const HOPPING_ENEMY_KEYS = new Set(['froglet', 'marsh-boss-tier-1']);
-const HOP_SPEED = 5;
+// Seconds per full hop-then-rest cycle, and the fraction of that cycle
+// actually spent airborne/moving — the rest is the real pause at ground
+// level the follow-up asked for. During the airborne window, movement
+// speed is boosted by 1/HOP_AIRBORNE_FRACTION so the enemy's own
+// configured speed stat still determines its AVERAGE progress over a
+// full cycle (same "reasonable forward progress over time" the request
+// asked for), rather than quietly becoming far slower than every other
+// enemy just because it spends part of each cycle motionless.
+const HOP_PERIOD = 0.9;
+const HOP_AIRBORNE_FRACTION = 0.35;
+
+// How much of the cycle right after touchdown still shows a brief
+// landing squash, as a fraction of the full HOP_PERIOD.
+const HOP_SQUASH_WINDOW = 0.12;
+
+// A self-contained clock, local to this file and advanced by
+// updateEnemies() below using the exact same deltaSeconds game.js's own
+// animationTime already advances by — deliberately NOT reading
+// animationTime directly (a game.js global): enemies.js's own light test
+// harness loads this file without game.js at all, and every other
+// per-frame value this file hands between its own render/update
+// functions (renderEnemies' own `time` parameter, etc.) is already
+// passed explicitly rather than read off a cross-file global, so this
+// keeps getHopState() consistent with that and independently testable.
+let enemyMovementClock = 0;
+
+function getHopState(enemy, time) {
+  const cyclePos = ((time + enemy.hopSeed) % HOP_PERIOD) / HOP_PERIOD; // 0 -> 1 across each cycle
+  const isAirborne = cyclePos < HOP_AIRBORNE_FRACTION;
+  const liftProgress = isAirborne ? cyclePos / HOP_AIRBORNE_FRACTION : 0; // 0 -> 1 across just the airborne window
+  const lift = isAirborne ? Math.sin(liftProgress * Math.PI) : 0; // rises then falls, 0 at both ends of the hop
+
+  const sinceLanding = isAirborne ? 1 : (cyclePos - HOP_AIRBORNE_FRACTION) / HOP_SQUASH_WINDOW;
+  const squash = !isAirborne && sinceLanding < 1 ? (1 - sinceLanding) * 0.18 : 0;
+
+  return { isAirborne, lift, squash };
+}
 
 function renderEnemies(ctx, time) {
   activeEnemies.forEach((enemy) => {
@@ -5497,10 +5566,8 @@ function renderEnemies(ctx, time) {
       ctx.rotate(enemy.heading + facingOffset);
       ctx.translate(-enemy.x, -enemy.y);
       if (HOPPING_ENEMY_KEYS.has(enemy.enemyKey)) {
-        const hopPhase = (time * HOP_SPEED + (enemy.x + enemy.y) * 0.03) % (Math.PI * 2);
-        const lift = Math.max(0, Math.sin(hopPhase)); // 0 while grounded, up to 1 at the peak of each hop
+        const { lift, squash } = getHopState(enemy, time);
         const stretch = lift * 0.15; // a touch taller/thinner mid-air
-        const squash = Math.cos(hopPhase) < 0 && lift < 0.1 ? 0.15 : 0; // a brief squash right on landing
         ctx.translate(enemy.x, enemy.y - lift * enemy.radius * 0.6);
         ctx.scale(1 - stretch * 0.5 + squash * 0.5, 1 + stretch - squash);
         ctx.translate(-enemy.x, -enemy.y);

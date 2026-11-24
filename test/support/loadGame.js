@@ -63,6 +63,13 @@ function loadGameContext() {
       // pattern already used throughout this file) and check which
       // enemy keys are opted into the hop animation.
       renderEnemies, HOPPING_ENEMY_KEYS,
+      // Hop correction follow-up: lets a test drive the actual
+      // airborne/resting state machine directly rather than only
+      // inferring it from position deltas. enemyMovementClock is a
+      // getter (like getActiveEnemies above) since updateEnemies()
+      // reassigns it every call.
+      getHopState, HOP_PERIOD, HOP_AIRBORNE_FRACTION,
+      getEnemyMovementClock: () => enemyMovementClock,
       // Open-field rollout, Tundra's turn: lets a test exercise the real
       // decor-render dispatch directly, same "renderX never throws"
       // pattern already used throughout this file.

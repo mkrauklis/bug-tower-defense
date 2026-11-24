@@ -23,10 +23,23 @@ const { loadGameContext } = require('./support/loadGame');
 // Frog Larva are both legless/larval (swim, don't hop; Frog Larva is
 // explicitly "a soft blob" with no legs per its own existing art
 // comment), so only Froglet and the Frog Boss (marsh-boss-tier-1, "a
-// full adult frog") are in HOPPING_ENEMY_KEYS. Hop is a periodic jump
-// arc applied as a render-time translate/scale right alongside the
-// existing heading-rotation wrap in renderEnemies(), not a change to any
-// individual draw function.
+// full adult frog") are in HOPPING_ENEMY_KEYS.
+//
+// Hop is a two-part design, corrected after an initial render-only pass
+// was (correctly) called out as "continuously sliding forward with a
+// hop animation layered on top": (1) getHopState(enemy, time) is a pure
+// function of a STABLE per-enemy hopSeed (set once at spawn, never
+// derived from x/y) that reports isAirborne/lift/squash for the current
+// point in HOP_PERIOD; renderEnemies() uses it to apply a render-time
+// translate/scale, same as before, not a change to any individual draw
+// function. (2) updateEnemies() now ALSO reads the same getHopState to
+// gate real per-frame movement for HOPPING_ENEMY_KEYS — zero distance
+// budget while resting, boosted by 1/HOP_AIRBORNE_FRACTION while
+// airborne so the enemy's average speed over a full cycle still matches
+// its configured stat. enemyMovementClock is a clock local to
+// enemies.js (not game.js's animationTime) so this file's own light
+// test harness, which loads enemies.js without game.js, can drive
+// updateEnemies/getHopState with no cross-file dependency.
 
 test('MILLIPEDE_FAMILY_KEYS is exactly the snake/eel roster the request named, confirmed against the full roster rather than assumed', () => {
   const game = loadGameContext();
@@ -107,7 +120,7 @@ test('renderEnemies never throws for every snake/eel type across several animati
   });
 });
 
-test('renderEnemies never throws for the hopping Froglet, and never mutates its real x/y (hop is render-only)', () => {
+test('renderEnemies never throws for the hopping Froglet, and never itself mutates its real x/y (the render pass only transforms the ctx; actual movement gating happens in updateEnemies, tested below)', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.marshland);
   const ctx = new Proxy({}, { get: () => () => {} });
@@ -125,18 +138,73 @@ test('renderEnemies never throws for the hopping Froglet, and never mutates its 
   assert.equal(enemy.y, originalY);
 });
 
-test('the hop\'s own lift factor actually cycles from grounded to peak and back over time, rather than sitting at one fixed value', () => {
+test('getHopState\'s own lift cycles from grounded to peak and back across the airborne window, and is exactly 0 for the rest of the cycle (a real pause, not just a soft landing)', () => {
   const game = loadGameContext();
-  // Mirrors renderEnemies' own HOP_SPEED/phase formula exactly (not
-  // exported directly — HOP_SPEED is an internal tuning constant, same as
-  // SLITHER_SPEED/SLITHER_WAVELENGTH — so this re-derives the same
-  // position-seeded phase the real code computes, as an external check
-  // that it truly varies rather than asserting on the private constant).
-  const enemy = { x: 300, y: 300 };
-  const lifts = [0, 0.2, 0.4, 0.6, 0.8].map((time) => {
-    const hopPhase = (time * 5 + (enemy.x + enemy.y) * 0.03) % (Math.PI * 2);
-    return Math.max(0, Math.sin(hopPhase));
+  const enemy = { hopSeed: 0 };
+  const samples = [];
+  for (let t = 0; t <= game.HOP_PERIOD; t += game.HOP_PERIOD / 40) {
+    samples.push(game.getHopState(enemy, t));
+  }
+  const airborneSamples = samples.filter((s) => s.isAirborne);
+  const restingSamples = samples.filter((s) => !s.isAirborne);
+  assert.ok(airborneSamples.length > 0 && restingSamples.length > 0);
+  assert.ok(Math.max(...airborneSamples.map((s) => s.lift)) > 0.8); // genuinely reaches a real peak
+  restingSamples.forEach((s) => assert.equal(s.lift, 0)); // grounded means grounded, not "barely off the floor"
+});
+
+test('direct follow-up fix: a frog-type enemy\'s real x/y only advances during the airborne portion of its own hop cycle — a genuine pause at ground level in between, not just a visual bob on top of continuous movement', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  const entry = game.getSpawnEntryForEnemyKey('froglet');
+  game.spawnSingleEnemy(entry);
+  const enemy = game.getActiveEnemies()[0];
+  enemy.spawned = true;
+
+  const samples = [];
+  for (let i = 0; i < 120; i += 1) {
+    game.updateEnemies(1 / 60);
+    samples.push({ x: enemy.x, y: enemy.y, isAirborne: game.getHopState(enemy, game.getEnemyMovementClock()).isAirborne });
+  }
+
+  // Never moves across two consecutive RESTING frames.
+  for (let i = 1; i < samples.length; i += 1) {
+    if (!samples[i].isAirborne && !samples[i - 1].isAirborne) {
+      assert.equal(samples[i].x, samples[i - 1].x, `moved while resting at frame ${i}`);
+      assert.equal(samples[i].y, samples[i - 1].y, `moved while resting at frame ${i}`);
+    }
+  }
+  // Does actually move at some point while airborne — not permanently stuck.
+  const movedWhileAirborne = samples.some((s, i) => i > 0 && s.isAirborne && (s.x !== samples[i - 1].x || s.y !== samples[i - 1].y));
+  assert.equal(movedWhileAirborne, true);
+  // A real resting stretch of more than just one frame exists.
+  let maxRestingRun = 0;
+  let run = 0;
+  samples.forEach((s) => {
+    run = s.isAirborne ? 0 : run + 1;
+    maxRestingRun = Math.max(maxRestingRun, run);
   });
-  assert.ok(Math.min(...lifts) < 0.2);
-  assert.ok(Math.max(...lifts) > 0.8);
+  assert.ok(maxRestingRun > 5, `expected a real multi-frame pause, longest resting run was ${maxRestingRun} frames`);
+});
+
+test('a hopping enemy still makes reasonable average forward progress over a full cycle (the airborne-window speed boost compensates for the pauses)', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  const entry = game.getSpawnEntryForEnemyKey('froglet');
+  game.spawnSingleEnemy(entry);
+  const enemy = game.getActiveEnemies()[0];
+  enemy.spawned = true;
+  const startX = enemy.x;
+
+  // Run for several full hop-rest cycles.
+  const ticks = Math.ceil((game.HOP_PERIOD * 4) / (1 / 60));
+  for (let i = 0; i < ticks; i += 1) game.updateEnemies(1 / 60);
+
+  const actualDistance = Math.abs(enemy.x - startX);
+  const expectedDistance = enemy.speed * game.HOP_PERIOD * 4; // same average speed as a non-hopping enemy would cover
+  // Within a generous tolerance (frame quantization, the final partial
+  // cycle) rather than an exact match.
+  assert.ok(
+    Math.abs(actualDistance - expectedDistance) < expectedDistance * 0.25,
+    `expected roughly ${expectedDistance}px of progress, got ${actualDistance}px`
+  );
 });
