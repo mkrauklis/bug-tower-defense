@@ -204,6 +204,10 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getProjectiles: () => projectiles,
       getActiveEnemies: () => activeEnemies,
       update,
+      // Deep Sea map (direct request): lets a test call the actual enemy-
+      // art dispatch function directly, same "renderX never throws"
+      // pattern used everywhere else in this file.
+      drawEnemyShape,
       uiBeginFrame, uiRegisterRegion, uiHitTest, uiWrapText,
       // General button-polish pass + per-path upgrade-tier theming (direct
       // follow-up request, relayed from the peer session) — lets tests

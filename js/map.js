@@ -2619,6 +2619,196 @@ function drawWaterShimmer(ctx, specks, originX, originY, tint, cellSize, time, s
 }
 
 // ---------------------------------------------------------------------------
+// Terrain: Deep Sea (direct request: "ruins, sand... dark blue... the
+// [goal structure] will be a submarine" — built open-field from the start,
+// same system Deep Forest/Marshland/Savanah already converted to, rather
+// than shipping with a legacy fixed path first. Goal is a derelict,
+// half-buried submarine; obstacles are crumbled ruins (broken stone
+// pillars/blocks — a new blocking-terrain shape, same spirit as every
+// other open-field map's own obstacle type); sand dunes are purely
+// decorative, same role Marshland's puddles/Savanah's cacti play.
+// ---------------------------------------------------------------------------
+
+const DEEP_SEA_SUBMARINE = { x: 860, y: 320, size: 50, radius: 64 };
+
+const DEEP_SEA_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
+
+// Spread across the whole field from the start (the Deep Forest log-
+// clustering complaint — see DEEP_FOREST_LOGS' own comment — is a lesson
+// applied here immediately rather than needing its own follow-up fix).
+const DEEP_SEA_RUINS = [
+  { x1: 150, y1: 120, x2: 210, y2: 150, radius: 20 },
+  { x1: 480, y1: 90, x2: 540, y2: 120, radius: 18 },
+  { x1: 200, y1: 380, x2: 260, y2: 410, radius: 20 },
+  { x1: 450, y1: 300, x2: 510, y2: 330, radius: 19 },
+  { x1: 300, y1: 520, x2: 360, y2: 550, radius: 20 },
+  { x1: 600, y1: 460, x2: 660, y2: 490, radius: 18 },
+];
+
+const DEEP_SEA_DUNES = [
+  { x: 90, y: 260, r: 34 }, { x: 350, y: 60, r: 28 }, { x: 650, y: 60, r: 30 },
+  { x: 90, y: 480, r: 30 }, { x: 380, y: 170, r: 26 }, { x: 560, y: 220, r: 28 },
+  { x: 250, y: 600, r: 30 }, { x: 560, y: 600, r: 28 }, { x: 740, y: 150, r: 26 },
+  { x: 700, y: 350, r: 28 }, { x: 150, y: 580, r: 26 }, { x: 420, y: 440, r: 28 },
+];
+
+const DEEP_SEA_DECOR = {
+  submarine: DEEP_SEA_SUBMARINE,
+  ruins: DEEP_SEA_RUINS,
+  dunes: DEEP_SEA_DUNES,
+};
+
+// A low, pale sand-dune mound — the "sand" half of the request's own
+// "ruins, sand" terrain description. Purely decorative, same role
+// Marshland's puddles/Savanah's cacti play on their own open-field maps.
+function drawSandDune(ctx, x, y, r) {
+  ctx.fillStyle = '#6b5f45';
+  ctx.beginPath();
+  ctx.ellipse(x, y, r, r * 0.48, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor('#6b5f45', 16);
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.15, y - r * 0.14, r * 0.6, r * 0.26, 0, 0, Math.PI * 2);
+  ctx.fill();
+  applyBlobShading(ctx, x, y, r);
+}
+
+// A crumbled-ruins obstacle (the "ruins" half of the request's own
+// terrain description) — same capsule shape {x1,y1,x2,y2,radius} every
+// open-field obstacle shares, drawn here as a row of uneven broken stone
+// blocks along the capsule's own footprint (varying height, like a
+// collapsed wall or row of toppled pillars) rather than a single smooth
+// shape, so it reads as ruins rather than a log/rock formation/grass
+// patch.
+function drawRuinsObstacle(ctx, obstacle) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  const blockCount = Math.max(2, Math.round(length / (radius * 1.3)));
+  for (let i = 0; i < blockCount; i += 1) {
+    const t = blockCount === 1 ? 0.5 : i / (blockCount - 1);
+    const bx = -length / 2 + t * length;
+    const h = radius * (0.9 + 0.5 * Math.sin(i * 2.3));
+    ctx.fillStyle = '#5a5648';
+    ctx.fillRect(bx - radius * 0.45, -h * 0.5, radius * 0.9, h);
+    ctx.strokeStyle = shadeColor('#5a5648', -22);
+    ctx.lineWidth = Math.max(1, radius * 0.1);
+    ctx.strokeRect(bx - radius * 0.45, -h * 0.5, radius * 0.9, h);
+  }
+
+  applyBlobShading(ctx, 0, 0, radius);
+  ctx.restore();
+}
+
+// Deep Sea's own open-field goal structure: a derelict, half-silted-in
+// submarine resting on the seafloor — a rusted hull, a conning tower
+// (sail) with a periscope, a slowly turning propeller, and a glowing
+// porthole as this structure's own "defended/inhabited" focal point, same
+// role every other goal's lit window/doorway plays.
+function drawSubmarine(ctx, x, y, size, time = 0) {
+  ctx.save();
+
+  const hullW = size * 2.1;
+  const hullH = size * 0.7;
+
+  ctx.fillStyle = '#4a5258';
+  ctx.beginPath();
+  ctx.ellipse(x, y, hullW / 2, hullH / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor('#4a5258', -18);
+  ctx.beginPath();
+  ctx.ellipse(x, y + hullH * 0.18, hullW / 2, hullH * 0.3, 0, 0, Math.PI);
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor('#4a5258', -28);
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  for (let i = -2; i <= 2; i += 1) {
+    const lx = x + i * hullW * 0.17;
+    ctx.beginPath();
+    ctx.moveTo(lx, y - hullH * 0.4);
+    ctx.lineTo(lx, y + hullH * 0.4);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(160, 90, 50, 0.3)';
+  [[-0.3, -0.1], [0.15, 0.2], [0.4, -0.15]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.ellipse(x + dx * hullW, y + dy * hullH, size * 0.14, size * 0.3, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  const towerW = size * 0.5;
+  const towerH = size * 0.6;
+  ctx.fillStyle = '#3a4248';
+  ctx.beginPath();
+  ctx.moveTo(x - towerW / 2, y);
+  ctx.lineTo(x - towerW / 2, y - towerH);
+  ctx.quadraticCurveTo(x, y - towerH - size * 0.12, x + towerW / 2, y - towerH);
+  ctx.lineTo(x + towerW / 2, y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#2a3034';
+  ctx.lineWidth = Math.max(1.2, size * 0.035);
+  ctx.beginPath();
+  ctx.moveTo(x, y - towerH);
+  ctx.lineTo(x, y - towerH - size * 0.35);
+  ctx.stroke();
+
+  ctx.shadowColor = 'rgba(120, 220, 255, 0.8)';
+  ctx.shadowBlur = size * 0.25;
+  ctx.fillStyle = '#9fe8ff';
+  ctx.beginPath();
+  ctx.arc(x - hullW * 0.18, y, size * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#2a3034';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const propX = x - hullW / 2 - size * 0.08;
+  const spin = time * 3;
+  ctx.strokeStyle = '#2a3034';
+  ctx.lineWidth = Math.max(1.2, size * 0.04);
+  [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3].forEach((offset) => {
+    const a = spin + offset;
+    ctx.beginPath();
+    ctx.moveTo(propX, y);
+    ctx.lineTo(propX + Math.cos(a) * size * 0.16, y + Math.sin(a) * size * 0.16);
+    ctx.stroke();
+  });
+
+  for (let i = 0; i < 3; i += 1) {
+    const t = (time * 0.2 + i * 0.3) % 1;
+    ctx.fillStyle = `rgba(190, 225, 255, ${0.4 * (1 - t)})`;
+    ctx.beginPath();
+    ctx.arc(
+      x + Math.sin(time + i) * size * 0.08,
+      y - towerH - size * 0.4 - t * size * 0.8,
+      size * (0.05 + t * 0.07),
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
+
+  applyBlobShading(ctx, x, y, hullW * 0.4);
+  ctx.restore();
+}
+
+function renderDeepSeaDecor(ctx, decor, time = 0) {
+  decor.dunes.forEach((dune) => drawSandDune(ctx, dune.x, dune.y, dune.r));
+  decor.ruins.forEach((ruin) => drawRuinsObstacle(ctx, ruin));
+  if (decor.submarine) drawSubmarine(ctx, decor.submarine.x, decor.submarine.y, decor.submarine.size, time);
+}
+
+// ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/
 // renderMapPreview() below both dispatch through this rather than
@@ -2682,6 +2872,11 @@ const TERRAIN_THEMES = {
   // here too, same as every other dark theme above; the orange canopies/
   // leaf litter are what actually carry the "autumn" read.
   hollow: { background: '#1a1006', renderDecor: renderHollowDecor },
+  // Deep Sea (direct request: "dark blue"): a deep, dark navy rather than
+  // the near-black-with-no-hue every other dark theme above uses — the
+  // one theme where the request named a specific color family, so this
+  // stays recognizably BLUE-dark rather than just generically dark.
+  deepSea: { background: '#0d1b2e', renderDecor: renderDeepSeaDecor },
 };
 
 // Fills the world background for the active theme — a flat
@@ -2855,9 +3050,35 @@ const MAP_TYPES = {
     terrain: 'hollow',
     decor: HOLLOW_EVENT_DECOR,
   },
+  // Deep Sea (direct request: "ruins, sand... dark blue... the [goal
+  // structure] will be a submarine" — see DEEP_SEA_SUBMARINE/
+  // DEEP_SEA_RUINS' own comment above). Built open-field from the start —
+  // `paths` below is just a harmless placeholder (a straight spawn-edge-
+  // to-goal line, never actually drawn since MAP_OPEN_FIELD skips the
+  // path-stroke step entirely) kept only so every map.paths[0]/
+  // map.pathWidth/map.pathColors reader elsewhere in this file still has
+  // *something* non-empty to read, same as every converted map's own kept
+  // fallback.
+  deepSea: {
+    id: 'deepSea',
+    name: 'Deep Sea',
+    builtin: true,
+    paths: [[
+      { x: DEEP_SEA_SPAWN_EDGE.x1, y: (DEEP_SEA_SPAWN_EDGE.y1 + DEEP_SEA_SPAWN_EDGE.y2) / 2 },
+      { x: DEEP_SEA_SUBMARINE.x, y: DEEP_SEA_SUBMARINE.y },
+    ]],
+    pathWidth: 56,
+    pathColors: { outline: '#0a1420', fill: '#1c3a52' },
+    terrain: 'deepSea',
+    decor: DEEP_SEA_DECOR,
+    openField: true,
+    goal: DEEP_SEA_SUBMARINE,
+    obstacles: DEEP_SEA_RUINS,
+    spawnEdge: DEEP_SEA_SPAWN_EDGE,
+  },
 };
 
-const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic', 'caves'];
+const MAP_TYPE_ORDER = ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic', 'caves', 'deepSea'];
 
 // ---------------------------------------------------------------------------
 // Active-map state. MAP_PATHS/MAP_PATH_WIDTH are what every other file

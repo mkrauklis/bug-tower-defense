@@ -44,7 +44,7 @@ test('caves shows up in listAllMaps alongside every other built-in map', () => {
   const game = loadFullGameContext();
   const ids = game.listAllMaps().map((map) => map.id);
   assert.ok(ids.includes('caves'));
-  assert.equal(ids.length, 7); // deepForest/marshland/savanah/whirlpool/tundra/volcanic/caves
+  assert.equal(ids.length, 8); // deepForest/marshland/savanah/whirlpool/tundra/volcanic/caves/deepSea
 });
 
 test('Caves is explicitly Medium-tier, matching Marshland/Savanah\'s own 1.3x map multiplier — not Hard like Whirlpool/Tundra/Volcanic', () => {

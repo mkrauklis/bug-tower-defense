@@ -640,6 +640,40 @@ const CAVES_ROSTER = {
   orderTier3: [],
 };
 
+// Deep Sea (direct request: "ruins, sand... dark blue... the [goal
+// structure] will be a submarine" — see map.js's own
+// DEEP_SEA_SUBMARINE/DEEP_SEA_RUINS comment for the terrain/open-field
+// side of this). Same 2-boss shape as CAVES_ROSTER above (order/
+// orderTier2 of 3 each, orderTier3 empty, bossTypes only at tiers 1/2 —
+// getBossForRound() already falls back to the highest designed tier past
+// that, so nothing past round 50 needs a 3rd boss defined) rather than
+// the usual 3-boss shape, per the request's own explicit roster (6
+// regular species plus exactly 2 named bosses: Whalefish, California Sun
+// Star). Named species real-world-accurate where it matters for the
+// silhouette (an anglerfish-like Whalefish with an oversized mouth/lure,
+// a many-armed California Sun Star rather than a plain 5-point starfish)
+// — same "look like the real species, not just the right color" bar
+// every other roster's own creatures are held to.
+const DEEP_SEA_ROSTER = {
+  enemyTypes: {
+    snailFish: { name: 'Snailfish', speedMultiplier: 0.55, health: 12, color: '#d9b8c0', radius: 7, bounty: 5 },
+    rattailFish: { name: 'Rattail Fish', speedMultiplier: 0.6, health: 26, color: '#8a7a6a', radius: 9, bounty: 10 },
+    giantCuskEel: { name: 'Giant Cusk Eel', speedMultiplier: 0.65, health: 58, color: '#3a2a42', radius: 10, bounty: 18 },
+    spinyStar: { name: 'Spiny Star', speedMultiplier: 0.3, health: 95, color: '#c9502e', radius: 11, bounty: 30 },
+    giantSeaSpider: { name: 'Giant Sea Spider', speedMultiplier: 0.42, health: 130, color: '#aab8ae', radius: 12, bounty: 42 },
+    fragilePinkSeaUrchin: { name: 'Fragile Pink Sea Urchin', speedMultiplier: 0.22, health: 65, color: '#e88fb0', radius: 10, bounty: 32 },
+  },
+  bossTypes: {
+    1: { name: 'Whalefish', speedMultiplier: 0.38, health: 340, color: '#1a2436', radius: 22, bounty: 160 },
+    // The map's true final boss, same "biggest/slowest/tankiest" billing
+    // every other map's final boss gets.
+    2: { name: 'California Sun Star', speedMultiplier: 0.28, health: 680, color: '#d9622b', radius: 26, bounty: 340 },
+  },
+  order: ['snailFish', 'rattailFish', 'giantCuskEel'],
+  orderTier2: ['spinyStar', 'giantSeaSpider', 'fragilePinkSeaUrchin'],
+  orderTier3: [],
+};
+
 // --- The Hollow Event (direct request, relayed from the peer session) -----
 // "Adventures" is a brand-new top-level entry on the main menu (see
 // renderMenu() in game.js), distinct from the normal Map/Mode flow every
@@ -790,6 +824,7 @@ const MAP_ROSTERS = {
   tundra: TUNDRA_ROSTER,
   volcano: VOLCANIC_ROSTER,
   caves: CAVES_ROSTER,
+  deepSea: DEEP_SEA_ROSTER,
   hollow: HOLLOW_ROSTER,
 };
 
@@ -1163,6 +1198,11 @@ const MAP_DIFFICULTY_MULTIPLIER = {
   // calibrated alongside Marshland/Savanah, not Whirlpool/Tundra/
   // Volcanic).
   caves: 1.3, // Medium
+  // Deep Sea (direct request): Hard — matched to the same 1.8x every
+  // other Hard map uses (Whirlpool/Tundra/Volcanic), same reasoning as
+  // those: DEEP_SEA_ROSTER's own numbers (above) carry this map's
+  // relative brutality, not a bespoke multiplier.
+  deepSea: 1.8, // Hard
   // The Hollow Event ("Adventures"): Easy, matching Deep Forest's own
   // baseline exactly — this is a single, bite-sized 50-round event stage
   // (not an endless map a player grinds for hours), and reaching its own
@@ -4328,6 +4368,224 @@ function drawBlindCavefish(ctx, e) {
   ctx.fill();
 }
 
+// --- Deep Sea: ruins/sand creatures ---------------------------------------
+
+// Snailfish are famously soft/gelatinous, tadpole-shaped — a big
+// rounded head tapering straight into a thin tail, no hard scales or
+// fins to speak of.
+function drawSnailFish(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.3, e.y - e.radius * 0.9, e.x + e.radius * 0.6, e.y - e.radius * 0.25);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.6, e.y, e.x + e.radius * 0.6, e.y + e.radius * 0.25);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.3, e.y + e.radius * 0.9, e.x - e.radius, e.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.55, e.y - e.radius * 0.2, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A grenadier/rattail's own namesake trait: a disproportionately large
+// head tapering straight into a very long, thin whip of a tail.
+function drawRattailFish(ctx, e) {
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = Math.max(1, e.radius * 0.1);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.2, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.6, e.y + e.radius * 0.1, e.x - e.radius * 2.6, e.y);
+  ctx.stroke();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x + e.radius * 0.3, e.y, e.radius * 0.8, e.radius * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor(e.color, -18);
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.9, e.y - e.radius * 0.35);
+  ctx.lineTo(e.x + e.radius * 1.35, e.y - e.radius * 0.1);
+  ctx.lineTo(e.x + e.radius * 0.9, e.y + e.radius * 0.05);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.55, e.y - e.radius * 0.15, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A long, thin, scaleless eel body — a slight S-curve bend baked into
+// the shape itself (not an animated slither; this project's eel/snake
+// movement-animation pass, if and when it reaches this roster, would
+// animate the undulation at render time on top of this base shape).
+function drawGiantCuskEel(ctx, e) {
+  ctx.strokeStyle = e.color;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(2, e.radius * 0.7);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 2.2, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.8, e.y - e.radius * 0.3, e.x + e.radius * 0.6, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.4, e.y + e.radius * 0.15, e.x + e.radius * 1.9, e.y);
+  ctx.stroke();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 1.6, e.y - e.radius * 0.08, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A 5-armed starfish with short spine ticks along each arm, distinct
+// from the plain-smooth Whirlpool starfish.
+function drawSpinyStar(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i += 1) {
+    const outerAngle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    const innerAngle = outerAngle + Math.PI / 5;
+    const ox = e.x + Math.cos(outerAngle) * e.radius;
+    const oy = e.y + Math.sin(outerAngle) * e.radius;
+    const ix = e.x + Math.cos(innerAngle) * e.radius * 0.42;
+    const iy = e.y + Math.sin(innerAngle) * e.radius * 0.42;
+    if (i === 0) ctx.moveTo(ox, oy);
+    else ctx.lineTo(ox, oy);
+    ctx.lineTo(ix, iy);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = shadeColor(e.color, -22);
+  ctx.lineWidth = Math.max(1, e.radius * 0.08);
+  for (let i = 0; i < 5; i += 1) {
+    const armAngle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    [0.5, 0.7, 0.9].forEach((t) => {
+      const px = e.x + Math.cos(armAngle) * e.radius * t;
+      const py = e.y + Math.sin(armAngle) * e.radius * t;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + Math.cos(armAngle + 0.5) * e.radius * 0.15, py + Math.sin(armAngle + 0.5) * e.radius * 0.15);
+      ctx.stroke();
+    });
+  }
+  ctx.fillStyle = shadeColor(e.color, 20);
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A sea spider's own namesake trait: a tiny body almost lost among very
+// long, thin, radiating legs (real pycnogonids are famously "all legs").
+function drawGiantSeaSpider(ctx, e) {
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = Math.max(1, e.radius * 0.1);
+  for (let i = 0; i < 8; i += 1) {
+    const angle = (i / 8) * Math.PI * 2;
+    const kneeX = e.x + Math.cos(angle) * e.radius * 1.1;
+    const kneeY = e.y + Math.sin(angle) * e.radius * 1.1;
+    const footX = e.x + Math.cos(angle) * e.radius * 2.1;
+    const footY = e.y + Math.sin(angle) * e.radius * 2.1 * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y);
+    ctx.lineTo(kneeX, kneeY);
+    ctx.lineTo(footX, footY);
+    ctx.stroke();
+  }
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// A delicate pink urchin with thin, sparse spines (vs. the Whirlpool
+// urchin's thicker, denser ones) — "fragile" per its own name.
+function drawFragilePinkSeaUrchin(ctx, e) {
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = Math.max(0.8, e.radius * 0.07);
+  for (let i = 0; i < 16; i += 1) {
+    const angle = (i / 16) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(e.x + Math.cos(angle) * e.radius * 0.45, e.y + Math.sin(angle) * e.radius * 0.45);
+    ctx.lineTo(e.x + Math.cos(angle) * e.radius * 1.4, e.y + Math.sin(angle) * e.radius * 1.4);
+    ctx.stroke();
+  }
+  ctx.fillStyle = shadeColor(e.color, 15);
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Whalefish boss — an anglerfish-like silhouette: a bulbous, mostly-mouth
+// body, tiny eye, and a small glowing lure dangling in front (whalefishes
+// are deep-sea anglerfish relatives with huge mouths and tiny eyes).
+function drawWhalefish(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.1, e.radius * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = shadeColor(e.color, -18);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.3, e.y + e.radius * 0.2);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.1, e.y + e.radius * 0.5, e.x - e.radius * 1.3, e.y + e.radius * 0.05);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.9, e.y - e.radius * 0.1, e.x - e.radius * 0.3, e.y - e.radius * 0.05);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.55, e.y - e.radius * 0.3, e.radius * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#2a3440';
+  ctx.lineWidth = Math.max(1, e.radius * 0.07);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.9, e.y - e.radius * 0.8);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.1, e.y - e.radius * 1.3, e.x - e.radius * 0.85, e.y - e.radius * 1.5);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(140, 230, 255, 0.85)';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.85, e.y - e.radius * 1.5, e.radius * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// California Sun Star boss — unlike a plain 5-point starfish, real
+// California sun stars have 8-24 short, fat arms around a wide, mottled
+// central disc; drawn here with 10 arms and a 2-tone mottled pattern.
+function drawCaliforniaSunStar(ctx, e) {
+  const armCount = 10;
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  for (let i = 0; i < armCount; i += 1) {
+    const outerAngle = (i / armCount) * Math.PI * 2 - Math.PI / 2;
+    const innerAngle = outerAngle + Math.PI / armCount;
+    const ox = e.x + Math.cos(outerAngle) * e.radius;
+    const oy = e.y + Math.sin(outerAngle) * e.radius;
+    const ix = e.x + Math.cos(innerAngle) * e.radius * 0.6;
+    const iy = e.y + Math.sin(innerAngle) * e.radius * 0.6;
+    if (i === 0) ctx.moveTo(ox, oy);
+    else ctx.lineTo(ox, oy);
+    ctx.lineTo(ix, iy);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  // Mottled purple patches, scattered across the disc/arms — the real
+  // animal's own blotchy multi-color pattern, not a flat single color.
+  ctx.fillStyle = 'rgba(120, 60, 120, 0.45)';
+  for (let i = 0; i < armCount; i += 1) {
+    const angle = (i / armCount) * Math.PI * 2 - Math.PI / 2 + Math.PI / armCount;
+    const px = e.x + Math.cos(angle) * e.radius * 0.5;
+    const py = e.y + Math.sin(angle) * e.radius * 0.5;
+    ctx.beginPath();
+    ctx.arc(px, py, e.radius * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = shadeColor(e.color, 24);
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 // --- The Hollow Event ("Adventures," direct request relayed from the -----
 // --- peer session) -------------------------------------------------------
 // Every one-sided shape below draws its own head/front toward -x, same
@@ -4792,6 +5050,12 @@ const ENEMY_DRAW_FUNCTIONS = {
   orbWeaver: drawOrbWeaver,
   easternRedBat: drawEasternRedBat,
   redEasternScreechOwl: drawRedEasternScreechOwl,
+  snailFish: drawSnailFish,
+  rattailFish: drawRattailFish,
+  giantCuskEel: drawGiantCuskEel,
+  spinyStar: drawSpinyStar,
+  giantSeaSpider: drawGiantSeaSpider,
+  fragilePinkSeaUrchin: drawFragilePinkSeaUrchin,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -4818,6 +5082,8 @@ const BOSS_DRAW_FUNCTIONS = {
   'volcano-boss-tier-3': drawNamibDesertBeetle,
   'caves-boss-tier-1': drawCaveMidge,
   'caves-boss-tier-2': drawBlindCavefish,
+  'deepSea-boss-tier-1': drawWhalefish,
+  'deepSea-boss-tier-2': drawCaliforniaSunStar,
   'hollow-boss-tier-1': drawMournfulSphinx,
   'hollow-boss-tier-2': drawHollowCrow,
 };
