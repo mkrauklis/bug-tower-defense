@@ -650,10 +650,13 @@ const CAVES_ROSTER = {
 // the usual 3-boss shape, per the request's own explicit roster (6
 // regular species plus exactly 2 named bosses: Whalefish, California Sun
 // Star). Named species real-world-accurate where it matters for the
-// silhouette (an anglerfish-like Whalefish with an oversized mouth/lure,
-// a many-armed California Sun Star rather than a plain 5-point starfish)
-// — same "look like the real species, not just the right color" bar
-// every other roster's own creatures are held to.
+// silhouette (a many-armed California Sun Star rather than a plain
+// 5-point starfish) — same "look like the real species, not just the
+// right color" bar every other roster's own creatures are held to.
+// Whalefish's own art was later fully redrawn (direct follow-up request,
+// relayed from the peer session) to match a specific reference photo the
+// user sent, replacing the original anglerfish-lure silhouette — see
+// drawWhalefish's own comment below for the full redesign.
 const DEEP_SEA_ROSTER = {
   enemyTypes: {
     snailFish: { name: 'Snailfish', speedMultiplier: 0.55, health: 12, color: '#d9b8c0', radius: 7, bounty: 5 },
@@ -664,7 +667,7 @@ const DEEP_SEA_ROSTER = {
     fragilePinkSeaUrchin: { name: 'Fragile Pink Sea Urchin', speedMultiplier: 0.22, health: 65, color: '#e88fb0', radius: 10, bounty: 32 },
   },
   bossTypes: {
-    1: { name: 'Whalefish', speedMultiplier: 0.38, health: 340, color: '#1a2436', radius: 22, bounty: 160 },
+    1: { name: 'Whalefish', speedMultiplier: 0.38, health: 340, color: '#e0495f', radius: 22, bounty: 160 },
     // The map's true final boss, same "biggest/slowest/tankiest" billing
     // every other map's final boss gets.
     2: { name: 'California Sun Star', speedMultiplier: 0.28, health: 680, color: '#d9622b', radius: 26, bounty: 340 },
@@ -1469,6 +1472,12 @@ const BOSS_FACING_OFFSET = {
   // -x-forward convention as every other type above.
   'hollow-boss-tier-1': Math.PI, // Mournful Sphinx — same moth-body convention as Buff-tip Moth
   'hollow-boss-tier-2': Math.PI, // The Hollow Crow — same bird-body convention as the regular Red Eastern Screech Owl
+  // Whalefish redraw (direct follow-up, relayed from the peer session):
+  // the only entry this game's whole Deep Sea roster has in either
+  // facing-offset table — see drawWhalefish's own comment for why (every
+  // other Deep Sea creature's own facing offset is a separate, pre-
+  // existing gap left untouched here).
+  'deepSea-boss-tier-1': Math.PI, // Whalefish — same head/front-toward -x convention as everything above
 };
 
 function getInitialPathHeading(path) {
@@ -4590,38 +4599,132 @@ function drawFragilePinkSeaUrchin(ctx, e) {
   ctx.fill();
 }
 
-// Whalefish boss — an anglerfish-like silhouette: a bulbous, mostly-mouth
-// body, tiny eye, and a small glowing lure dangling in front (whalefishes
-// are deep-sea anglerfish relatives with huge mouths and tiny eyes).
+// Whalefish boss — fully redrawn from a real reference photo the user
+// sent (direct follow-up request, relayed from the peer session),
+// replacing the earlier anglerfish-lure silhouette entirely: bright
+// red/pink, smooth, almost gelatinous-looking soft blob body (not
+// sleek/streamlined, built from a handful of wide rounded curves rather
+// than a clean ellipse); an oversized, blocky head making up a large
+// portion of its own total length; a wide, downturned mouth with a
+// visible underbite/jaw line, slightly open; a small, dark, simple eye
+// set into the head; faint rib-like/segmented markings along the back
+// (subtle lighter striping, not bold stripes); small soft pectoral fins
+// just behind/below the head; and a distinct fan-shaped tail fin with
+// visible soft rays, the same reddish color as the body.
+//
+// Head/front drawn toward -x, same universal convention every other
+// roster in this game already uses (see ENEMY_FACING_OFFSET/
+// BOSS_FACING_OFFSET's own top comments: "every one-sided shape draws
+// head/front toward -x"). The Deep Sea roster's own facing-offset table
+// has no entries at all (every creature here defaults to the `?? 0`
+// fallback), which — checked live before this redraw — left the OLD art
+// facing backward relative to its own direction of travel; this redraw
+// adds the one missing BOSS_FACING_OFFSET entry this creature needs
+// (below) so the new art faces correctly, but deliberately leaves the
+// rest of the Deep Sea roster's own facing offsets untouched — a
+// separate, pre-existing gap outside what this visual-only request
+// asked for.
 function drawWhalefish(ctx, e) {
-  ctx.fillStyle = e.color;
-  ctx.beginPath();
-  ctx.ellipse(e.x, e.y, e.radius * 1.1, e.radius * 0.85, 0, 0, Math.PI * 2);
-  ctx.fill();
+  const bodyColor = e.color;
 
-  ctx.fillStyle = shadeColor(e.color, -18);
+  ctx.fillStyle = bodyColor;
   ctx.beginPath();
-  ctx.moveTo(e.x - e.radius * 0.3, e.y + e.radius * 0.2);
-  ctx.quadraticCurveTo(e.x - e.radius * 1.1, e.y + e.radius * 0.5, e.x - e.radius * 1.3, e.y + e.radius * 0.05);
-  ctx.quadraticCurveTo(e.x - e.radius * 0.9, e.y - e.radius * 0.1, e.x - e.radius * 0.3, e.y - e.radius * 0.05);
+  ctx.moveTo(e.x - e.radius * 1.15, e.y - e.radius * 0.15);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.2, e.y - e.radius * 0.55, e.x - e.radius * 0.75, e.y - e.radius * 0.68);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.1, e.y - e.radius * 0.72, e.x + e.radius * 0.35, e.y - e.radius * 0.5);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.75, e.y - e.radius * 0.25, e.x + e.radius * 0.8, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 0.75, e.y + e.radius * 0.3, e.x + e.radius * 0.3, e.y + e.radius * 0.5);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.1, e.y + e.radius * 0.65, e.x - e.radius * 0.6, e.y + e.radius * 0.55);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.05, e.y + e.radius * 0.45, e.x - e.radius * 1.15, e.y + e.radius * 0.05);
   ctx.closePath();
   ctx.fill();
+  applyBlobShading(ctx, e.x, e.y, e.radius);
 
-  ctx.fillStyle = '#1a1a1a';
+  // Oversized, blocky head — a touch darker, near-rectangular with
+  // rounded corners, occupying a large portion of the body's own
+  // length. A thin darker outline (not just a fill-color shift) traces
+  // its own edge so it reads as a distinct block against the soft round
+  // body behind it, rather than just blending into one continuous blob.
+  ctx.fillStyle = shadeColor(bodyColor, -8);
   ctx.beginPath();
-  ctx.arc(e.x - e.radius * 0.55, e.y - e.radius * 0.3, e.radius * 0.08, 0, Math.PI * 2);
+  ctx.moveTo(e.x - e.radius * 1.1, e.y - e.radius * 0.1);
+  ctx.lineTo(e.x - e.radius * 1.1, e.y - e.radius * 0.52);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.0, e.y - e.radius * 0.66, e.x - e.radius * 0.75, e.y - e.radius * 0.64);
+  ctx.lineTo(e.x + e.radius * 0.05, e.y - e.radius * 0.5);
+  ctx.lineTo(e.x + e.radius * 0.05, e.y + e.radius * 0.18);
+  ctx.lineTo(e.x - e.radius * 1.1, e.y + e.radius * 0.1);
+  ctx.closePath();
   ctx.fill();
-
-  ctx.strokeStyle = '#2a3440';
-  ctx.lineWidth = Math.max(1, e.radius * 0.07);
-  ctx.beginPath();
-  ctx.moveTo(e.x - e.radius * 0.9, e.y - e.radius * 0.8);
-  ctx.quadraticCurveTo(e.x - e.radius * 1.1, e.y - e.radius * 1.3, e.x - e.radius * 0.85, e.y - e.radius * 1.5);
+  ctx.strokeStyle = shadeColor(bodyColor, -24);
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = Math.max(1, e.radius * 0.035);
   ctx.stroke();
-  ctx.fillStyle = 'rgba(140, 230, 255, 0.85)';
+  ctx.globalAlpha = 1;
+
+  // Faint rib-like/segmented markings along the back — short, thin,
+  // lightly tinted creases near the spine rather than full-height bands,
+  // so they read as subtle texture, not bold stripes.
+  ctx.strokeStyle = shadeColor(bodyColor, 26);
+  ctx.globalAlpha = 0.3;
+  ctx.lineWidth = Math.max(1, e.radius * 0.03);
+  [0.05, 0.3, 0.55, 0.8].forEach((t) => {
+    const topX = e.x + e.radius * (-0.35 + t * 1.15);
+    const topY = e.y - e.radius * (0.55 - t * 0.35);
+    ctx.beginPath();
+    ctx.moveTo(topX, topY);
+    ctx.quadraticCurveTo(topX + e.radius * 0.04, topY + e.radius * 0.12, topX - e.radius * 0.02, topY + e.radius * 0.22);
+    ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
+
+  // Wide, downturned mouth with a visible underbite — the lower jaw
+  // juts out slightly past the upper lip line — slightly open (a thin
+  // dark gap traced between them).
+  ctx.fillStyle = shadeColor(bodyColor, -16);
   ctx.beginPath();
-  ctx.arc(e.x - e.radius * 0.85, e.y - e.radius * 1.5, e.radius * 0.15, 0, Math.PI * 2);
+  ctx.moveTo(e.x - e.radius * 0.95, e.y + e.radius * 0.02);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.55, e.y + e.radius * 0.28, e.x - e.radius * 0.15, e.y + e.radius * 0.1);
+  ctx.lineTo(e.x - e.radius * 0.2, e.y - e.radius * 0.02);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.6, e.y + e.radius * 0.1, e.x - e.radius * 0.95, e.y - e.radius * 0.08);
+  ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = '#3a1016';
+  ctx.lineWidth = Math.max(1, e.radius * 0.045);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.93, e.y - e.radius * 0.02);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.55, e.y + e.radius * 0.18, e.x - e.radius * 0.18, e.y + e.radius * 0.02);
+  ctx.stroke();
+
+  // Small, dark, simple eye set into the head.
+  ctx.fillStyle = '#1c0a0e';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.45, e.y - e.radius * 0.32, e.radius * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Small, soft pectoral fins just behind/below the head.
+  ctx.fillStyle = shadeColor(bodyColor, -12);
+  ctx.beginPath();
+  ctx.ellipse(e.x - e.radius * 0.15, e.y + e.radius * 0.35, e.radius * 0.24, e.radius * 0.14, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Fan-shaped tail fin with visible soft rays, the same reddish color
+  // as the body.
+  ctx.fillStyle = bodyColor;
+  ctx.beginPath();
+  ctx.moveTo(e.x + e.radius * 0.75, e.y);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.1, e.y - e.radius * 0.1, e.x + e.radius * 1.4, e.y - e.radius * 0.5);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.15, e.y, e.x + e.radius * 1.4, e.y + e.radius * 0.5);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.1, e.y + e.radius * 0.1, e.x + e.radius * 0.75, e.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(bodyColor, -22);
+  ctx.lineWidth = Math.max(1, e.radius * 0.045);
+  [-0.35, 0, 0.35].forEach((f) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x + e.radius * 0.8, e.y);
+    ctx.lineTo(e.x + e.radius * 1.35, e.y + f * e.radius);
+    ctx.stroke();
+  });
 }
 
 // California Sun Star boss — unlike a plain 5-point starfish, real
