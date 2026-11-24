@@ -76,13 +76,19 @@ test('setActiveMap(whirlpool) switches the live path bindings to the spiral', ()
   assert.equal(game.MAP_PATH_WIDTH, 56);
 });
 
-test('isPointOnPath works generically against the spiral — on a waypoint counts, far away does not', () => {
+// Whirlpool's own open-field conversion (follow-up request, relayed from
+// the peer session — see map.js's own WHIRLPOOL_SPAWN_EDGE/WHIRLPOOL_RAFTS
+// comment) means isPointOnPath now always reads as clear here, same as
+// every other converted map — the old spiral waypoints above are kept
+// only as unused fallback data. See open-field-whirlpool.test.js for the
+// new goal/obstacle/spawn-edge coverage this conversion added.
+test('isPointOnPath always reads as clear on Whirlpool now that it\'s open-field, even directly on an old spiral waypoint', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.whirlpool);
   const waypoints = game.getMapPaths()[0];
   const mid = waypoints[Math.floor(waypoints.length / 2)];
 
-  assert.equal(game.isPointOnPath(mid.x, mid.y), true);
+  assert.equal(game.isPointOnPath(mid.x, mid.y), false);
   assert.equal(game.isPointOnPath(-10000, -10000), false);
 });
 

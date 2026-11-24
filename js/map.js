@@ -1610,6 +1610,36 @@ const WHIRLPOOL_TREASURE_CHEST = { x: 120, y: 628, size: 26 };
 const WHIRLPOOL_MESSAGE_BOTTLE = { x: 65, y: 350, size: 22 };
 const WHIRLPOOL_SNORKEL_ANT = { x: 820, y: 45, size: 24 };
 
+// Open-field rollout, Whirlpool's turn (4th of the 6 remaining maps,
+// relayed from the peer session — see MARSHLAND_HUT/SAVANAH_WATCHTOWER's
+// own comments for the full design history this follows). WHIRLPOOL_WAYPOINTS
+// above is kept exactly as it was — a harmless unused fallback, same
+// convention as every prior conversion.
+//
+// Goal is a "ship" (the follow-up request's own "ship/lighthouse" phrase
+// for Whirlpool — a ship won out, since the vortex already pulling
+// something down into it is a stronger fit than an unrelated lighthouse
+// standing apart from the swirl): a half-submerged, heeled-over hull
+// being dragged into the vortex itself, drawn right at WHIRLPOOL_CENTER
+// on top of the existing drawVortexHole() swirl — that swirl was already
+// unconditionally drawn as this map's own "goal" decor even before this
+// conversion (every enemy's old path already ended there), so no new
+// gating is needed; the ship is simply a permanent addition to it.
+// Obstacles are rafts/driftwood (the follow-up request's own per-map
+// terrain list), scattered through the open middle the spiral's own
+// loops used to fill — the decor margins (WHIRLPOOL_CORAL's own comment)
+// stay untouched, so these are placed well inside that ellipse instead.
+const WHIRLPOOL_SPAWN_EDGE = { x1: 970, y1: 150, x2: 970, y2: 490 };
+
+const WHIRLPOOL_RAFTS = [
+  { x1: 633, y1: 410, x2: 673, y2: 430, radius: 18 },
+  { x1: 398, y1: 479, x2: 438, y2: 499, radius: 18 },
+  { x1: 263, y1: 238, x2: 303, y2: 258, radius: 19 },
+  { x1: 493, y1: 123, x2: 533, y2: 143, radius: 17 },
+  { x1: 620, y1: 252, x2: 660, y2: 272, radius: 18 },
+  { x1: 244, y1: 388, x2: 284, y2: 408, radius: 19 },
+];
+
 const WHIRLPOOL_DECOR = {
   coral: WHIRLPOOL_CORAL,
   seaweed: WHIRLPOOL_SEAWEED,
@@ -1621,7 +1651,95 @@ const WHIRLPOOL_DECOR = {
   treasureChest: WHIRLPOOL_TREASURE_CHEST,
   messageBottle: WHIRLPOOL_MESSAGE_BOTTLE,
   snorkelAnt: WHIRLPOOL_SNORKEL_ANT,
+  rafts: WHIRLPOOL_RAFTS,
 };
+
+// The ship being dragged down into the vortex itself — this map's own
+// open-field goal structure. A tilted, half-submerged hull with a
+// leaning, broken mast and a tattered sail, distinct from the small
+// drawShipwreck() easter egg elsewhere on this map (that one sits flat
+// and half-buried on open seafloor; this one is actively heeled over,
+// going under).
+function drawSinkingShip(ctx, x, y, size, time = 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  const tilt = -0.32 + Math.sin(time * 0.4) * 0.03;
+  ctx.rotate(tilt);
+
+  ctx.fillStyle = '#4a3522';
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.9, 0);
+  ctx.lineTo(size * 0.85, 0);
+  ctx.lineTo(size * 0.55, size * 0.35);
+  ctx.lineTo(-size * 0.6, size * 0.35);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor('#4a3522', -22);
+  ctx.lineWidth = Math.max(1.3, size * 0.03);
+  for (let i = -2; i <= 2; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.8 + i * size * 0.3, 0);
+    ctx.lineTo(-size * 0.7 + i * size * 0.3, size * 0.32);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#2e2014';
+  ctx.lineWidth = Math.max(2, size * 0.06);
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.1, 0);
+  ctx.lineTo(-size * 0.45, -size * 1.3);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(225, 215, 195, 0.55)';
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.45, -size * 1.3);
+  ctx.lineTo(size * 0.05, -size * 0.75);
+  ctx.lineTo(-size * 0.2, -size * 0.55);
+  ctx.lineTo(-size * 0.5, -size * 0.85);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+  applyBlobShading(ctx, x, y + size * 0.15, size * 0.7);
+}
+
+// A raft/driftwood obstacle (follow-up request's own per-map terrain
+// list: "Whirlpool: rafts/driftwood"). Same capsule shape
+// {x1,y1,x2,y2,radius} every open-field obstacle shares — drawn as a
+// row of lashed-together wooden planks (alternating shade per plank,
+// rope lashings across the whole raft) rather than a single rounded log,
+// so it reads as a man-made raft rather than Deep Forest's fallen logs.
+function drawRaftObstacle(ctx, obstacle) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  const plankCount = Math.max(3, Math.round(length / (radius * 0.9)));
+  for (let i = 0; i < plankCount; i += 1) {
+    const t = plankCount === 1 ? 0.5 : i / (plankCount - 1);
+    const px = -length / 2 + t * length;
+    ctx.fillStyle = i % 2 === 0 ? '#6b4a2f' : shadeColor('#6b4a2f', -12);
+    ctx.fillRect(px - radius * 0.45, -radius * 0.7, radius * 0.9, radius * 1.4);
+  }
+
+  ctx.strokeStyle = '#8a7250';
+  ctx.lineWidth = Math.max(1, radius * 0.12);
+  [-0.5, 0.5].forEach((t) => {
+    ctx.beginPath();
+    ctx.moveTo(-length / 2, t * radius * 1.2);
+    ctx.lineTo(length / 2, t * radius * 1.2);
+    ctx.stroke();
+  });
+
+  applyBlobShading(ctx, 0, 0, radius);
+  ctx.restore();
+}
 
 function renderOceanDecor(ctx, decor, time = 0) {
   decor.rocks.forEach((rock) => drawOceanRock(ctx, rock.x, rock.y, rock.r));
@@ -1633,7 +1751,9 @@ function renderOceanDecor(ctx, decor, time = 0) {
   drawTreasureChest(ctx, decor.treasureChest.x, decor.treasureChest.y, decor.treasureChest.size, time);
   drawMessageBottle(ctx, decor.messageBottle.x, decor.messageBottle.y, decor.messageBottle.size);
   drawSnorkelAnt(ctx, decor.snorkelAnt.x, decor.snorkelAnt.y, decor.snorkelAnt.size);
+  if (decor.rafts) decor.rafts.forEach((raft) => drawRaftObstacle(ctx, raft));
   drawVortexHole(ctx, decor.vortex.x, decor.vortex.y, 46, time);
+  drawSinkingShip(ctx, decor.vortex.x, decor.vortex.y, 46, time);
 }
 
 // A sandy, lighter-teal pair — reads clearly as an ocean-floor trench
@@ -2982,11 +3102,19 @@ const MAP_TYPES = {
     id: 'whirlpool',
     name: 'Whirlpool',
     builtin: true,
+    // Kept as an unused fallback, same convention as every prior
+    // conversion's own `paths` — see WHIRLPOOL_SPAWN_EDGE/WHIRLPOOL_RAFTS'
+    // own comment above (4th map converted, after Deep Forest/Marshland/
+    // Savanah).
     paths: [WHIRLPOOL_WAYPOINTS],
     pathWidth: 56,
     pathColors: WHIRLPOOL_PATH_COLORS,
     terrain: 'ocean',
     decor: WHIRLPOOL_DECOR,
+    openField: true,
+    goal: { x: WHIRLPOOL_CENTER.x, y: WHIRLPOOL_CENTER.y, size: 46, radius: 60 },
+    obstacles: WHIRLPOOL_RAFTS,
+    spawnEdge: WHIRLPOOL_SPAWN_EDGE,
   },
   // Direct request: a snowy Hard-tier map (MAP_DIFFICULTY_MULTIPLIER,
   // enemies.js) — two fully separate paths, each with its own ice cave
