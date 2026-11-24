@@ -134,9 +134,12 @@ const DEEP_FOREST_WAYPOINTS = [
 // along the LEFT side of the world (roughly where the old path used to
 // enter), facing the cabin on the right. DEEP_FOREST_WAYPOINTS above is
 // deliberately left completely untouched: The Hollow Event ("Adventures")
-// reuses that exact same array for its own fixed waypoint path (see
-// MAP_TYPES.theHollowEvent below) and is NOT part of this open-field
-// conversion, so nothing here may mutate or remove it.
+// reused that exact same array for its own fixed waypoint path for a
+// while (see MAP_TYPES.theHollowEvent below) before its own later
+// open-field conversion (HOLLOW_TREE_GOAL/HOLLOW_BRANCHES/
+// HOLLOW_SPAWN_EDGE's own comment, further down this file) — kept as a
+// harmless unused fallback there now, same convention as every other
+// converted map, so nothing here needs to change either way.
 const DEEP_FOREST_CABIN = { x: 860, y: 320, size: 46, radius: 56 };
 
 const DEEP_FOREST_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
@@ -351,12 +354,13 @@ function renderForestDecor(ctx, decor, time = 0) {
   decor.grassTufts.forEach((tuft) => drawGrassTuft(ctx, tuft.x, tuft.y));
   decor.bushes.forEach((bush) => drawMapBush(ctx, bush.x, bush.y, bush.r));
   decor.trees.forEach((tree) => drawMapTree(ctx, tree.x, tree.y, tree.r));
-  // Open-field obstacles/goal, present only on Deep Forest's own decor —
-  // every map before this (and The Hollow Event, which reuses Deep
-  // Forest's path shape but not its decor object) has neither field, so
-  // this is a no-op for them with zero special-casing needed, same
-  // "defaults to an empty/absent value" convention isPointInMagmaPool()
-  // already uses for magma pools.
+  // Open-field obstacles/goal, present only on Deep Forest's own decor
+  // object — every other map's own decor object (The Hollow Event's own
+  // HOLLOW_EVENT_DECOR included — it has its own separate `goal`/
+  // `branches` fields, read by renderHollowDecor instead, not these) has
+  // neither field, so this is a no-op for them with zero special-casing
+  // needed, same "defaults to an empty/absent value" convention
+  // isPointInMagmaPool() already uses for magma pools.
   if (decor.logs) decor.logs.forEach((log) => drawFallenLog(ctx, log));
   if (decor.cabin) drawForestCabin(ctx, decor.cabin.x, decor.cabin.y, decor.cabin.size, time);
 }
@@ -2999,6 +3003,173 @@ function buildFallenLeafPositions(count) {
 
 const HOLLOW_EVENT_LEAVES = buildFallenLeafPositions(55);
 
+// Open-field rollout follow-up (relayed from the peer session): "it
+// should use the new engine (goal structure + spawn-edge/multi-side
+// movement + obstacles + walking towers), not stay on its original fixed-
+// path waypoints... Pick a goal structure and obstacle type that fit its
+// gothic autumn-forest theme (your judgment)... Keep the rest of its
+// design intact: 8-enemy roster, Mournful Sphinx at round 25, The Hollow
+// Crow (now slow/tanky) as the round-50 final boss, the orange rounds-
+// until-boss HUD, and the victory screen on round 50 clear." None of
+// those kept-intact mechanics (HOLLOW_ROSTER, BOSS_INTERVAL cadence,
+// adventureRoundCap/renderAdventureCountdown/triggerStageComplete, all
+// game.js/enemies.js) read MAP_PATHS/pathIndex/waypoints directly — they
+// key off `round` and the active roster only — so converting this map's
+// own terrain data is a fully isolated change, same confidence the other
+// 7 open-field conversions already had.
+//
+// Goal: an ancient withered hollow tree (my judgment, of the request's
+// own 3 suggestions — a crypt/mausoleum would need a whole new graveyard
+// art language this map doesn't otherwise use, while a dead hollow tree
+// slots directly into the forest setting already here AND doubles as a
+// literal nod to "The Hollow" in the event's own name). Placed at the
+// exact same (860, 320) spot Deep Forest's own cabin goal already proved
+// clear of this decor set (HOLLOW_EVENT_DECOR.trees/bushes below are
+// literally DEEP_FOREST_DECOR's own arrays) — not a coincidence, a reused
+// certainty.
+const HOLLOW_TREE_GOAL = { x: 860, y: 320, size: 50, radius: 62 };
+
+// Mirrors DEEP_FOREST_SPAWN_EDGE's own position exactly — a straight line
+// along the left side of the world, right where the old fixed path (see
+// DEEP_FOREST_WAYPOINTS' first waypoint, {x:-20,y:80} — close but not
+// identical, since this map's own old path entered a little higher) used
+// to enter. Keeping the entry side the same preserves this stage's own
+// established "left to right" feel rather than disorienting a returning
+// player.
+const HOLLOW_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
+
+// Obstacles: fallen branches (my judgment, of the request's own 2
+// suggestions — branches thread naturally with the fallen-LEAVES layer
+// this map already has (HOLLOW_EVENT_LEAVES above), while headstones
+// would need a graveyard read this map doesn't otherwise commit to).
+// Spread one per rough quadrant from the start (the Deep Forest log-
+// clustering lesson, applied proactively rather than needing its own
+// follow-up fix this time), every pair at least ~150px apart, and clear
+// of both the goal/spawn edge and this map's own reused tree/bush decor.
+const HOLLOW_BRANCHES = [
+  { x1: 150, y1: 380, x2: 230, y2: 410, radius: 13 },
+  { x1: 480, y1: 140, x2: 560, y2: 170, radius: 13 },
+  { x1: 260, y1: 230, x2: 340, y2: 260, radius: 14 },
+  { x1: 460, y1: 460, x2: 540, y2: 490, radius: 13 },
+  { x1: 700, y1: 230, x2: 770, y2: 260, radius: 13 },
+  { x1: 140, y1: 540, x2: 210, y2: 570, radius: 13 },
+];
+
+// The hollow tree itself — a big, bare, gnarled dead tree (no canopy,
+// deliberately bare-branched rather than reusing drawHollowTree's own
+// full orange-canopy silhouette, so the goal structure reads as visually
+// distinct from the ordinary background trees it stands among), split by
+// a dark hollow opening low on the trunk with a faint eerie glow inside —
+// "hollow" made literal, the same way The Hollow Crow's own glowing eye
+// sockets (drawHollowCrow, enemies.js) already carry this stage's theme.
+function drawHollowTreeGoal(ctx, x, y, size, time = 0) {
+  ctx.save();
+  ctx.translate(x, y);
+
+  // Bare gnarled branches first, behind the trunk.
+  ctx.strokeStyle = '#2e1f14';
+  ctx.lineWidth = Math.max(2, size * 0.09);
+  ctx.lineCap = 'round';
+  [-0.85, -0.5, -0.15, 0.2, 0.55, 0.85].forEach((angle, i) => {
+    const len = size * (0.55 + (i % 2) * 0.15);
+    const ex = Math.sin(angle) * len;
+    const ey = -size * 0.75 - Math.cos(angle) * len * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.6);
+    ctx.quadraticCurveTo(ex * 0.5, -size * 0.6 - len * 0.3, ex, ey);
+    ctx.stroke();
+  });
+
+  // Trunk, wider and more gnarled than drawHollowTree's own straight stub.
+  ctx.fillStyle = '#241a10';
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.3, size * 0.95);
+  ctx.quadraticCurveTo(-size * 0.4, size * 0.2, -size * 0.22, -size * 0.5);
+  ctx.quadraticCurveTo(-size * 0.05, -size * 0.7, size * 0.12, -size * 0.5);
+  ctx.quadraticCurveTo(size * 0.3, size * 0.2, size * 0.26, size * 0.95);
+  ctx.closePath();
+  ctx.fill();
+
+  // The hollow opening — a dark gap low on the trunk with a faint pulsing
+  // glow inside, same "radial glow behind a dark silhouette" technique
+  // drawCaveDen's own glowing burrow entrance (map.js) already uses.
+  const glowPulse = 0.5 + Math.sin(time * 1.3) * 0.5;
+  const gradient = ctx.createRadialGradient(0, size * 0.45, 0, 0, size * 0.45, size * 0.3);
+  gradient.addColorStop(0, `rgba(255, 140, 40, ${0.25 + glowPulse * 0.25})`);
+  gradient.addColorStop(1, 'rgba(255, 140, 40, 0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.ellipse(0, size * 0.45, size * 0.3, size * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#0a0603';
+  ctx.beginPath();
+  ctx.ellipse(0, size * 0.5, size * 0.16, size * 0.26, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // A little moss/fungus accent at the base, same palette as
+  // drawFallenLeaf's own set so it doesn't clash.
+  ctx.fillStyle = '#5a6b3a';
+  ctx.beginPath();
+  ctx.ellipse(size * 0.22, size * 0.8, size * 0.14, size * 0.08, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// Fallen branches — jagged, dead, grey-brown, distinct from
+// drawFallenLog's own smooth healthy bark (Deep Forest) despite sharing
+// the same {x1,y1,x2,y2,radius} capsule shape every obstacle in the game
+// uses (see drawFallenLog's own comment, Deep Forest's conversion).
+function drawFallenBranchObstacle(ctx, obstacle) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const length = Math.hypot(x2 - x1, y2 - y1) + radius * 2;
+
+  ctx.save();
+  ctx.translate(midX, midY);
+  ctx.rotate(angle);
+
+  ctx.fillStyle = '#3a2e22';
+  ctx.beginPath();
+  ctx.moveTo(-length / 2, -radius * 0.5);
+  ctx.lineTo(-length * 0.3, -radius * 0.85);
+  ctx.lineTo(length * 0.1, -radius * 0.55);
+  ctx.lineTo(length * 0.45, -radius * 0.7);
+  ctx.lineTo(length / 2, -radius * 0.3);
+  ctx.lineTo(length / 2, radius * 0.3);
+  ctx.lineTo(length * 0.4, radius * 0.65);
+  ctx.lineTo(-length * 0.1, radius * 0.5);
+  ctx.lineTo(-length * 0.4, radius * 0.8);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#241b13';
+  ctx.lineWidth = Math.max(1, radius * 0.12);
+  for (let i = -length / 2 + radius; i < length / 2 - radius; i += radius * 1.3) {
+    ctx.beginPath();
+    ctx.moveTo(i, -radius * 0.4);
+    ctx.lineTo(i + radius * 0.3, radius * 0.4);
+    ctx.stroke();
+  }
+
+  // A couple of broken twig stubs jutting off the main branch.
+  ctx.strokeStyle = '#2e2419';
+  ctx.lineWidth = Math.max(1.5, radius * 0.18);
+  ctx.beginPath();
+  ctx.moveTo(-length * 0.2, 0);
+  ctx.lineTo(-length * 0.3, -radius * 1.3);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(length * 0.25, 0);
+  ctx.lineTo(length * 0.35, radius * 1.2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 // Reuses Deep Forest's own tree/bush positions directly (same path, same
 // general layout, just recolored foliage) rather than hand-placing a
 // second full set of coordinates — "same general style as the existing
@@ -3007,17 +3178,27 @@ const HOLLOW_EVENT_DECOR = {
   trees: DEEP_FOREST_DECOR.trees,
   bushes: DEEP_FOREST_DECOR.bushes,
   leaves: HOLLOW_EVENT_LEAVES,
+  goal: HOLLOW_TREE_GOAL,
+  branches: HOLLOW_BRANCHES,
 };
 
 // Bushes/trees first (same back-to-front layering renderForestDecor
-// already uses), THEN leaves on top of everything else — including over
-// the path itself, since this runs after renderMap() has already stroked
-// the path's own fill. "Fallen leaves scattered/covering the ground along
-// the path and in the background," per the request, made literal by draw
-// order rather than a separate path-effects pass.
-function renderHollowDecor(ctx, decor) {
+// already uses), then the fallen branches and the hollow tree goal (this
+// map's own terrain is never browsed through the map-preview carousel —
+// see MAP_TYPES.theHollowEvent's own "deliberately NOT in MAP_TYPE_ORDER"
+// comment — so unlike Savanah/Tundra's own decor-data-driven guards, no
+// "which map is this decor actually for" ambiguity exists here; this
+// function is only ever called for this one map), THEN leaves on top of
+// everything else — including over the path itself, since this runs
+// after renderMap() has already stroked the path's own fill. "Fallen
+// leaves scattered/covering the ground along the path and in the
+// background," per the request, made literal by draw order rather than a
+// separate path-effects pass.
+function renderHollowDecor(ctx, decor, time = 0) {
   decor.bushes.forEach((bush) => drawHollowBush(ctx, bush.x, bush.y, bush.r));
   decor.trees.forEach((tree) => drawHollowTree(ctx, tree.x, tree.y, tree.r));
+  if (decor.branches) decor.branches.forEach((branch) => drawFallenBranchObstacle(ctx, branch));
+  if (decor.goal) drawHollowTreeGoal(ctx, decor.goal.x, decor.goal.y, decor.goal.size, time);
   decor.leaves.forEach((leaf) => drawFallenLeaf(ctx, leaf.x, leaf.y, leaf.rotation, leaf.size, leaf.hue));
 }
 
@@ -3604,11 +3785,19 @@ const MAP_TYPES = {
     id: 'theHollowEvent',
     name: 'The Hollow Event',
     builtin: true,
+    // Open-field rollout follow-up — see HOLLOW_TREE_GOAL/HOLLOW_BRANCHES/
+    // HOLLOW_SPAWN_EDGE's own comment above for the full design. `paths`
+    // kept as a harmless unused fallback, same convention as every other
+    // converted map.
     paths: [DEEP_FOREST_WAYPOINTS],
     pathWidth: 56,
     pathColors: HOLLOW_EVENT_PATH_COLORS,
     terrain: 'hollow',
     decor: HOLLOW_EVENT_DECOR,
+    openField: true,
+    goal: HOLLOW_TREE_GOAL,
+    obstacles: HOLLOW_BRANCHES,
+    spawnEdge: HOLLOW_SPAWN_EDGE,
   },
   // Deep Sea (direct request: "ruins, sand... dark blue... the [goal
   // structure] will be a submarine" — see DEEP_SEA_SUBMARINE/

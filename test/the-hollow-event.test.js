@@ -21,6 +21,18 @@ const { loadFullGameContext } = require('./support/loadGame');
 // MAP_TYPE_ORDER/MENU_MODE_ORDER — this stage is only ever reachable via
 // its own dedicated menu button, never the normal "Choose a Map"/"Choose a
 // Mode" carousels.
+//
+// Open-field rollout follow-up (relayed from the peer session): this map
+// has since converted from its original fixed-path waypoints to the same
+// goal-structure/obstacles/spawn-edge/walking-towers engine every other
+// built-in map already uses — see test/open-field-hollow-event.test.js
+// for that conversion's own dedicated coverage. `map.paths` below is
+// still asserted on here (it's kept as a harmless unused fallback, same
+// convention as every other converted map), but it no longer drives
+// actual enemy movement — none of the mechanics this file covers
+// (HOLLOW_ROSTER, the round-25/50 boss cadence, the splash screen, the
+// round-cap win check) ever read path/waypoint data directly, so the
+// conversion didn't require touching any test below.
 
 // --- The map/terrain itself ----------------------------------------------
 
