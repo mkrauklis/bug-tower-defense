@@ -554,6 +554,35 @@ const MARSHLAND_WAYPOINTS = [
   { x: 980, y: 340 },
 ];
 
+// Open-field rework, Marshland's turn (relayed from the peer session —
+// same conversion already done for Deep Forest, see DEEP_FOREST_CABIN/
+// DEEP_FOREST_LOGS/DEEP_FOREST_SPAWN_EDGE's own comment above for the
+// full design history; rolled out here with zero engine changes, only
+// new map-specific data + art). MARSHLAND_WAYPOINTS above is kept exactly
+// as it was — a harmless, unused fallback, same as Deep Forest's own
+// waypoints — since nothing else reuses it.
+//
+// Goal structure is a stilt-shack (the follow-up request's own "hut/
+// stilt-shack" phrase for Marshland) placed on the right side, clear of
+// the puddles/mangrove clusters below. Spawn edge mirrors Deep Forest's
+// own left-edge convention. Obstacles are tall-grass patches (the
+// follow-up request's own per-map terrain list) scattered through the
+// open middle, positioned clear of the existing puddles so the new
+// blocking terrain doesn't visually double up with the (still purely
+// decorative, non-blocking) water.
+const MARSHLAND_HUT = { x: 860, y: 320, size: 44, radius: 54 };
+
+const MARSHLAND_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
+
+const MARSHLAND_TALL_GRASS = [
+  { x1: 180, y1: 260, x2: 230, y2: 300, radius: 20 },
+  { x1: 400, y1: 160, x2: 450, y2: 195, radius: 18 },
+  { x1: 590, y1: 440, x2: 650, y2: 420, radius: 20 },
+  { x1: 380, y1: 470, x2: 430, y2: 450, radius: 18 },
+  { x1: 700, y1: 420, x2: 750, y2: 450, radius: 19 },
+  { x1: 560, y1: 160, x2: 610, y2: 140, radius: 17 },
+];
+
 // Hand-placed, same convention as Deep Forest's decor — kept clear of the
 // waypoints above. Lily pads are listed per-puddle (they float inside it)
 // but also read as one flat list by anything that just wants "every lily
@@ -632,7 +661,140 @@ const MARSHLAND_DECOR = {
   duckweed: MARSHLAND_DUCKWEED,
   mangroves: MARSHLAND_MANGROVES,
   cattails: MARSHLAND_CATTAILS,
+  hut: MARSHLAND_HUT,
+  tallGrass: MARSHLAND_TALL_GRASS,
 };
+
+// Marshland's own open-field goal structure: a stilt-shack raised on
+// angled wooden poles above the mud (the same way the surrounding
+// mangroves root into it), topped with a shaggy straw-thatched roof
+// (distinct from the cabin's peaked log-wall roof) and a lit doorway plus
+// a gently swaying lantern — same "defended structure, not a plain
+// marker" role drawForestCabin already established.
+function drawMarshHut(ctx, x, y, size, time = 0) {
+  ctx.save();
+
+  const wallW = size * 1.3;
+  const wallH = size * 0.85;
+  const floorY = y - size * 0.55;
+  const wallX = x - wallW / 2;
+  const wallY = floorY - wallH;
+
+  ctx.strokeStyle = '#3a2a16';
+  ctx.lineWidth = Math.max(2, size * 0.09);
+  [-0.55, -0.2, 0.2, 0.55].forEach((spread) => {
+    ctx.beginPath();
+    ctx.moveTo(x + spread * wallW, floorY);
+    ctx.lineTo(x + spread * wallW * 1.15, y + size * 0.5);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = shadeColor('#6b4a2f', -10);
+  ctx.fillRect(wallX - size * 0.1, floorY, wallW + size * 0.2, size * 0.14);
+
+  ctx.fillStyle = '#5c4a2e';
+  ctx.fillRect(wallX, wallY, wallW, wallH);
+  ctx.strokeStyle = shadeColor('#5c4a2e', -22);
+  ctx.lineWidth = Math.max(1.3, size * 0.03);
+  for (let row = 1; row < 3; row += 1) {
+    const ly = wallY + (row / 3) * wallH;
+    ctx.beginPath();
+    ctx.moveTo(wallX, ly);
+    ctx.lineTo(wallX + wallW, ly);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#b89550';
+  ctx.beginPath();
+  ctx.moveTo(wallX - size * 0.22, wallY);
+  ctx.lineTo(x, wallY - size * 0.6);
+  ctx.lineTo(wallX + wallW + size * 0.22, wallY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor('#b89550', -20);
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  for (let i = -3; i <= 3; i += 1) {
+    const tx = x + i * wallW * 0.12;
+    const ty = wallY - Math.abs(i) * size * 0.08;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(tx + size * 0.06, ty + size * 0.1);
+    ctx.stroke();
+  }
+
+  const doorW = size * 0.3;
+  const doorH = size * 0.5;
+  ctx.shadowColor = 'rgba(255, 200, 110, 0.8)';
+  ctx.shadowBlur = size * 0.3;
+  ctx.fillStyle = '#ffcf7a';
+  ctx.fillRect(x - doorW / 2, floorY - doorH, doorW, doorH);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#2e2210';
+  ctx.lineWidth = Math.max(1.3, size * 0.03);
+  ctx.strokeRect(x - doorW / 2, floorY - doorH, doorW, doorH);
+
+  const swing = Math.sin(time * 0.8 + x * 0.01) * size * 0.06;
+  const lanternX = x + wallW * 0.42 + swing;
+  const lanternY = wallY + size * 0.15;
+  ctx.strokeStyle = '#2e2210';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + wallW * 0.42, wallY);
+  ctx.lineTo(lanternX, lanternY);
+  ctx.stroke();
+  ctx.shadowColor = 'rgba(255, 210, 120, 0.8)';
+  ctx.shadowBlur = size * 0.2;
+  ctx.fillStyle = '#ffd98a';
+  ctx.beginPath();
+  ctx.arc(lanternX, lanternY, size * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  applyBlobShading(ctx, x, wallY + wallH * 0.5, wallW * 0.5);
+  ctx.restore();
+}
+
+// A tall-grass-patch obstacle (follow-up request's own per-map terrain
+// list: "Marshland: tall grass patches"). Same capsule shape
+// {x1,y1,x2,y2,radius} every open-field obstacle shares (see
+// drawFallenLog's own comment, map.js's distanceToObstacle/
+// buildOpenFieldRoute) — drawn here as a dense cluster of swaying blades
+// along the capsule's own footprint rather than a solid fill, so it reads
+// as a patch of reeds blocking the way rather than a log.
+function drawTallGrassPatch(ctx, obstacle, time = 0) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  ctx.fillStyle = 'rgba(58, 74, 30, 0.55)';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, length / 2 + radius * 0.4, radius * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const bladeCount = Math.max(6, Math.round(length / 14));
+  ctx.strokeStyle = '#4a6b2f';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < bladeCount; i += 1) {
+    const t = bladeCount === 1 ? 0.5 : i / (bladeCount - 1);
+    const bx = -length / 2 + t * length;
+    const by = Math.sin(i * 2.7) * radius * 0.3;
+    const sway = Math.sin(time * 1.4 + i * 1.3) * radius * 0.18;
+    const bladeHeight = radius * (0.9 + 0.35 * Math.sin(i * 1.9));
+    ctx.lineWidth = Math.max(1.2, radius * 0.08);
+    ctx.beginPath();
+    ctx.moveTo(bx, by + radius * 0.3);
+    ctx.quadraticCurveTo(bx + sway * 0.6, by - bladeHeight * 0.5, bx + sway, by - bladeHeight);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
 
 function renderMarshDecor(ctx, decor, time = 0) {
   decor.duckweed.forEach((patch) => drawDuckweedPatch(ctx, patch.x, patch.y, patch.r));
@@ -640,6 +802,11 @@ function renderMarshDecor(ctx, decor, time = 0) {
   decor.puddles.forEach((puddle) => drawMudPuddle(ctx, puddle.x, puddle.y, puddle.r, time));
   decor.lilyPads.forEach((pad) => drawLilyPad(ctx, pad.x, pad.y, pad.r));
   decor.mangroves.forEach((tree) => drawMangrove(ctx, tree.x, tree.y, tree.r));
+  // Open-field obstacles/goal, present only once Marshland adopts them —
+  // same null-safe "absent on every map that hasn't converted yet"
+  // convention renderForestDecor's own logs/cabin fields use.
+  if (decor.tallGrass) decor.tallGrass.forEach((patch) => drawTallGrassPatch(ctx, patch, time));
+  if (decor.hut) drawMarshHut(ctx, decor.hut.x, decor.hut.y, decor.hut.size, time);
 }
 
 // Muddier/wetter than Deep Forest's dirt-brown pair (documented choice —
@@ -2402,11 +2569,19 @@ const MAP_TYPES = {
     id: 'marshland',
     name: 'Marshland',
     builtin: true,
+    // Kept as an unused fallback, same convention as Deep Forest's own
+    // `paths` — see MARSHLAND_HUT/MARSHLAND_TALL_GRASS/
+    // MARSHLAND_SPAWN_EDGE's own comment above for the full open-field
+    // conversion (2nd map converted, after Deep Forest).
     paths: [MARSHLAND_WAYPOINTS],
     pathWidth: 56,
     pathColors: MARSH_PATH_COLORS,
     terrain: 'marsh',
     decor: MARSHLAND_DECOR,
+    openField: true,
+    goal: MARSHLAND_HUT,
+    obstacles: MARSHLAND_TALL_GRASS,
+    spawnEdge: MARSHLAND_SPAWN_EDGE,
   },
   // "Savanah" is the user's own spelling, kept as given even though the
   // actual theme built here is desert, not grassland-savanna — a direct

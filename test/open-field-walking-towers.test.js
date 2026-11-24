@@ -230,9 +230,13 @@ test('applyWalkingLegs draws exactly one stroked hip->knee->foot path per leg', 
   assert.equal(moves.filter((m) => m[0] === 'L').length, 8); // 2 line segments (hip->knee, knee->foot) per leg
 });
 
-test('towers on every map other than Deep Forest stay completely static — no movement applied, and renderTower never reaches its legs branch', () => {
+test('towers on every map not yet converted to open-field stay completely static — no movement applied, and renderTower never reaches its legs branch', () => {
   const game = loadFullGameContext();
-  game.setActiveMap(game.MAP_TYPES.marshland);
+  // Savanah, not Marshland — Marshland was converted to open-field in the
+  // rollout's 2nd step (see open-field-marshland.test.js) and now moves
+  // its towers too, so it no longer serves as the "still static" example
+  // this test needs.
+  game.setActiveMap(game.MAP_TYPES.savanah);
   // renderTower's own legs call is gated on exactly this flag — the
   // authoritative guarantee that part-2 rendering is a no-op here.
   assert.equal(game.getIsOpenField(), false);

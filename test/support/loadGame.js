@@ -45,7 +45,7 @@ function loadGameContext() {
       generateWave, spawnWave, updateEnemies, getLastLeakedEnemies,
       findNearestEnemyInRange, damageEnemy, applyBurn, applySlow, applyFreeze, getEnemiesInRadius,
       ARMORED_BEETLE_TIERS, getUnlockedArmoredBeetleKeys, getArmoredBeetleTier,
-      getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey,
+      getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey, spawnSingleEnemy,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath, isPointInMagmaPool,
       // A getter, not a plain binding — MAP_PATHS (like activeEnemies
       // below) is reassigned by setActiveMap(), so a plain destructured
@@ -78,7 +78,7 @@ function loadGameContext() {
       // functions directly, and read the "currently active map" bindings
       // these touch. Getters, not plain bindings, for the same reason
       // getMapPaths above is one — setActiveMap() reassigns all 4.
-      buildOpenFieldRoute, distanceToObstacle, isPointInObstacle, isPointInGoal, renderMap,
+      buildOpenFieldRoute, distanceToObstacle, isPointInObstacle, isPointInGoal, renderMap, renderMapPreview,
       getIsOpenField: () => MAP_OPEN_FIELD,
       getMapGoal: () => MAP_GOAL,
       getMapObstacles: () => MAP_OBSTACLES,
