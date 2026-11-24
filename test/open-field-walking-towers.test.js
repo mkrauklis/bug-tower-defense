@@ -230,15 +230,18 @@ test('applyWalkingLegs draws exactly one stroked hip->knee->foot path per leg', 
   assert.equal(moves.filter((m) => m[0] === 'L').length, 8); // 2 line segments (hip->knee, knee->foot) per leg
 });
 
-test('towers on every map not yet converted to open-field stay completely static — no movement applied, and renderTower never reaches its legs branch', () => {
+test('towers on a non-open-field map stay completely static — no movement applied, and renderTower never reaches its legs branch', () => {
   const game = loadFullGameContext();
-  // Caves — the last remaining unconverted map. Marshland/Savanah/
-  // Whirlpool/Tundra/Volcanic were converted to open-field one at a time
-  // through this same rollout (see each one's own open-field-*.test.js)
-  // and now move their towers too, so none of them serve as the "still
-  // static" example this test needs any more; this will need repointing
-  // again once Caves itself converts.
-  game.setActiveMap(game.MAP_TYPES.caves);
+  // Every built-in map (Marshland/Savanah/Whirlpool/Tundra/Volcanic/
+  // Caves) has now been converted to open-field one at a time through
+  // this same rollout (see each one's own open-field-*.test.js) and
+  // moves its towers too, so none of them serve as the "still static"
+  // example this test needs any more. A synthetic non-open-field map
+  // (same FAKE_LEGACY_MAP shape open-field-deep-forest.test.js defines)
+  // stands in instead — this exercises the actual branch
+  // (!MAP_OPEN_FIELD) rather than depending on any one built-in map's
+  // own conversion status ever again.
+  game.setActiveMap({ id: 'fakeLegacy', paths: [[{ x: 100, y: 100 }, { x: 200, y: 100 }]], pathWidth: 56 });
   // renderTower's own legs call is gated on exactly this flag — the
   // authoritative guarantee that part-2 rendering is a no-op here.
   assert.equal(game.getIsOpenField(), false);

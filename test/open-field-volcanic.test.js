@@ -23,12 +23,22 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 //     already unconditionally drawn" pattern Whirlpool's own sinking
 //     ship used on its vortex.
 
-test('MAP_TYPES.volcanic is now open-field too (6th and final map converted) — only Caves remains untouched', () => {
+// Caves has since converted too (see open-field-caves.test.js) — the
+// LAST built-in map on the legacy fixed-path system, so every built-in
+// map is open-field now. A synthetic FAKE_LEGACY_MAP (same one
+// open-field-deep-forest.test.js defines) stands in for "some
+// non-open-field map" in the contrast checks below instead.
+const FAKE_LEGACY_MAP = {
+  id: 'fakeLegacy',
+  paths: [[{ x: 100, y: 100 }, { x: 200, y: 100 }]],
+  pathWidth: 56,
+};
+
+test('MAP_TYPES.volcanic was the 6th map converted — every built-in map is open-field now that the rollout is complete', () => {
   const game = loadGameContext();
-  ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic'].forEach((id) => {
+  ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic', 'caves'].forEach((id) => {
     assert.equal(game.MAP_TYPES[id].openField, true, `${id} should be open-field`);
   });
-  assert.equal(Boolean(game.MAP_TYPES.caves.openField), false);
 });
 
 test('Volcanic\'s goal reuses the existing lava vent\'s own position, and its magma-pit obstacles are a new array separate from the existing (untouched) magma pools', () => {
@@ -56,19 +66,18 @@ test('setActiveMap() updates the open-field bindings for Volcanic the same way i
   assert.deepEqual(game.getMapObstacles(), game.MAP_TYPES.volcanic.obstacles);
   assert.deepEqual(game.getMapSpawnEdge(), game.MAP_TYPES.volcanic.spawnEdge);
 
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_LEGACY_MAP);
   assert.equal(game.getIsOpenField(), false);
 });
 
-test('isPointOnPath always reads clear on Volcanic now, but Caves (the last unconverted map) still blocks on its own path', () => {
+test('isPointOnPath always reads clear on Volcanic now, but a non-open-field map still blocks on its own path', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.volcanic);
   const oldPathStart = game.MAP_TYPES.volcanic.paths[0][0];
   assert.equal(game.isPointOnPath(oldPathStart.x + 20, oldPathStart.y, 28), false);
 
-  game.setActiveMap(game.MAP_TYPES.caves);
-  const cavesStart = game.MAP_TYPES.caves.paths[0][0];
-  assert.equal(game.isPointOnPath(cavesStart.x + 20, cavesStart.y, 28), true);
+  game.setActiveMap(FAKE_LEGACY_MAP);
+  assert.equal(game.isPointOnPath(120, 100, 28), true);
 });
 
 test('isPointInObstacle/isPointInGoal block placement on Volcanic\'s own new magma-pit obstacles/bunker goal, and isPointInMagmaPool independently still blocks its own old pools', () => {

@@ -29,16 +29,24 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 //     own untouched DEEP_FOREST_WAYPOINTS — a harmless unused fallback,
 //     since nothing else in the project reuses it.
 
-// Savanah/Whirlpool/Tundra/Volcanic have since converted too (see their
-// own open-field-*.test.js files) — only Caves is still checked here as
-// "not yet" so this test keeps matching the codebase's current state
-// instead of this map's own conversion-day snapshot.
-test('MAP_TYPES.marshland is now open-field too (2nd map converted) — Caves remains untouched', () => {
+// Savanah/Whirlpool/Tundra/Volcanic/Caves have since converted too (see
+// their own open-field-*.test.js files) — Caves was the LAST built-in
+// map on the legacy fixed-path system, so there's no "remains untouched"
+// map left to contrast against any more. A synthetic FAKE_LEGACY_MAP
+// (same one open-field-deep-forest.test.js defines) stands in for "some
+// non-open-field map" instead, so the generic mechanism's other branch
+// stays exercised without depending on any one built-in map's own
+// conversion status.
+const FAKE_LEGACY_MAP = {
+  id: 'fakeLegacy',
+  paths: [[{ x: 100, y: 100 }, { x: 200, y: 100 }]],
+  pathWidth: 56,
+};
+
+test('MAP_TYPES.marshland is now open-field too (2nd map converted) — every built-in map is open-field now that the rollout is complete', () => {
   const game = loadGameContext();
-  assert.equal(game.MAP_TYPES.deepForest.openField, true);
-  assert.equal(game.MAP_TYPES.marshland.openField, true);
-  ['caves'].forEach((id) => {
-    assert.equal(Boolean(game.MAP_TYPES[id].openField), false, `${id} should not be open-field yet`);
+  ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic', 'caves'].forEach((id) => {
+    assert.equal(game.MAP_TYPES[id].openField, true, `${id} should be open-field`);
   });
 });
 
@@ -64,22 +72,21 @@ test('setActiveMap() updates the open-field bindings for Marshland the same way 
   assert.deepEqual(game.getMapObstacles(), game.MAP_TYPES.marshland.obstacles);
   assert.deepEqual(game.getMapSpawnEdge(), game.MAP_TYPES.marshland.spawnEdge);
 
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_LEGACY_MAP);
   assert.equal(game.getIsOpenField(), false);
   assert.equal(game.getMapGoal(), null);
   assert.deepEqual(game.getMapObstacles(), []);
   assert.equal(game.getMapSpawnEdge(), null);
 });
 
-test('isPointOnPath always reads clear on Marshland now, but Caves (not yet converted) still blocks on its own path', () => {
+test('isPointOnPath always reads clear on Marshland now, but a non-open-field map still blocks on its own path', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.marshland);
   const oldPathPoint = game.MAP_TYPES.marshland.paths[0][2]; // a bend in the now-unused legacy path
   assert.equal(game.isPointOnPath(oldPathPoint.x, oldPathPoint.y, 28), false);
 
-  game.setActiveMap(game.MAP_TYPES.caves);
-  const cavesStart = game.MAP_TYPES.caves.paths[0][0];
-  assert.equal(game.isPointOnPath(cavesStart.x + 20, cavesStart.y, 28), true);
+  game.setActiveMap(FAKE_LEGACY_MAP);
+  assert.equal(game.isPointOnPath(120, 100, 28), true);
 });
 
 test('isPointInObstacle/isPointInGoal block placement on Marshland\'s own tall-grass/hut, and are harmless no-ops elsewhere on the map', () => {

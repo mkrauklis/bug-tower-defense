@@ -2,60 +2,96 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 
-// The multi-path engine itself — two paths sharing one spawn/one exit
-// (Caves' own fork-then-rejoin shape) or two fully independent ones
-// (Savanah/Tundra's own shape, before each was converted), with every
+// The multi-path engine itself — two paths sharing one spawn/one exit (a
+// fork-then-rejoin shape) or two fully independent ones, with every
 // enemy independently rolling which path it spawns onto (enemy.pathIndex)
 // via the game's own seeded random() and sticking with that path for its
 // whole life (the underlying engine was generalized from one flat
 // MAP_PATH_WAYPOINTS array to MAP_PATHS, an array of paths, for this).
-// Deep Forest/Marshland/Savanah/Whirlpool/Tundra's own single-enemy-
-// movement tests elsewhere are the regression coverage that nothing
-// changed for a single-path map.
+// Every built-in map's own single-enemy-movement tests elsewhere are the
+// regression coverage that nothing changed for a single-path map.
 //
-// Originally written against Savanah (the first map with two paths),
-// this file was renamed and repointed at Tundra once Savanah converted
-// to open-field, then repointed again at Caves once Tundra converted too
-// (direct follow-up request relayed from the peer session — see
-// TUNDRA_FORTRESS's own comment in map.js) — Caves is now the LAST
-// built-in map still on the legacy fixed-path system, so once it
-// converts too, this file's own subject (the shared engine, not any one
-// specific map) will need a different home entirely; for now it's the
-// only 2-path map left to exercise this with.
+// This file was originally written against Savanah (the first map with
+// two paths), then repointed at Tundra once Savanah converted to
+// open-field, then at Caves once Tundra converted too — each time, the
+// map whose own fixed-path movement this file was actually exercising
+// moved on to the open-field system, so the file got repointed at
+// whichever 2-path map was left. Now that Caves itself has converted
+// (the open-field rollout's 6th and final map — every built-in map is
+// open-field now), there is no live 2-path map left in the game at all.
 //
-// Caves' own shape is different from Savanah/Tundra's: both paths FORK
-// from one shared spawn and REJOIN before one shared goal (CAVES_GOAL,
-// a single crystal pool both branches end at) rather than two fully
-// independent spawn-to-goal routes — so the "two separate goals" and
-// "two goals sit far apart" tests those maps' own versions of this file
-// had no longer apply here and are replaced with assertions that match
-// Caves' own real shape instead.
+// Rather than repoint this file at nothing (or delete real engine
+// coverage), it now runs against FAKE_TWO_PATH_MAP below — a synthetic,
+// self-contained map object (setActiveMap() only ever reads
+// .paths/.pathWidth/.openField/.goal/.obstacles/.spawnEdge off whatever
+// it's given, never anything that requires a REAL MAP_TYPES entry) that
+// reproduces Caves' own fork-then-rejoin shape exactly. This is
+// deliberately NOT tied to any built-in map's own conversion status —
+// the multi-path engine is still live production code (nothing else in
+// this file's own history removed it, only every CURRENT map's own use
+// of it), so it keeps real regression coverage without ever needing to
+// be repointed again.
+const FAKE_TWO_PATH_MAP = {
+  id: 'fakeTwoPath',
+  pathWidth: 56,
+  paths: [
+    [
+      { x: -20, y: 320 },
+      { x: 160, y: 320 },
+      { x: 160, y: 120 },
+      { x: 340, y: 120 }, // the fork point — both branches start diverging right after this exact waypoint
+      { x: 240, y: 200 }, // this path's own branch: bulges left
+      { x: 240, y: 400 },
+      { x: 340, y: 480 }, // the merge point — both branches rejoin at this exact waypoint
+      { x: 620, y: 480 },
+    ],
+    [
+      { x: -20, y: 320 },
+      { x: 160, y: 320 },
+      { x: 160, y: 120 },
+      { x: 340, y: 120 }, // the same fork point as the other path
+      { x: 440, y: 200 }, // this path's own branch: bulges right instead of left
+      { x: 440, y: 400 },
+      { x: 340, y: 480 }, // the same merge point as the other path
+      { x: 620, y: 480 },
+    ],
+  ],
+};
 
-test('Caves has exactly two paths that share the same single goal (a fork-then-rejoin shape, not two independent destinations)', () => {
+test('a 2-path map has exactly two paths that share the same single goal (a fork-then-rejoin shape, not two independent destinations)', () => {
   const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_TWO_PATH_MAP);
   const paths = game.getMapPaths();
 
   assert.equal(paths.length, 2);
   const [pathA, pathB] = paths;
   const endA = pathA[pathA.length - 1];
   const endB = pathB[pathB.length - 1];
-  assert.deepEqual(endA, endB); // both branches rejoin at the same crystal pool goal
+  assert.deepEqual(endA, endB); // both branches rejoin at the same goal
   assert.ok(endA.x >= 0 && endA.x <= 960 && endA.y >= 0 && endA.y <= 640);
 });
 
-test('Deep Forest, Marshland, Savanah, Whirlpool, and Tundra each still have their own legacy waypoint data (unused now that all 5 are open-field, but not accidentally lost)', () => {
+test('every built-in map now has its own open-field data (the rollout is complete) — their own legacy waypoint data is still kept, unused, not accidentally lost', () => {
   const game = loadGameContext();
+  ['deepForest', 'marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic', 'caves'].forEach((id) => {
+    const map = game.MAP_TYPES[id];
+    assert.equal(map.openField, true, `${id} should be open-field`);
+    assert.ok(Array.isArray(map.paths) && map.paths.length > 0, `${id} should still have its own legacy paths kept`);
+  });
+  // Savanah/Tundra/Caves were always 2-path maps even before converting;
+  // every other built-in map was always single-path.
+  assert.equal(game.MAP_TYPES.savanah.paths.length, 2);
+  assert.equal(game.MAP_TYPES.tundra.paths.length, 2);
+  assert.equal(game.MAP_TYPES.caves.paths.length, 2);
   assert.equal(game.MAP_TYPES.deepForest.paths.length, 1);
   assert.equal(game.MAP_TYPES.marshland.paths.length, 1);
-  assert.equal(game.MAP_TYPES.savanah.paths.length, 2); // Savanah's own legacy data was always 2 paths, even though unused now
   assert.equal(game.MAP_TYPES.whirlpool.paths.length, 1);
-  assert.equal(game.MAP_TYPES.tundra.paths.length, 2); // Tundra's own legacy data was always 2 paths too
+  assert.equal(game.MAP_TYPES.volcanic.paths.length, 1);
 });
 
-test('isPointOnPath blocks placement near EITHER of Caves\' two paths, not just the first', () => {
+test('isPointOnPath blocks placement near EITHER of a 2-path map\'s two paths, not just the first', () => {
   const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_TWO_PATH_MAP);
   const [pathA, pathB] = game.getMapPaths();
 
   // Each path's own branch-only leg (after the shared fork point) — not
@@ -68,9 +104,9 @@ test('isPointOnPath blocks placement near EITHER of Caves\' two paths, not just 
   assert.equal(game.isPointOnPath(-10000, -10000), false);
 });
 
-test('a spawned enemy on Caves lands on one of the two valid paths (pathIndex 0 or 1)', () => {
+test('a spawned enemy on a 2-path map lands on one of the two valid paths (pathIndex 0 or 1)', () => {
   const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_TWO_PATH_MAP);
   game.spawnWave([
     { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
@@ -82,9 +118,9 @@ test('a spawned enemy on Caves lands on one of the two valid paths (pathIndex 0 
   assert.equal(enemy.y, path[0].y);
 });
 
-test('spawning many enemies on Caves uses both paths, not just one (independent per-enemy roll)', () => {
+test('spawning many enemies on a 2-path map uses both paths, not just one (independent per-enemy roll)', () => {
   const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_TWO_PATH_MAP);
   game.spawnWave([
     { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 200, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
@@ -92,9 +128,9 @@ test('spawning many enemies on Caves uses both paths, not just one (independent 
   assert.deepEqual([...pathIndexesUsed].sort(), [0, 1]); // astronomically unlikely all 200 land on one path
 });
 
-test('an enemy on path B (Caves) walks along path B\'s own waypoints, not path A\'s', () => {
+test('an enemy on path B walks along path B\'s own waypoints, not path A\'s', () => {
   const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_TWO_PATH_MAP);
   game.spawnWave([
     { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
@@ -115,7 +151,7 @@ test('an enemy on path B (Caves) walks along path B\'s own waypoints, not path A
 
 test('an enemy that reaches the end of its own path is detected as leaked, using its own path\'s length', () => {
   const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_TWO_PATH_MAP);
   game.spawnWave([
     { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
   ]);
@@ -133,7 +169,7 @@ test('an enemy that reaches the end of its own path is detected as leaked, using
 
 test('Rose\'s Root Path (spawnRoseRoots) seeds roots along path B even when path A is nowhere in range', () => {
   const game = loadFullGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
+  game.setActiveMap(FAKE_TWO_PATH_MAP);
 
   // (500, 300) sits near path B's own vertical branch leg (440,200)-
   // (440,400) — 60px away, well within the 220px root-spawn radius — but

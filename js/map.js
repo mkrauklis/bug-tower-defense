@@ -2600,11 +2600,122 @@ const CAVES_FORMATIONS = [
 // drawn landmark" role every other map's own goal marker plays.
 const CAVES_GOAL = { x: 860, y: 220, size: 70 };
 
+// Open-field rollout, Caves' turn (6th and LAST built-in map on the
+// legacy fixed-path system — see VOLCANIC_GOAL's own comment for the
+// full design history this follows). CAVES_PATH_A/B are kept exactly as
+// they were, same unused-fallback convention every prior conversion
+// uses. Goal is a creature's den (assistant's own judgment call, per the
+// original request's own "den/cave-dwelling" suggestion), drawn just
+// above the existing crystal water pool rather than replacing it — same
+// "permanent addition on top of decor that was already unconditionally
+// drawn" pattern Whirlpool's sinking ship/Volcanic's bunker both used.
+// Obstacles are rocks (assistant's own judgment call, per the follow-up
+// request's own per-map terrain list: "Caves: rocks"), spread across the
+// whole field from the start (the Deep Forest log-clustering lesson
+// applied immediately).
+const CAVES_DEN = { x: CAVES_GOAL.x, y: CAVES_GOAL.y, size: CAVES_GOAL.size, radius: 66 };
+
+const CAVES_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
+
+const CAVES_ROCKS = [
+  { x1: 190, y1: 200, x2: 250, y2: 240, radius: 20 },
+  { x1: 450, y1: 130, x2: 510, y2: 170, radius: 19 },
+  { x1: 170, y1: 430, x2: 230, y2: 470, radius: 20 },
+  { x1: 490, y1: 420, x2: 550, y2: 460, radius: 19 },
+  { x1: 620, y1: 160, x2: 680, y2: 200, radius: 18 },
+  { x1: 370, y1: 330, x2: 430, y2: 370, radius: 20 },
+];
+
 const CAVES_DECOR = {
   crystals: CAVES_CRYSTALS,
   formations: CAVES_FORMATIONS,
   goal: CAVES_GOAL,
+  den: CAVES_DEN,
+  rocks: CAVES_ROCKS,
 };
+
+// Caves' own open-field goal structure: a creature's den — a dirt-and-
+// rock mound with a dark burrow entrance, a pair of glowing eyes peering
+// out (with an occasional "blink," hiding briefly), and claw-scratch
+// marks around the opening, drawn just above the existing crystal pool.
+function drawCaveDen(ctx, x, y, size, time = 0) {
+  ctx.save();
+
+  ctx.fillStyle = '#3a322a';
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.3, size * 1.1, size * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = shadeColor('#3a322a', 12);
+  ctx.beginPath();
+  ctx.ellipse(x, y + size * 0.15, size * 0.95, size * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#0a0806';
+  ctx.beginPath();
+  ctx.ellipse(x, y, size * 0.55, size * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (Math.sin(time * 0.6) > -0.9) {
+    ctx.shadowColor = 'rgba(255, 210, 80, 0.9)';
+    ctx.shadowBlur = size * 0.2;
+    ctx.fillStyle = '#ffd250';
+    [-0.18, 0.18].forEach((dx) => {
+      ctx.beginPath();
+      ctx.ellipse(x + dx * size, y - size * 0.1, size * 0.05, size * 0.08, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.strokeStyle = shadeColor('#3a322a', -20);
+  ctx.lineWidth = Math.max(1, size * 0.03);
+  [-0.3, 0, 0.3].forEach((dx) => {
+    ctx.beginPath();
+    ctx.moveTo(x + dx * size - size * 0.5, y + size * 0.5);
+    ctx.lineTo(x + dx * size + size * 0.1 - size * 0.5, y - size * 0.1);
+    ctx.stroke();
+  });
+
+  applyBlobShading(ctx, x, y + size * 0.2, size * 0.9);
+  ctx.restore();
+}
+
+// A rock obstacle (follow-up request's own per-map terrain list: "Caves:
+// rocks"). Same capsule shape {x1,y1,x2,y2,radius} every open-field
+// obstacle shares — drawn as a cluster of overlapping dark cave-stone
+// boulders along the capsule's own footprint, same "cluster of
+// boulders" technique Savanah's own sandstone obstacle uses, recolored
+// for this map's own dark-rock palette.
+function drawCaveRockObstacle(ctx, obstacle) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+  const rockColor = '#4a4038';
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  const boulderCount = Math.max(2, Math.round(length / (radius * 1.1)));
+  for (let i = 0; i < boulderCount; i += 1) {
+    const t = boulderCount === 1 ? 0.5 : i / (boulderCount - 1);
+    const bx = -length / 2 + t * length;
+    const scale = 0.85 + 0.3 * Math.sin(i * 1.7);
+    ctx.fillStyle = rockColor;
+    ctx.beginPath();
+    ctx.ellipse(bx, 0, radius * 0.7 * scale, radius * 0.55 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = shadeColor(rockColor, 16);
+    ctx.beginPath();
+    ctx.ellipse(bx - radius * 0.15, -radius * 0.2, radius * 0.22 * scale, radius * 0.14 * scale, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  applyBlobShading(ctx, 0, 0, radius);
+  ctx.restore();
+}
 
 // Reused for both the scattered mineral formations and the crystal pool
 // goal's own rim shards — a single spike silhouette (a triangle plus a
@@ -2712,7 +2823,9 @@ function drawCaveWaterPool(ctx, x, y, size, time = 0) {
 function renderCavesDecor(ctx, decor, time = 0) {
   decor.formations.forEach((formation) => drawCaveFormation(ctx, formation.x, formation.y, formation.size, formation.hanging));
   decor.crystals.forEach((crystal) => drawGlowingCrystal(ctx, crystal.x, crystal.y, crystal.size, crystal.color, time));
+  if (decor.rocks) decor.rocks.forEach((rock) => drawCaveRockObstacle(ctx, rock));
   drawCaveWaterPool(ctx, decor.goal.x, decor.goal.y, decor.goal.size, time);
+  if (decor.den) drawCaveDen(ctx, decor.den.x, decor.den.y - decor.goal.size * 0.7, decor.goal.size * 0.6, time);
 }
 
 // Direct follow-up request: give the water path an actual "flowing"
@@ -3435,11 +3548,19 @@ const MAP_TYPES = {
     id: 'caves',
     name: 'Caves',
     builtin: true,
+    // Kept as an unused fallback, same convention as every prior
+    // conversion's own `paths` — see CAVES_DEN/CAVES_ROCKS' own comment
+    // above. This is the 6th and LAST built-in map converted — every
+    // built-in map is now open-field.
     paths: [CAVES_PATH_A, CAVES_PATH_B],
     pathWidth: 56,
     pathColors: CAVES_PATH_COLORS,
     terrain: 'caves',
     decor: CAVES_DECOR,
+    openField: true,
+    goal: CAVES_DEN,
+    obstacles: CAVES_ROCKS,
+    spawnEdge: CAVES_SPAWN_EDGE,
   },
   // The Hollow Event ("Adventures," direct request relayed from the peer
   // session): deliberately NOT in MAP_TYPE_ORDER below — this map is only

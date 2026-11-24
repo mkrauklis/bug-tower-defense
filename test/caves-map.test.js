@@ -24,10 +24,12 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 // waypoints (the merge to the goal), diverging only in the middle —
 // visually one path that splits into 2 branches and rejoins, built as 2
 // ordinary waypoint arrays, the exact same mechanism Savanah's own 2
-// (fully independent) paths already use. See savanah-multipath.test.js
-// for the original multi-path machinery's own dedicated coverage; these
-// tests focus on what's actually new here (shared segments, the fork/
-// merge points themselves, branch spacing).
+// (fully independent) paths already use. See test/multipath-engine.test.js
+// for the multi-path machinery's own dedicated coverage (now run against
+// a synthetic map rather than any one built-in map); these tests focus
+// on what's actually new here (shared segments, the fork/merge points
+// themselves, branch spacing) and the data Caves kept as an unused
+// fallback after its own open-field conversion.
 
 test('caves is registered in MAP_TYPES with the expected shape — 2 paths (a fork/merge, not 2 independent ones)', () => {
   const game = loadGameContext();
@@ -145,70 +147,29 @@ test('the two branches stay close enough together that a single tower placed bet
   assert.ok(distToB < shortestRange, `gap-to-branch-B distance ${distToB} should be well within ${shortestRange}`);
 });
 
-test('isPointOnPath blocks placement near EITHER branch, including inside the shared entry/exit segments', () => {
+// Open-field rollout (direct follow-up, relayed from the peer session):
+// Caves converted to the open-field system (see open-field-caves.test.js
+// for its own full coverage of that conversion), so its legacy
+// fork/merge path is no longer used for actual enemy movement —
+// isPointOnPath now always reads as clear here, same as every other
+// converted map. The spawnWave/pathIndex-driven movement tests this
+// section used to have (independent per-branch roll, walking a specific
+// branch, leaking at the shared goal) no longer apply to Caves
+// specifically; that exact same engine behavior (literally the same
+// fork/merge waypoint shape) now has its own permanent regression
+// coverage in test/multipath-engine.test.js, run against a synthetic map
+// rather than any one built-in map, so it never goes stale again as
+// maps convert.
+test('isPointOnPath always reads clear on Caves now that it\'s open-field, on every point along both of its old branches', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.caves);
-  const [pathA, pathB] = game.getMapPaths();
 
   // A point on Path A's own branch leg (not shared with Path B).
-  assert.equal(game.isPointOnPath(240, 300), true);
+  assert.equal(game.isPointOnPath(240, 300), false);
   // A point on Path B's own branch leg (not shared with Path A).
-  assert.equal(game.isPointOnPath(440, 300), true);
+  assert.equal(game.isPointOnPath(440, 300), false);
   // A point on the shared entry segment (identical in both arrays).
-  assert.equal(game.isPointOnPath(160, 220), true);
-  // Comfortably in the open gap between the two branches — not on either.
-  assert.equal(game.isPointOnPath(340, 300), false);
-  assert.equal(pathA[0].x, pathB[0].x); // sanity: confirms the shared-entry assumption above
-});
-
-test('spawning many enemies on Caves uses both branches, not just one (independent per-enemy roll, same mechanism as Savanah)', () => {
-  const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
-  game.spawnWave([
-    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 200, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
-  ]);
-  const pathIndexesUsed = new Set(game.getActiveEnemies().map((e) => e.pathIndex));
-  assert.deepEqual([...pathIndexesUsed].sort(), [0, 1]); // astronomically unlikely all 200 land on one branch
-});
-
-test('an enemy on Path B (Caves) walks its own branch, diverging from Path A right after the fork', () => {
-  const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
-  game.spawnWave([
-    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1, speedMultiplier: 1, isBoss: false, bounty: 2 },
-  ]);
-  const [enemy] = game.getActiveEnemies();
-  enemy.pathIndex = 1; // force it onto Path B regardless of its random roll
-  const pathB = game.getMapPaths()[1];
-  enemy.x = pathB[3].x; // start it right at the fork point (waypoint index 3)
-  enemy.y = pathB[3].y;
-  enemy.waypointIndex = 3;
-  enemy.spawned = true;
-
-  game.updateEnemies(0.1);
-
-  // Path B's branch leg out of the fork runs toward (440, 200) — down and
-  // to the right of the fork at (340, 120).
-  assert.ok(enemy.x > pathB[3].x);
-  assert.ok(enemy.y > pathB[3].y);
-});
-
-test('an enemy that reaches the end of its own Caves branch is detected as leaked, at the shared goal', () => {
-  const game = loadGameContext();
-  game.setActiveMap(game.MAP_TYPES.caves);
-  game.spawnWave([
-    { enemyKey: 'testBug', name: 'Test Bug', color: '#000', radius: 8, count: 1, health: 1000, speedMultiplier: 1, isBoss: false, bounty: 2 },
-  ]);
-  const [enemy] = game.getActiveEnemies();
-  enemy.pathIndex = 1;
-  const pathB = game.getMapPaths()[1];
-  enemy.x = pathB[0].x;
-  enemy.y = pathB[0].y;
-  enemy.spawned = true;
-
-  game.updateEnemies(1000); // one giant tick straight past the end of the branch
-
-  assert.equal(game.getActiveEnemies().length, 0); // removed, reached the goal
+  assert.equal(game.isPointOnPath(160, 220), false);
 });
 
 test('Caves\' decor (glowing crystals, mineral formations, the crystal-pool goal) is present with sane, on-canvas coordinates', () => {
