@@ -179,7 +179,127 @@ test('every Deep Sea enemy and boss draw function renders without throwing', () 
 test('renderMap/renderMapPreview never throw for Deep Sea\'s own terrain (submarine + ruins + sand dunes, no path stroke)', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.deepSea);
-  const ctx = new Proxy({}, { get: () => () => {} });
+  // A bare do-nothing-for-everything stub (every other open-field-*
+  // test's own convention) can't satisfy the bioluminescent-fish follow-
+  // up's new ctx.createRadialGradient().addColorStop() call (see
+  // createGradientSafeCtx's own comment further down this file) — this
+  // map's own decor now genuinely needs that one method stubbed
+  // properly, unlike before that follow-up landed.
+  const ctx = createGradientSafeCtx();
   assert.doesNotThrow(() => game.renderMap(ctx, { width: 960, height: 640 }, 1.4));
   assert.doesNotThrow(() => game.renderMapPreview(ctx, game.MAP_TYPES.deepSea, 0, 0, 400, 260, 1.4));
+});
+
+// Follow-up requests, relayed from the peer session, both "visual only":
+//   1. "make it darker overall (deeper, murkier navy/black tone than it
+//      currently is)."
+//   2. "add tiny bioluminescent fish swimming around in the background as
+//      ambient decoration — small glowing specks/fish silhouettes
+//      drifting around the map independent of actual enemies, purely
+//      atmospheric (not real spawnable creatures, no gameplay
+//      interaction)." Count/speed/glow color left to this assistant's own
+//      judgment per the request's own "use your own judgment."
+
+test('Deep Sea\'s background is darker than its original color, and stays a navy/black hue rather than drifting toward some other color entirely', () => {
+  const game = loadFullGameContext();
+  const background = game.TERRAIN_THEMES.deepSea.background;
+  const parseHex = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [r, g, b] = parseHex(background);
+  const [origR, origG, origB] = parseHex('#0d1b2e');
+
+  assert.ok(r + g + b < origR + origG + origB, 'expected the new background to be darker overall');
+  assert.ok(b >= r && b >= g, 'expected the hue to stay navy/blue-leaning, not shift to some other color');
+});
+
+test('DEEP_SEA_BIOLUM_FISH is a small, non-empty, deterministic set of ambient fish lanes — not real spawnable enemies', () => {
+  const game = loadGameContext();
+  const lanes = game.DEEP_SEA_BIOLUM_FISH;
+  assert.ok(Array.isArray(lanes) && lanes.length > 0 && lanes.length <= 15); // "a handful," not a crowd
+  lanes.forEach((fish) => {
+    assert.equal(typeof fish.y, 'number');
+    assert.equal(typeof fish.speed, 'number');
+    assert.equal(typeof fish.size, 'number');
+    assert.ok(fish.direction === 1 || fish.direction === -1);
+    assert.equal(typeof fish.phase, 'number');
+  });
+  // Pure function of index, built once at module load — rebuilding from
+  // the same seed produces the exact same lanes, same convention
+  // buildFallenLeafPositions (The Hollow Event) already established.
+  const rebuilt = game.DEEP_SEA_BIOLUM_FISH; // same module-level array, not a fresh build, but confirms it's stable across reads
+  assert.deepEqual(lanes, rebuilt);
+});
+
+// A plain bare-stub ctx (every property a no-op) is what every other
+// open-field-*.test.js file's own "renderMap never throws" test already
+// uses — but it can't satisfy a real ctx.createRadialGradient().
+// addColorStop() call (the stub's createRadialGradient() call returns
+// undefined, same latent gap flagged in open-field-hollow-event.test.js
+// for its own new gradient-using goal art), so this one additionally
+// stubs just that one method to return a minimal gradient-shaped object.
+function createGradientSafeCtx() {
+  return new Proxy(
+    {},
+    {
+      get(obj, prop) {
+        if (prop === 'createRadialGradient') return () => ({ addColorStop: () => {} });
+        return () => {};
+      },
+    }
+  );
+}
+
+test('renderDeepSeaBiolumFish never throws, and is purely cosmetic — doesn\'t touch activeEnemies, money, health, or anything else gameplay-relevant', () => {
+  const game = loadFullGameContext();
+  game.setActiveMap(game.MAP_TYPES.deepSea);
+  const ctx = createGradientSafeCtx();
+  const enemiesBefore = game.getActiveEnemies().length;
+  const moneyBefore = game.getMoney();
+
+  [0, 1.1, 5.7].forEach((time) => {
+    assert.doesNotThrow(() => game.renderDeepSeaBiolumFish(ctx, 960, time));
+  });
+
+  assert.equal(game.getActiveEnemies().length, enemiesBefore);
+  assert.equal(game.getMoney(), moneyBefore);
+});
+
+// A small translate-tracking ctx mock — real canvas drawing is relative
+// to the current ctx.translate() offset, which a bare do-nothing stub
+// can't account for, so this one actually accumulates it (save/restore
+// included) to recover each fish's real world-space position from its
+// own local-origin arc() call.
+function createTranslateTrackingCtx(onArcAtWorldOrigin) {
+  let offsetX = 0;
+  let offsetY = 0;
+  const stack = [];
+  return new Proxy(
+    {},
+    {
+      get(obj, prop) {
+        if (prop === 'translate') return (dx, dy) => { offsetX += dx; offsetY += dy; };
+        if (prop === 'save') return () => stack.push([offsetX, offsetY]);
+        if (prop === 'restore') return () => { [offsetX, offsetY] = stack.pop(); };
+        if (prop === 'scale') return () => {};
+        if (prop === 'arc') return () => onArcAtWorldOrigin(offsetX, offsetY);
+        if (prop === 'createRadialGradient') return () => ({ addColorStop: () => {} });
+        return () => {};
+      },
+    }
+  );
+}
+
+test('each bioluminescent fish keeps drifting rather than sitting still — its x position actually changes between two points in time', () => {
+  const game = loadGameContext();
+  const positionsAt = (time) => {
+    const positions = [];
+    const ctx = createTranslateTrackingCtx((x) => positions.push(x));
+    game.renderDeepSeaBiolumFish(ctx, 960, time);
+    return positions;
+  };
+
+  const first = positionsAt(0);
+  const later = positionsAt(10);
+  assert.equal(first.length, game.DEEP_SEA_BIOLUM_FISH.length); // one glow-circle arc() call per fish
+  const anyMoved = first.some((x, i) => Math.abs(x - later[i]) > 1);
+  assert.ok(anyMoved, 'expected at least one fish to have visibly drifted after 10 seconds');
 });

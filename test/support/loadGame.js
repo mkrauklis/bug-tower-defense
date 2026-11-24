@@ -103,6 +103,10 @@ function loadGameContext() {
       // full edge list createEnemyInstance (enemies.js) round-robins
       // across, instead of only the single-edge fallback above.
       getMapSpawnEdges: () => MAP_SPAWN_EDGES,
+      // Deep Sea darkening + ambient bioluminescent fish follow-up: lets a
+      // test read the actual theme background color and the fish lanes'
+      // own deterministic data/render function directly.
+      TERRAIN_THEMES, DEEP_SEA_BIOLUM_FISH, renderDeepSeaBiolumFish,
     };
     `,
     context
@@ -377,6 +381,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       // full edge list createEnemyInstance (enemies.js) round-robins
       // across, instead of only the single-edge fallback above.
       getMapSpawnEdges: () => MAP_SPAWN_EDGES,
+      // Deep Sea darkening + ambient bioluminescent fish follow-up: lets a
+      // test read the fish lanes' own deterministic data/render function
+      // directly (TERRAIN_THEMES, for the background color, is already
+      // exported above).
+      DEEP_SEA_BIOLUM_FISH, renderDeepSeaBiolumFish,
       // Frog art pass (direct request, with a reference photo): lets a
       // test call the actual draw code and exercise entity creation
       // directly, same "renderX never throws" pattern already used

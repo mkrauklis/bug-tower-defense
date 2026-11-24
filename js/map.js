@@ -3362,6 +3362,44 @@ const DEEP_SEA_DECOR = {
   dunes: DEEP_SEA_DUNES,
 };
 
+// Follow-up request, relayed from the peer session: "add tiny
+// bioluminescent fish swimming around in the background as ambient
+// decoration — small glowing specks/fish silhouettes drifting around the
+// map independent of actual enemies, purely atmospheric (not real
+// spawnable creatures, no gameplay interaction)." Same deterministic
+// sine-hash technique buildFallenLeafPositions (The Hollow Event) already
+// uses for a reproducible scatter built once at module load — each
+// fish's lane (vertical position, drift speed, size, direction, bob
+// phase) is a pure function of its own index, zero RNG entanglement with
+// ?seed=-driven gameplay rolls. Count/speed/glow color are this
+// assistant's own judgment call, per the request's own "use your own
+// judgment" — classic deep-sea blue-green bioluminescence, a handful of
+// small fish so the effect reads as ambient texture rather than a
+// cluttered foreground.
+const DEEP_SEA_BIOLUM_FISH_COUNT = 9;
+
+function buildBiolumFishLanes(count) {
+  const lanes = [];
+  for (let i = 0; i < count; i += 1) {
+    const hashY = Math.sin(i * 17.21) * 29381.43;
+    const hashSpeed = Math.sin(i * 53.77) * 7321.92;
+    const hashSize = Math.sin(i * 91.13) * 4123.71;
+    const fracY = hashY - Math.floor(hashY);
+    const fracSpeed = hashSpeed - Math.floor(hashSpeed);
+    const fracSize = hashSize - Math.floor(hashSize);
+    lanes.push({
+      y: 40 + fracY * (MAP_WORLD_HEIGHT - 80),
+      speed: 14 + fracSpeed * 20, // px/second — slow, ambient drift
+      size: 3 + fracSize * 2.5,
+      direction: i % 2 === 0 ? 1 : -1, // alternating left-to-right / right-to-left lanes
+      phase: i * 2.7,
+    });
+  }
+  return lanes;
+}
+
+const DEEP_SEA_BIOLUM_FISH = buildBiolumFishLanes(DEEP_SEA_BIOLUM_FISH_COUNT);
+
 // A low, pale sand-dune mound — the "sand" half of the request's own
 // "ruins, sand" terrain description. Purely decorative, same role
 // Marshland's puddles/Savanah's cacti play on their own open-field maps.
@@ -3506,10 +3544,71 @@ function drawSubmarine(ctx, x, y, size, time = 0) {
   ctx.restore();
 }
 
+// One small glowing fish silhouette — a simple oval body + forked tail,
+// facing its own direction of travel (`ctx.scale(direction, 1)`, same
+// flip-by-scaling technique the rest of this file's directional sprites
+// already use), with a soft radial glow behind it (the same "gradient
+// behind a silhouette" technique drawCaveDen's glowing burrow/
+// drawHollowTreeGoal's hollow opening already use) that gently pulses
+// rather than sitting at one fixed brightness, so the glow itself reads
+// as bioluminescent rather than a flat sprite.
+function drawBiolumFish(ctx, x, y, size, direction, time, phase) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(direction, 1);
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 2.4 + phase);
+
+  const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 4);
+  gradient.addColorStop(0, `rgba(90, 255, 220, ${0.3 + pulse * 0.25})`);
+  gradient.addColorStop(1, 'rgba(90, 255, 220, 0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(150, 255, 230, ${0.7 + pulse * 0.3})`;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, size * 1.6, size * 0.7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-size * 1.5, 0);
+  ctx.lineTo(-size * 2.3, -size * 0.6);
+  ctx.lineTo(-size * 2.3, size * 0.6);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// Each fish drifts in a straight line across its own lane, wrapping
+// around the world's edges rather than bouncing — same continuous-loop
+// "(time * speed + offset) % span" technique renderWhirlpoolCaustics
+// already uses for its own drifting light bands, chosen specifically so
+// this needs no per-frame state array of its own (purely a function of
+// `time`, same as every other animated decor in this file) and can't
+// ever visibly "pop" by snapping back to a start position mid-screen. A
+// gentle vertical bob (its own, slower sine) layered on top keeps the
+// drift from reading as a perfectly flat conveyor-belt line.
+function renderDeepSeaBiolumFish(ctx, width, time) {
+  const margin = 40;
+  const span = width + margin * 2;
+  DEEP_SEA_BIOLUM_FISH.forEach((fish) => {
+    const traveled = (time * fish.speed + fish.phase * 45) % span;
+    const x = fish.direction > 0 ? traveled - margin : width - (traveled - margin);
+    const y = fish.y + Math.sin(time * 0.8 + fish.phase) * 10;
+    drawBiolumFish(ctx, x, y, fish.size, fish.direction, time, fish.phase);
+  });
+}
+
 function renderDeepSeaDecor(ctx, decor, time = 0) {
   decor.dunes.forEach((dune) => drawSandDune(ctx, dune.x, dune.y, dune.r));
   decor.ruins.forEach((ruin) => drawRuinsObstacle(ctx, ruin));
   if (decor.submarine) drawSubmarine(ctx, decor.submarine.x, decor.submarine.y, decor.submarine.size, time);
+  // Ambient bioluminescent fish, drawn last so they drift visibly over
+  // the terrain/goal — purely atmospheric, no gameplay interaction (see
+  // DEEP_SEA_BIOLUM_FISH's own comment above).
+  renderDeepSeaBiolumFish(ctx, MAP_WORLD_WIDTH, time);
 }
 
 // ---------------------------------------------------------------------------
@@ -3580,7 +3679,14 @@ const TERRAIN_THEMES = {
   // the near-black-with-no-hue every other dark theme above uses — the
   // one theme where the request named a specific color family, so this
   // stays recognizably BLUE-dark rather than just generically dark.
-  deepSea: { background: '#0d1b2e', renderDecor: renderDeepSeaDecor },
+  // Darkened from the original '#0d1b2e' — direct follow-up request:
+  // "make it darker overall (deeper, murkier navy/black tone than it
+  // currently is)." '#060c14' roughly halves the channel values (13,27,46)
+  // -> (6,12,20), still a navy hue (blue channel stays the brightest) but
+  // noticeably murkier/closer to black, same spirit as Marshland's own
+  // -6% darkening but a much bigger cut since this request explicitly
+  // asked for "darker," not just "slightly."
+  deepSea: { background: '#060c14', renderDecor: renderDeepSeaDecor },
 };
 
 // Fills the world background for the active theme — a flat
