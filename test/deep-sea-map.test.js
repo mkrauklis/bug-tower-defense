@@ -14,12 +14,20 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 // clustering complaint is a lesson applied immediately here, not left for
 // a follow-up fix).
 //
-// 8 named enemies (6 regular + 2 bosses), exactly as specified: Snailfish,
-// Rattail Fish, Giant Cusk Eel (tier 1); Spiny Star, Giant Sea Spider,
-// Fragile Pink Sea Urchin (tier 2); Whalefish and California Sun Star
-// (the 2 bosses) — same 2-boss roster shape CAVES_ROSTER already uses
-// (order/orderTier2 of 3 each, orderTier3 empty, bossTypes only at tiers
-// 1/2), rather than the usual 3-boss shape.
+// Originally shipped with 8 named enemies (6 regular + 2 bosses), exactly
+// as specified: Snailfish, Rattail Fish, Giant Cusk Eel (tier 1); Spiny
+// Star, Giant Sea Spider, Fragile Pink Sea Urchin (tier 2); Whalefish and
+// California Sun Star (the 2 bosses) — same 2-boss roster shape
+// CAVES_ROSTER already uses (order/orderTier2 of 3 each, orderTier3
+// empty, bossTypes only at tiers 1/2), rather than the usual 3-boss shape.
+//
+// Follow-up request, relayed from the peer session, later added 4 more:
+// Glowing Plankton, Glowfish, Anglerfish (orderTier3) and Oarfish (the
+// new tier-3/final boss) — converting Deep Sea to the standard 3-boss
+// shape every other Hard-tier map already uses. See DEEP_SEA_ROSTER's
+// own top comment (enemies.js) for the full design/balance reasoning;
+// see test/deep-sea-new-enemies.test.js for that follow-up's own
+// dedicated coverage.
 
 test('MAP_TYPES.deepSea exists, is open-field, and is included in the map carousel order', () => {
   const game = loadGameContext();
@@ -117,27 +125,26 @@ test('an open-field enemy on Deep Sea spawns on its own spawn edge and routes to
   assert.equal(leaked.length, 1);
 });
 
-test('DEEP_SEA_ROSTER has exactly the 6 named regular species (3 tier1 + 3 tier2) and 2 named bosses', () => {
+test('DEEP_SEA_ROSTER has the original 6 named tier1/tier2 regular species and the original 2 bosses, unchanged by the later tier3/Oarfish follow-up', () => {
   const game = loadGameContext();
   const roster = game.MAP_ROSTERS.deepSea;
   assert.deepEqual(roster.order, ['snailFish', 'rattailFish', 'giantCuskEel']);
   assert.deepEqual(roster.orderTier2, ['spinyStar', 'giantSeaSpider', 'fragilePinkSeaUrchin']);
-  assert.deepEqual(roster.orderTier3, []);
   assert.equal(roster.enemyTypes.snailFish.name, 'Snailfish');
   assert.equal(roster.enemyTypes.rattailFish.name, 'Rattail Fish');
   assert.equal(roster.enemyTypes.giantCuskEel.name, 'Giant Cusk Eel');
   assert.equal(roster.enemyTypes.spinyStar.name, 'Spiny Star');
   assert.equal(roster.enemyTypes.giantSeaSpider.name, 'Giant Sea Spider');
   assert.equal(roster.enemyTypes.fragilePinkSeaUrchin.name, 'Fragile Pink Sea Urchin');
-  assert.deepEqual(Object.keys(roster.bossTypes).map(Number), [1, 2]);
   assert.equal(roster.bossTypes[1].name, 'Whalefish');
   assert.equal(roster.bossTypes[2].name, 'California Sun Star');
-  // The final boss is the tankiest thing in the roster, same "biggest/
-  // slowest/toughest" billing every other map's final boss gets.
   assert.ok(roster.bossTypes[2].health > roster.bossTypes[1].health);
+  // orderTier3/bossTypes[3] now exist too (see
+  // test/deep-sea-new-enemies.test.js for that follow-up's own coverage)
+  // — this test only pins down that the ORIGINAL 8 are untouched.
 });
 
-test('getBossForRound falls back to tier 2 (the highest designed tier) past round 50 on Deep Sea, same as Caves\' own 2-boss roster', () => {
+test('getBossForRound reaches round 75 on Deep Sea without crashing (the tier-3 boss itself is covered in test/deep-sea-new-enemies.test.js)', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.deepSea);
   const boss25 = game.getBossForRound(25);
@@ -145,8 +152,8 @@ test('getBossForRound falls back to tier 2 (the highest designed tier) past roun
   const boss75 = game.getBossForRound(75);
   assert.equal(boss25.tier, 1);
   assert.equal(boss50.tier, 2);
-  assert.equal(boss75.tier, 2); // falls back, doesn't crash or invent a tier 3
   assert.equal(boss75.terrain, 'deepSea');
+  assert.doesNotThrow(() => game.getBossForRound(100)); // past every designed tier — still falls back gracefully
 });
 
 test('Deep Sea is Hard-tier difficulty (1.8x), matching Whirlpool/Tundra/Volcanic', () => {
@@ -168,8 +175,16 @@ test('every Deep Sea enemy and boss draw function renders without throwing', () 
       `${key} threw`
     );
   });
-  [1, 2].forEach((tier) => {
+  [1, 2, 3].forEach((tier) => {
     const boss = roster.bossTypes[tier];
+    // Tier 3 (Oarfish) has no BOSS_DRAW_FUNCTIONS entry at all — it's a
+    // millipede-family member (MILLIPEDE_FAMILY_KEYS), rendered through
+    // renderMillipedeBody() instead whenever enemy.trail is set, same
+    // exception Marshland's Electric Eel boss already has. Calling
+    // drawEnemyShape() directly here (no `trail` field on this bare test
+    // object) exercises its drawFallbackCircle() fallback path instead —
+    // still a valid "doesn't throw" check, just not its real rendering
+    // path; see test/deep-sea-new-enemies.test.js for that.
     assert.doesNotThrow(() =>
       game.drawEnemyShape(ctx, { x: 100, y: 100, radius: boss.radius, color: boss.color, enemyKey: `deepSea-boss-tier-${tier}`, isBoss: true })
     );

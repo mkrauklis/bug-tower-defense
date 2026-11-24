@@ -643,11 +643,9 @@ const CAVES_ROSTER = {
 // Deep Sea (direct request: "ruins, sand... dark blue... the [goal
 // structure] will be a submarine" — see map.js's own
 // DEEP_SEA_SUBMARINE/DEEP_SEA_RUINS comment for the terrain/open-field
-// side of this). Same 2-boss shape as CAVES_ROSTER above (order/
-// orderTier2 of 3 each, orderTier3 empty, bossTypes only at tiers 1/2 —
-// getBossForRound() already falls back to the highest designed tier past
-// that, so nothing past round 50 needs a 3rd boss defined) rather than
-// the usual 3-boss shape, per the request's own explicit roster (6
+// side of this). Originally shipped as a 2-boss roster (order/orderTier2
+// of 3 each, orderTier3 empty, bossTypes only at tiers 1/2 — same shape
+// CAVES_ROSTER uses) per the original request's own explicit roster (6
 // regular species plus exactly 2 named bosses: Whalefish, California Sun
 // Star). Named species real-world-accurate where it matters for the
 // silhouette (a many-armed California Sun Star rather than a plain
@@ -657,6 +655,42 @@ const CAVES_ROSTER = {
 // relayed from the peer session) to match a specific reference photo the
 // user sent, replacing the original anglerfish-lure silhouette — see
 // drawWhalefish's own comment below for the full redesign.
+//
+// Follow-up request, relayed from the peer session: "Add 4 new enemies
+// to the Deep Sea roster: Glowfish, Glowing Plankton, Anglerfish,
+// Oarfish — boss." This fills orderTier3 (previously empty) with the 3
+// regulars and adds bossTypes[3] for Oarfish — converting Deep Sea from
+// its original 2-boss shape to the standard 3-boss shape every other
+// Hard-tier map (Whirlpool/Tundra/Volcanic) already uses, with zero
+// engine changes: getBossForRound()/getUnlockedEnemyTypes() both already
+// read orderTier3/bossTypes[3] generically (tier-3 enemies unlock at
+// rounds 51/56/61, Oarfish fires at round 75 = BOSS_INTERVAL*3), the
+// exact same mechanism Whirlpool's own tier-3 roster already exercises.
+//
+// Health/bounty continue this roster's OWN existing curve (not copied
+// from another map's absolute numbers): tier1 ran 12-58hp, tier2 ran
+// 65-130hp (roughly a ~2.2x jump tier1->tier2 at the top end) — tier3
+// here runs 150-290hp, a similar ~2.2x jump from tier2's own top end,
+// matching the scale (not the exact numbers) of Whirlpool's own
+// 212->460/Tundra's own 150->380 tier2->tier3 jumps. Oarfish at 2000hp
+// continues this roster's own "final boss gets a bigger jump than the
+// mid-boss" pattern (California Sun Star's 680 was already ~2x
+// Whalefish's 340) — a ~2.9x jump from California Sun Star, matching
+// Whirlpool's own Great White (~2.9x over Hammerhead)/Tundra's own Giant
+// Arctic Wolf Spider (~2.9x over its own tier-2 boss). Bounty follows the
+// roster-wide ~HP/2.4 (regulars) and ~HP/2 (bosses) conventions every
+// tier above already uses.
+//
+// Real-world-accurate where it matters for the silhouette: Glowing
+// Plankton and Glowfish both read as genuinely bioluminescent (a soft
+// pulsing internal glow, not just a bright flat color); Anglerfish gets
+// the classic stalked lure + oversized toothy jaw (the very design the
+// OLD Whalefish mistakenly borrowed before its own redraw — now built
+// properly for the creature it actually belongs to); Oarfish is built as
+// a genuinely long, ribbon-like ocean body via the same segmented-trail
+// millipede-body system Marshland's Electric Eel boss already uses (see
+// MILLIPEDE_FAMILY_KEYS/MILLIPEDE_BODY below), not a single static
+// sprite stretched out.
 const DEEP_SEA_ROSTER = {
   enemyTypes: {
     snailFish: { name: 'Snailfish', speedMultiplier: 0.55, health: 12, color: '#d9b8c0', radius: 7, bounty: 5 },
@@ -665,16 +699,30 @@ const DEEP_SEA_ROSTER = {
     spinyStar: { name: 'Spiny Star', speedMultiplier: 0.3, health: 95, color: '#c9502e', radius: 11, bounty: 30 },
     giantSeaSpider: { name: 'Giant Sea Spider', speedMultiplier: 0.42, health: 130, color: '#aab8ae', radius: 12, bounty: 42 },
     fragilePinkSeaUrchin: { name: 'Fragile Pink Sea Urchin', speedMultiplier: 0.22, health: 65, color: '#e88fb0', radius: 10, bounty: 32 },
+    // Real bioluminescent plankton (e.g. dinoflagellates) are
+    // microscopic drifters — the roster's own tiniest/weakest tier3
+    // entry, per the request's given order.
+    glowingPlankton: { name: 'Glowing Plankton', speedMultiplier: 0.5, health: 150, color: '#8fe8d4', radius: 6, bounty: 62 },
+    // A small bioluminescent reef fish (e.g. flashlight fish), glowing
+    // patches along its side. Middle of this tier.
+    glowfish: { name: 'Glowfish', speedMultiplier: 0.58, health: 210, color: '#5fc9e8', radius: 8, bounty: 88 },
+    // Real ceratioid anglerfish: a dark, bulbous body, oversized toothy
+    // jaw, and a stalked bioluminescent lure (esca) — a slow, patient
+    // ambush predator, the strongest of this tier per the request's
+    // given order.
+    anglerfish: { name: 'Anglerfish', speedMultiplier: 0.3, health: 290, color: '#241a28', radius: 11, bounty: 121 },
   },
   bossTypes: {
     1: { name: 'Whalefish', speedMultiplier: 0.38, health: 340, color: '#e0495f', radius: 22, bounty: 160 },
-    // The map's true final boss, same "biggest/slowest/tankiest" billing
-    // every other map's final boss gets.
     2: { name: 'California Sun Star', speedMultiplier: 0.28, health: 680, color: '#d9622b', radius: 26, bounty: 340 },
+    // The map's true final boss, same "biggest/slowest/tankiest" billing
+    // every other map's final boss gets — see MILLIPEDE_BODY's own entry
+    // below for its segmented ribbon-body length.
+    3: { name: 'Oarfish', speedMultiplier: 0.2, health: 2000, color: '#c7d6db', radius: 15, bounty: 1000 },
   },
   order: ['snailFish', 'rattailFish', 'giantCuskEel'],
   orderTier2: ['spinyStar', 'giantSeaSpider', 'fragilePinkSeaUrchin'],
-  orderTier3: [],
+  orderTier3: ['glowingPlankton', 'glowfish', 'anglerfish'],
 };
 
 // --- The Hollow Event (direct request, relayed from the peer session) -----
@@ -1020,7 +1068,13 @@ function getArmoredBeetleTier(key) {
 // swimmer is an even better fit for "curls around corners instead of
 // snapping to one rigid rotation" than the snakes it's borrowing the
 // mechanic from.
-const MILLIPEDE_FAMILY_KEYS = new Set(['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda', 'marsh-boss-tier-3']);
+// Oarfish (Deep Sea's new tier-3 final boss, relayed from the peer
+// session: "oarfish's long ribbon-like body as a boss") joins for the
+// exact same reason Electric Eel did — a genuinely long, flowing ribbon
+// body is a far better fit for this mechanism than a single static
+// sprite stretched out, and nothing about it cares that this is Deep
+// Sea's own boss rather than Marshland's.
+const MILLIPEDE_FAMILY_KEYS = new Set(['gardenerSnake', 'bananaSnake', 'armoredSnake', 'anaconda', 'marsh-boss-tier-3', 'deepSea-boss-tier-3']);
 
 const BOSS_INTERVAL = 25;
 
@@ -1458,9 +1512,10 @@ const BOSS_FACING_OFFSET = {
   'ocean-boss-tier-1': Math.PI, // Reef Shark
   'ocean-boss-tier-2': Math.PI, // Hammerhead Shark
   'ocean-boss-tier-3': Math.PI, // Great White
-  // marsh-boss-tier-3 (Electric Eel) has no entry here — the millipede-
-  // body family computes each segment's own heading straight from the
-  // trail, same as every snake (none of which have an entry here either).
+  // marsh-boss-tier-3 (Electric Eel) and deepSea-boss-tier-3 (Oarfish)
+  // both have no entry here — the millipede-body family computes each
+  // segment's own heading straight from the trail, same as every snake
+  // (none of which have an entry here either).
   'desert-boss-tier-3': Math.PI, // Emperor Scorpion (retrofit) — reuses drawEmperorScorpion, same pincers-forward convention
   'tundra-boss-tier-1': 0, // Arctic Fritillary — radially symmetric wing markings, no one-sided feature
   'tundra-boss-tier-2': 0, // Arctic Woolly Bear Moth — radially symmetric banding, no one-sided feature
@@ -4599,6 +4654,149 @@ function drawFragilePinkSeaUrchin(ctx, e) {
   ctx.fill();
 }
 
+// Glowing Plankton (direct follow-up request, relayed from the peer
+// session, part of the new 4-enemy batch) — real bioluminescent
+// plankton (e.g. dinoflagellates) are microscopic single-celled
+// drifters, so this is deliberately the simplest/tiniest silhouette in
+// the whole roster: a soft glow halo around a small translucent-reading
+// core, with a couple of fine trailing cilia wisps rather than any real
+// body plan.
+function drawGlowingPlankton(ctx, e) {
+  const gradient = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.radius * 2.6);
+  gradient.addColorStop(0, 'rgba(143, 232, 212, 0.8)');
+  gradient.addColorStop(1, 'rgba(143, 232, 212, 0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius * 2.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, e.radius * 0.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = Math.max(0.6, e.radius * 0.08);
+  [-0.6, 0, 0.6].forEach((offset) => {
+    ctx.beginPath();
+    ctx.moveTo(e.x + offset * e.radius, e.y + e.radius * 0.5);
+    ctx.quadraticCurveTo(
+      e.x + offset * e.radius * 1.3,
+      e.y + e.radius * 1.1,
+      e.x + offset * e.radius * 0.8,
+      e.y + e.radius * 1.6
+    );
+    ctx.stroke();
+  });
+}
+
+// Glowfish (same follow-up request/batch) — a small bioluminescent reef
+// fish (e.g. real flashlight fish, which carry a light organ beneath
+// each eye): an ordinary small-fish silhouette with a glowing patch
+// along its flank and a brighter glowing spot under the eye, rather than
+// a uniformly-lit body.
+function drawGlowfish(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius, e.y);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.5, e.y - e.radius * 0.7, e.x + e.radius * 0.5, e.y - e.radius * 0.35);
+  ctx.quadraticCurveTo(e.x + e.radius * 1.3, e.y, e.x + e.radius * 0.5, e.y + e.radius * 0.35);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.5, e.y + e.radius * 0.7, e.x - e.radius, e.y);
+  ctx.closePath();
+  ctx.fill();
+
+  // Tail fin.
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.85, e.y);
+  ctx.lineTo(e.x - e.radius * 1.4, e.y - e.radius * 0.4);
+  ctx.lineTo(e.x - e.radius * 1.4, e.y + e.radius * 0.4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Glowing flank patch, a soft radial glow rather than a flat shape.
+  const gradient = ctx.createRadialGradient(
+    e.x + e.radius * 0.1, e.y + e.radius * 0.1, 0,
+    e.x + e.radius * 0.1, e.y + e.radius * 0.1, e.radius * 0.9
+  );
+  gradient.addColorStop(0, 'rgba(180, 235, 250, 0.85)');
+  gradient.addColorStop(1, 'rgba(95, 201, 232, 0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(e.x + e.radius * 0.1, e.y + e.radius * 0.1, e.radius * 0.9, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.55, e.y - e.radius * 0.2, e.radius * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  // The light organ beneath the eye — a small, brighter glowing spot.
+  ctx.fillStyle = 'rgba(220, 245, 255, 0.95)';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.5, e.y + e.radius * 0.05, e.radius * 0.14, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Anglerfish (same follow-up request/batch) — a real ceratioid
+// anglerfish: a dark, bulbous body, an oversized toothy jaw, tiny eyes,
+// and a stalked bioluminescent lure (esca) arching up from its head.
+// This is the exact "anglerfish-lure" design the OLD Whalefish mistakenly
+// borrowed before its own redraw (see drawWhalefish's own comment) —
+// built properly here for the creature it actually belongs to, as its
+// own slow, patient ambush predator rather than a boss-tier blob.
+function drawAnglerfish(ctx, e) {
+  ctx.fillStyle = e.color;
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y, e.radius * 1.1, e.radius * 0.85, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Oversized toothy jaw.
+  ctx.fillStyle = shadeColor(e.color, -12);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.3, e.y + e.radius * 0.15);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.1, e.y + e.radius * 0.55, e.x - e.radius * 1.35, e.y + e.radius * 0.05);
+  ctx.quadraticCurveTo(e.x - e.radius * 0.9, e.y - e.radius * 0.1, e.x - e.radius * 0.3, e.y - e.radius * 0.05);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#e8e4d8';
+  [0.15, 0.4, 0.65, 0.9].forEach((t) => {
+    const jx = e.x - e.radius * (0.35 + t * 0.85);
+    ctx.beginPath();
+    ctx.moveTo(jx, e.y + e.radius * 0.18);
+    ctx.lineTo(jx - e.radius * 0.08, e.y + e.radius * 0.4);
+    ctx.lineTo(jx + e.radius * 0.08, e.y + e.radius * 0.4);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  // Tiny eye.
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.55, e.y - e.radius * 0.3, e.radius * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The stalked lure, tipped with a soft glow.
+  ctx.strokeStyle = '#2a2430';
+  ctx.lineWidth = Math.max(1, e.radius * 0.07);
+  ctx.beginPath();
+  ctx.moveTo(e.x - e.radius * 0.9, e.y - e.radius * 0.8);
+  ctx.quadraticCurveTo(e.x - e.radius * 1.1, e.y - e.radius * 1.3, e.x - e.radius * 0.85, e.y - e.radius * 1.5);
+  ctx.stroke();
+  const lureGradient = ctx.createRadialGradient(
+    e.x - e.radius * 0.85, e.y - e.radius * 1.5, 0,
+    e.x - e.radius * 0.85, e.y - e.radius * 1.5, e.radius * 0.6
+  );
+  lureGradient.addColorStop(0, 'rgba(140, 230, 255, 0.9)');
+  lureGradient.addColorStop(1, 'rgba(140, 230, 255, 0)');
+  ctx.fillStyle = lureGradient;
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.85, e.y - e.radius * 1.5, e.radius * 0.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(200, 245, 255, 0.95)';
+  ctx.beginPath();
+  ctx.arc(e.x - e.radius * 0.85, e.y - e.radius * 1.5, e.radius * 0.15, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 // Whalefish boss — fully redrawn from a real reference photo the user
 // sent (direct follow-up request, relayed from the peer session),
 // replacing the earlier anglerfish-lure silhouette entirely: bright
@@ -5236,6 +5434,9 @@ const ENEMY_DRAW_FUNCTIONS = {
   spinyStar: drawSpinyStar,
   giantSeaSpider: drawGiantSeaSpider,
   fragilePinkSeaUrchin: drawFragilePinkSeaUrchin,
+  glowingPlankton: drawGlowingPlankton,
+  glowfish: drawGlowfish,
+  anglerfish: drawAnglerfish,
 };
 
 const BOSS_DRAW_FUNCTIONS = {
@@ -5264,6 +5465,8 @@ const BOSS_DRAW_FUNCTIONS = {
   'caves-boss-tier-2': drawBlindCavefish,
   'deepSea-boss-tier-1': drawWhalefish,
   'deepSea-boss-tier-2': drawCaliforniaSunStar,
+  // deepSea-boss-tier-3 (Oarfish) has no entry here — same millipede-
+  // body-family exception as marsh-boss-tier-3's own comment above.
   'hollow-boss-tier-1': drawMournfulSphinx,
   'hollow-boss-tier-2': drawHollowCrow,
 };
@@ -5315,6 +5518,12 @@ const MILLIPEDE_BODY = {
   // every other snake already does, just over a longer arc length.
   anaconda: { segmentCount: 14, spacingFactor: 1.1, segmentDrawFn: drawAnacondaSegment },
   'marsh-boss-tier-3': { segmentCount: 7, spacingFactor: 1.0, segmentDrawFn: drawElectricEelSegment },
+  // Oarfish — a long ribbon body (16 segments at spacingFactor 1.0, a
+  // ~240px head-to-tail reach at its own radius-15, comparable to
+  // Anaconda's own ~293px) rather than Electric Eel's shorter 7-segment
+  // body, since "long, ribbon-like" is this creature's single defining
+  // trait.
+  'deepSea-boss-tier-3': { segmentCount: 16, spacingFactor: 1.0, segmentDrawFn: drawOarfishSegment },
 };
 const DEFAULT_MILLIPEDE_BODY = { segmentCount: 5, spacingFactor: 1.3 };
 
@@ -5555,6 +5764,56 @@ function drawElectricEelSegment(ctx, x, y, radius, color, heading, segmentIndex)
     ctx.beginPath();
     ctx.arc(radius * 0.7, -radius * 0.15, radius * 0.1, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// Oarfish's own segment (direct follow-up request, relayed from the peer
+// session, part of the new 4-enemy batch: "oarfish's long ribbon-like
+// body as a boss") — a genuinely long, flowing silvery ribbon via this
+// same segmented-trail system Electric Eel already uses, not a single
+// stretched sprite. Smooth, un-patterned silvery body (real oarfish have
+// smooth, scaleless, silvery skin) with a reddish dorsal fin crest
+// running the full length of the back — the single most recognizable
+// real-world oarfish feature — plus a simple face (eye, small mouth) on
+// the head segment only.
+function drawOarfishSegment(ctx, x, y, radius, color, heading, segmentIndex) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(heading);
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, radius * 1.1, radius * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The reddish dorsal fin crest, a thin ridge along the top of the back.
+  ctx.fillStyle = '#c0392b';
+  ctx.beginPath();
+  ctx.moveTo(-radius * 1.05, -radius * 0.3);
+  ctx.quadraticCurveTo(0, -radius * 0.85, radius * 1.05, -radius * 0.3);
+  ctx.quadraticCurveTo(0, -radius * 0.45, -radius * 1.05, -radius * 0.3);
+  ctx.closePath();
+  ctx.fill();
+
+  // A faint silvery sheen along the belly.
+  ctx.fillStyle = shadeColor(color, 20);
+  ctx.beginPath();
+  ctx.ellipse(0, radius * 0.2, radius * 0.9, radius * 0.16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (segmentIndex === 0) {
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.arc(radius * 0.75, -radius * 0.1, radius * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = shadeColor(color, -30);
+    ctx.lineWidth = Math.max(1, radius * 0.06);
+    ctx.beginPath();
+    ctx.moveTo(radius * 0.95, radius * 0.12);
+    ctx.lineTo(radius * 1.15, radius * 0.08);
+    ctx.stroke();
   }
 
   ctx.restore();
