@@ -28,13 +28,17 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 //     old spiral's own single off-canvas entry point at a similar
 //     position.
 
-test('MAP_TYPES.whirlpool is now open-field too (4th map converted) — Tundra/Volcanic/Caves remain untouched', () => {
+// Tundra has since converted too (see open-field-tundra.test.js) — only
+// Volcanic/Caves are still checked here as "not yet" so this test keeps
+// matching the codebase's current state instead of this map's own
+// conversion-day snapshot.
+test('MAP_TYPES.whirlpool is now open-field too (4th map converted) — Volcanic/Caves remain untouched', () => {
   const game = loadGameContext();
   assert.equal(game.MAP_TYPES.deepForest.openField, true);
   assert.equal(game.MAP_TYPES.marshland.openField, true);
   assert.equal(game.MAP_TYPES.savanah.openField, true);
   assert.equal(game.MAP_TYPES.whirlpool.openField, true);
-  ['tundra', 'volcanic', 'caves'].forEach((id) => {
+  ['volcanic', 'caves'].forEach((id) => {
     assert.equal(Boolean(game.MAP_TYPES[id].openField), false, `${id} should not be open-field yet`);
   });
 });
@@ -71,7 +75,7 @@ test('setActiveMap() updates the open-field bindings for Whirlpool the same way 
   assert.deepEqual(game.getMapObstacles(), game.MAP_TYPES.whirlpool.obstacles);
   assert.deepEqual(game.getMapSpawnEdge(), game.MAP_TYPES.whirlpool.spawnEdge);
 
-  game.setActiveMap(game.MAP_TYPES.tundra);
+  game.setActiveMap(game.MAP_TYPES.volcanic);
   assert.equal(game.getIsOpenField(), false);
 });
 

@@ -29,11 +29,15 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 //     own untouched DEEP_FOREST_WAYPOINTS — a harmless unused fallback,
 //     since nothing else in the project reuses it.
 
-test('MAP_TYPES.marshland is now open-field too (2nd map converted) — Savanah/Whirlpool/Tundra/Volcanic/Caves remain untouched', () => {
+// Savanah/Whirlpool/Tundra have since converted too (see their own
+// open-field-*.test.js files) — only Volcanic/Caves are still checked
+// here as "not yet" so this test keeps matching the codebase's current
+// state instead of this map's own conversion-day snapshot.
+test('MAP_TYPES.marshland is now open-field too (2nd map converted) — Volcanic/Caves remain untouched', () => {
   const game = loadGameContext();
   assert.equal(game.MAP_TYPES.deepForest.openField, true);
   assert.equal(game.MAP_TYPES.marshland.openField, true);
-  ['savanah', 'whirlpool', 'tundra', 'volcanic', 'caves'].forEach((id) => {
+  ['volcanic', 'caves'].forEach((id) => {
     assert.equal(Boolean(game.MAP_TYPES[id].openField), false, `${id} should not be open-field yet`);
   });
 });

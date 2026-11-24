@@ -1977,18 +1977,158 @@ const TUNDRA_BOULDERS = [
 const TUNDRA_CAVE_A = { x: 480, y: 320, size: 72 };
 const TUNDRA_CAVE_B = { x: 650, y: 480, size: 72 };
 
+// Open-field rollout, Tundra's turn (5th of the 6 remaining maps,
+// relayed from the peer session — see SAVANAH_WATCHTOWER's own comment
+// for the full design history this follows, including its own "collapse
+// 2 paths/goals to 1" precedent). TUNDRA_PATH_A/B and the two ice caves
+// above are kept exactly as they were, same unused-fallback convention
+// every prior conversion uses — the multi-path ENGINE itself now keeps
+// its own regression coverage on Caves instead (the last remaining
+// 2-path map — see test/multipath-engine.test.js's own updated header).
+//
+// Goal structure is an ice fortress (assistant's own judgment call, per
+// the original request's own "ice fortress/cabin" suggestion) — snow-
+// white crenellated walls, twin corner ice towers, hanging icicles, and
+// a glowing ice-crystal doorway, distinct from every other map's own
+// goal. Obstacles are giant snowballs (assistant's own judgment call,
+// per the follow-up request's own per-map terrain list), spread across
+// the whole field from the start (the Deep Forest log-clustering lesson
+// applied immediately, same as Deep Sea's own ruins).
+const TUNDRA_FORTRESS = { x: 800, y: 300, size: 54, radius: 66 };
+
+const TUNDRA_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
+
+const TUNDRA_SNOWBALLS = [
+  { x1: 100, y1: 210, x2: 160, y2: 250, radius: 20 },
+  { x1: 450, y1: 80, x2: 510, y2: 120, radius: 19 },
+  { x1: 170, y1: 380, x2: 230, y2: 420, radius: 20 },
+  { x1: 470, y1: 480, x2: 530, y2: 520, radius: 19 },
+  { x1: 650, y1: 110, x2: 710, y2: 150, radius: 18 },
+  { x1: 270, y1: 540, x2: 330, y2: 580, radius: 20 },
+];
+
 const TUNDRA_DECOR = {
   snowmen: TUNDRA_SNOWMEN,
   iceSpikes: TUNDRA_ICE_SPIKES,
   boulders: TUNDRA_BOULDERS,
   caves: [TUNDRA_CAVE_A, TUNDRA_CAVE_B],
+  fortress: TUNDRA_FORTRESS,
+  snowballs: TUNDRA_SNOWBALLS,
 };
 
-function renderTundraDecor(ctx, decor) {
+// Tundra's own open-field goal structure: crenellated ice-block walls,
+// twin corner towers, hanging icicles along the wall's underside, and a
+// glowing ice-crystal doorway as this structure's own "defended" focal
+// point, same role every other goal's lit window/doorway plays.
+function drawIceFortress(ctx, x, y, size, time = 0) {
+  ctx.save();
+
+  const wallW = size * 1.6;
+  const wallH = size * 0.9;
+  const wallX = x - wallW / 2;
+  const wallY = y - wallH;
+
+  ctx.fillStyle = '#b8d8e8';
+  ctx.fillRect(wallX, wallY, wallW, wallH);
+  ctx.fillStyle = shadeColor('#b8d8e8', -15);
+  ctx.fillRect(wallX, wallY + wallH * 0.6, wallW, wallH * 0.4);
+
+  const merlonCount = 5;
+  const merlonW = wallW / merlonCount / 2;
+  for (let i = 0; i < merlonCount; i += 1) {
+    const mx = wallX + (i + 0.5) * (wallW / merlonCount) - merlonW / 2;
+    ctx.fillStyle = '#b8d8e8';
+    ctx.fillRect(mx, wallY - size * 0.18, merlonW, size * 0.18);
+  }
+
+  ctx.fillStyle = 'rgba(200, 235, 250, 0.8)';
+  [-0.35, -0.1, 0.15, 0.4].forEach((t) => {
+    const ix = x + t * wallW;
+    ctx.beginPath();
+    ctx.moveTo(ix - size * 0.05, wallY + wallH * 0.6);
+    ctx.lineTo(ix + size * 0.05, wallY + wallH * 0.6);
+    ctx.lineTo(ix, wallY + wallH * 0.6 + size * 0.22);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  const doorW = size * 0.3;
+  const doorH = size * 0.5;
+  ctx.shadowColor = 'rgba(140, 220, 255, 0.85)';
+  ctx.shadowBlur = size * 0.3;
+  ctx.fillStyle = '#9fe8ff';
+  ctx.fillRect(x - doorW / 2, y - doorH, doorW, doorH);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#4a7a90';
+  ctx.lineWidth = Math.max(1.3, size * 0.03);
+  ctx.strokeRect(x - doorW / 2, y - doorH, doorW, doorH);
+
+  [-1, 1].forEach((side) => {
+    const towerX = x + side * wallW * 0.48;
+    ctx.fillStyle = '#c9e8f4';
+    ctx.beginPath();
+    ctx.moveTo(towerX - size * 0.12, wallY);
+    ctx.lineTo(towerX - size * 0.12, wallY - size * 0.5);
+    ctx.lineTo(towerX, wallY - size * 0.68);
+    ctx.lineTo(towerX + size * 0.12, wallY - size * 0.5);
+    ctx.lineTo(towerX + size * 0.12, wallY);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  applyBlobShading(ctx, x, wallY + wallH * 0.5, wallW * 0.45);
+  ctx.restore();
+}
+
+// A giant-snowball obstacle (assistant's own judgment call, per the
+// follow-up request's own per-map terrain list: "Tundra: giant
+// snowballs"). Same capsule shape {x1,y1,x2,y2,radius} every open-field
+// obstacle shares — drawn as a cluster of overlapping pale snow-white
+// spheres along the capsule's own footprint, distinct from Savanah's
+// tan sandstone and Deep Forest's brown logs.
+function drawSnowballObstacle(ctx, obstacle) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  const ballCount = Math.max(2, Math.round(length / (radius * 1.1)));
+  for (let i = 0; i < ballCount; i += 1) {
+    const t = ballCount === 1 ? 0.5 : i / (ballCount - 1);
+    const bx = -length / 2 + t * length;
+    const scale = 0.85 + 0.3 * Math.sin(i * 1.9);
+    ctx.fillStyle = '#e8f4fa';
+    ctx.beginPath();
+    ctx.arc(bx, 0, radius * 0.85 * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = shadeColor('#e8f4fa', -14);
+    ctx.beginPath();
+    ctx.arc(bx + radius * 0.2 * scale, radius * 0.25 * scale, radius * 0.4 * scale, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  applyBlobShading(ctx, 0, 0, radius);
+  ctx.restore();
+}
+
+function renderTundraDecor(ctx, decor, time = 0) {
   decor.boulders.forEach((rock) => drawSnowBoulder(ctx, rock.x, rock.y, rock.r));
   decor.iceSpikes.forEach((spike) => drawIceSpike(ctx, spike.x, spike.y, spike.size));
   decor.snowmen.forEach((snowman) => drawSnowman(ctx, snowman.x, snowman.y, snowman.size));
-  decor.caves.forEach((cave) => drawIceCave(ctx, cave.x, cave.y, cave.size));
+  // Once Tundra is open-field, the old per-path ice caves are no longer
+  // this map's actual goal — hidden once this exact decor object carries
+  // a fortress of its own, checked against `decor.fortress` itself (not
+  // the global MAP_OPEN_FIELD binding — see SAVANAH_WATCHTOWER's own
+  // comment for the real preview-carousel bug that same global-flag
+  // mistake caused there).
+  if (!decor.fortress) decor.caves.forEach((cave) => drawIceCave(ctx, cave.x, cave.y, cave.size));
+  if (decor.snowballs) decor.snowballs.forEach((ball) => drawSnowballObstacle(ctx, ball));
+  if (decor.fortress) drawIceFortress(ctx, decor.fortress.x, decor.fortress.y, decor.fortress.size, time);
 }
 
 // A worn, dark slate-blue pair — reads clearly as packed-ice tracks
@@ -3124,11 +3264,19 @@ const MAP_TYPES = {
     id: 'tundra',
     name: 'Tundra',
     builtin: true,
+    // Kept as an unused fallback, same convention as every prior
+    // conversion's own `paths` — see TUNDRA_FORTRESS/TUNDRA_SNOWBALLS/
+    // TUNDRA_SPAWN_EDGE's own comment above (5th map converted, after
+    // Deep Forest/Marshland/Savanah/Whirlpool).
     paths: [TUNDRA_PATH_A, TUNDRA_PATH_B],
     pathWidth: 56,
     pathColors: TUNDRA_PATH_COLORS,
     terrain: 'tundra',
     decor: TUNDRA_DECOR,
+    openField: true,
+    goal: TUNDRA_FORTRESS,
+    obstacles: TUNDRA_SNOWBALLS,
+    spawnEdge: TUNDRA_SPAWN_EDGE,
   },
   // Direct request: a Hard-tier map with an obsidian floor and a magma
   // path, plus magma pools that block tower placement — see

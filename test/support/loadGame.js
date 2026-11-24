@@ -63,6 +63,10 @@ function loadGameContext() {
       // pattern already used throughout this file) and check which
       // enemy keys are opted into the hop animation.
       renderEnemies, HOPPING_ENEMY_KEYS,
+      // Open-field rollout, Tundra's turn: lets a test exercise the real
+      // decor-render dispatch directly, same "renderX never throws"
+      // pattern already used throughout this file.
+      renderTundraDecor,
       MAP_TYPES, getActiveMap, setActiveMap,
       PRODIGY_BASE_TYPE, turnIntoPurpleZombie,
       // New export: lets a test actually call a specific enemy's own draw
