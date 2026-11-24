@@ -141,13 +141,20 @@ const DEEP_FOREST_CABIN = { x: 860, y: 320, size: 46, radius: 56 };
 
 const DEEP_FOREST_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
 
+// Spread out across the whole open field (direct follow-up: "too
+// clustered/close together... feel like scattered individual obstacles"
+// — the original layout had 2 pairs as close as ~110-140px center to
+// center; every pair here is now at least ~170px apart, one per rough
+// quadrant of the map instead of bunched through the middle), while
+// staying clear of the goal (DEEP_FOREST_CABIN) and the spawn edge the
+// same comfortable margin the original layout already had.
 const DEEP_FOREST_LOGS = [
-  { x1: 220, y1: 150, x2: 310, y2: 190, radius: 14 },
-  { x1: 380, y1: 420, x2: 480, y2: 380, radius: 16 },
-  { x1: 540, y1: 140, x2: 520, y2: 240, radius: 14 },
-  { x1: 280, y1: 460, x2: 380, y2: 500, radius: 15 },
-  { x1: 600, y1: 480, x2: 690, y2: 440, radius: 14 },
-  { x1: 460, y1: 250, x2: 420, y2: 330, radius: 13 },
+  { x1: 110, y1: 100, x2: 190, y2: 140, radius: 14 },
+  { x1: 440, y1: 70, x2: 520, y2: 110, radius: 14 },
+  { x1: 140, y1: 330, x2: 220, y2: 370, radius: 15 },
+  { x1: 380, y1: 230, x2: 460, y2: 270, radius: 14 },
+  { x1: 310, y1: 500, x2: 390, y2: 540, radius: 15 },
+  { x1: 610, y1: 520, x2: 690, y2: 560, radius: 14 },
 ];
 
 const DEEP_FOREST_DECOR = {
