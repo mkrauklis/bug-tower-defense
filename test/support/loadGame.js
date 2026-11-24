@@ -349,6 +349,11 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getMapGoal: () => MAP_GOAL,
       getMapObstacles: () => MAP_OBSTACLES,
       getMapSpawnEdge: () => MAP_SPAWN_EDGE,
+      // Frog art pass (direct request, with a reference photo): lets a
+      // test call the actual draw code and exercise entity creation
+      // directly, same "renderX never throws" pattern already used
+      // elsewhere in this file.
+      drawFrog, createWildlifeEntity, renderWildlife,
     };
     `,
     context

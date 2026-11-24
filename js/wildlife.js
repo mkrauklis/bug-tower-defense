@@ -167,6 +167,17 @@ function drawFirefly(ctx, entity, time) {
   ctx.restore();
 }
 
+// Direct request, with a reference photo: a real leopard frog viewed from
+// directly above — symmetric splayed legs (a short, 3-4-"fingered" front
+// pair near the head, a much longer, webbed/"toed" back pair), a body
+// that tapers toward the snout rather than a plain ellipse, a lighter
+// stripe down the spine, and dark leopard-spot blotches scattered across
+// the back/thighs. At this sprite's small on-canvas size, individual
+// spots/toes read as a handful of distinct marks rather than literal
+// photographic detail — same "good enough at this scale" approach every
+// other small decor/creature in this project already uses — but the
+// overall silhouette and markings are recognizably the reference's own
+// top-down leopard-frog shape, not the previous plain green blob.
 function drawFrog(ctx, entity) {
   // Lifted off the ground position at the midpoint of a hop (a simple sine
   // arc over hopProgress, scaled by this specific hop's own arc height) —
@@ -188,12 +199,92 @@ function drawFrog(ctx, entity) {
   ctx.translate(x, y);
   ctx.rotate(entity.facingAngle);
 
+  // Hind legs tucked at the sides while idle, splaying further mid-hop —
+  // drawn first (furthest back along the body, same back-to-front
+  // layering this file's other creatures already use) so the body/spots
+  // layer on top at the center. Each ends in a small fan of webbed toes,
+  // the reference photo's own most distinctive back-foot detail.
+  const splay = 0.3 + 0.3 * Math.sin(entity.hopProgress * Math.PI);
+  ctx.strokeStyle = '#4a8433';
+  ctx.lineCap = 'round';
+  [-1, 1].forEach((side) => {
+    const kneeX = -6.5;
+    const kneeY = side * (5 + splay * 2);
+    const footX = -10.5;
+    const footY = side * (7 + splay * 3);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-3.5, side * 3);
+    ctx.lineTo(kneeX, kneeY);
+    ctx.lineTo(footX, footY);
+    ctx.stroke();
+    ctx.lineWidth = 0.9;
+    [-0.5, -0.17, 0.17, 0.5].forEach((spread) => {
+      ctx.beginPath();
+      ctx.moveTo(footX, footY);
+      ctx.lineTo(footX - 2.2, footY + side * spread * 3.2);
+      ctx.stroke();
+    });
+  });
+
+  // Front legs — shorter, closer to the head, each ending in a small
+  // 3-toed hand rather than a webbed foot.
+  [-1, 1].forEach((side) => {
+    const footX = 5.5;
+    const footY = side * (5.5 + splay * 1.5);
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(2, side * 3.5);
+    ctx.lineTo(footX, footY);
+    ctx.stroke();
+    ctx.lineWidth = 0.8;
+    [-0.4, 0, 0.4].forEach((spread) => {
+      ctx.beginPath();
+      ctx.moveTo(footX, footY);
+      ctx.lineTo(footX + 1.6, footY + side * spread * 2.4);
+      ctx.stroke();
+    });
+  });
+
+  // Body — tapered toward the snout (+x, the facing direction) rather
+  // than a plain ellipse.
   ctx.fillStyle = '#5a9c3f';
   ctx.beginPath();
-  ctx.ellipse(0, 0, 6.5, 5, 0, 0, Math.PI * 2);
+  ctx.moveTo(6, 0);
+  ctx.quadraticCurveTo(4, -5, -2, -5.5);
+  ctx.quadraticCurveTo(-6, -4.5, -6.5, 0);
+  ctx.quadraticCurveTo(-6, 4.5, -2, 5.5);
+  ctx.quadraticCurveTo(4, 5, 6, 0);
+  ctx.closePath();
   ctx.fill();
 
-  // Two eye bumps on top, forward of center — the classic frog silhouette.
+  // Lighter dorsal stripe down the spine — the reference's own most
+  // visible marking.
+  ctx.fillStyle = '#86c168';
+  ctx.beginPath();
+  ctx.ellipse(-0.5, 0, 5, 1.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Leopard-spot blotches scattered across the back, dark and irregular
+  // like the reference's own black-rimmed markings (simplified to a flat
+  // darker fill at this size, rather than a separate rim + fill layer).
+  ctx.fillStyle = '#3d6b2a';
+  [
+    [2.5, -2.8, 1.3, 0.7],
+    [-1, -3.5, 1.1, 0.6],
+    [-4, -2, 1, 0.6],
+    [2, 3, 1.2, 0.7],
+    [-1.5, 3.8, 1, 0.6],
+    [-4.2, 2, 1, 0.55],
+  ].forEach(([sx, sy, rx, ry]) => {
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Two eye bumps on top, forward of center — the classic frog silhouette,
+  // unchanged from before since it already read correctly.
+  ctx.fillStyle = '#5a9c3f';
   ctx.beginPath();
   ctx.arc(2.5, -3.5, 2, 0, Math.PI * 2);
   ctx.fill();
@@ -208,18 +299,6 @@ function drawFrog(ctx, entity) {
   ctx.beginPath();
   ctx.arc(3.2, 3.5, 0.9, 0, Math.PI * 2);
   ctx.fill();
-
-  // Hind legs tucked at the sides — folded while idle, a little splayed
-  // mid-hop for a touch of motion.
-  const splay = 0.3 + 0.3 * Math.sin(entity.hopProgress * Math.PI);
-  ctx.strokeStyle = '#4a8433';
-  ctx.lineWidth = 1.5;
-  [-1, 1].forEach((side) => {
-    ctx.beginPath();
-    ctx.moveTo(-3, side * 3);
-    ctx.lineTo(-7, side * (4 + splay * 3));
-    ctx.stroke();
-  });
 
   ctx.restore();
 }
