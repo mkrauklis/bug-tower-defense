@@ -4144,6 +4144,14 @@ const MAP_TYPES = {
     // own comment above (and WHIRLPOOL_ISLANDS' own, for the full design).
     islands: DEEP_SEA_ISLANDS,
     requiresLandPlacement: true,
+    // Widening follow-up #2 — see isPointOnPlacementSurface()'s own
+    // comment for why dunes get their own array rather than joining
+    // islands/obstacles. Whirlpool has no equivalent decorative "ground
+    // mound" terrain (its own coral/rocks/shells/seaweed/bubbles are all
+    // small background scenery, not something the request described as
+    // standable ground), so it has no `placementSurfaces` field at all —
+    // MAP_PLACEMENT_SURFACES defaults to [] there, a no-op.
+    placementSurfaces: DEEP_SEA_DUNES.map((dune) => ({ x: dune.x, y: dune.y, radius: dune.r })),
   },
 };
 
@@ -4193,14 +4201,27 @@ let MAP_SPAWN_EDGES = activeMap.spawnEdges || (activeMap.spawnEdge ? [activeMap.
 // capsule shapes (same {x1,y1,x2,y2,radius} shape every obstacle already
 // uses, with x1===x2/y1===y2 so they read as plain circles — see
 // isPointOnIsland()/the WHIRLPOOL_ISLANDS/DEEP_SEA_ISLANDS own comments
-// below) a tower CAN be placed on, distinct from MAP_OBSTACLES (rafts/
-// ruins), which stay placement-blocking as before. MAP_REQUIRES_LAND_
-// PLACEMENT gates the new rule itself — only Whirlpool/Deep Sea set
-// `requiresLandPlacement: true`, so every other map's own tower
-// placement is completely unaffected (game.js only even checks
-// isPointOnIsland() when this is true).
+// below) a tower CAN be placed on. MAP_REQUIRES_LAND_PLACEMENT gates the
+// new rule itself — only Whirlpool/Deep Sea set `requiresLandPlacement:
+// true`, so every other map's own tower placement is completely
+// unaffected (game.js only even checks isPointOnIsland()/the related
+// checks below when this is true).
+//
+// Widened in a direct follow-up (relayed from the peer session): MAP_
+// OBSTACLES (rafts/ruins) now ALSO counts as valid placement ground on
+// these 2 maps (isOnValidTowerGround(), game.js) — they still block
+// MOVEMENT exactly as before (isPointInObstacle()/buildOpenFieldRoute()
+// are completely untouched by this), this only widens what a tower can
+// be placed ON. MAP_PLACEMENT_SURFACES covers the rest: terrain that was
+// never an obstacle at all (never blocked movement, never blocked
+// placement) but should now count as valid ground too — Deep Sea's sand
+// dunes are the only thing in that category so far (see
+// isPointOnPlacementSurface()'s own comment for why they get their own
+// array instead of MAP_ISLANDS/MAP_OBSTACLES); Whirlpool has none, so
+// this defaults to [] there, a no-op.
 let MAP_ISLANDS = activeMap.islands || [];
 let MAP_REQUIRES_LAND_PLACEMENT = Boolean(activeMap.requiresLandPlacement);
+let MAP_PLACEMENT_SURFACES = activeMap.placementSurfaces || [];
 
 function setActiveMap(map) {
   activeMap = map;
@@ -4214,6 +4235,7 @@ function setActiveMap(map) {
   MAP_SPAWN_EDGES = map.spawnEdges || (map.spawnEdge ? [map.spawnEdge] : []);
   MAP_ISLANDS = map.islands || [];
   MAP_REQUIRES_LAND_PLACEMENT = Boolean(map.requiresLandPlacement);
+  MAP_PLACEMENT_SURFACES = map.placementSurfaces || [];
 }
 
 function getActiveMap() {
@@ -4288,6 +4310,26 @@ function isPointInGoal(x, y, margin = 0) {
 // everywhere else.
 function isPointOnIsland(x, y) {
   return MAP_ISLANDS.some((island) => distanceToObstacle(x, y, island) <= 0);
+}
+
+// Island placement follow-up #2 (relayed from the peer session): "ANY
+// existing non-water terrain object should be valid placement ground...
+// plus anything else solid." Obstacles already get this widening for
+// free (isOnValidTowerGround(), game.js, checks isPointInObstacle()
+// directly) since they're genuinely solid — but Deep Sea's sand dunes
+// were never obstacles at all (purely decorative, {x,y,r} shapes that
+// never blocked movement OR placement), so they need their own array
+// rather than joining MAP_ISLANDS (which would wrongly make them start
+// blocking enemy movement too — explicitly NOT asked for: "keep the
+// existing impassable-to-movement behavior... exactly as it is") or
+// MAP_OBSTACLES (ditto). MAP_PLACEMENT_SURFACES is placement-ENABLING
+// only, with zero movement/routing side effects. Plain {x,y,radius}
+// circles (not the capsule shape) since there's no routing math to
+// share here — distanceToObstacle() would work but a straight
+// Math.hypot() comparison is simpler for a plain circle with nothing
+// else reusing its shape.
+function isPointOnPlacementSurface(x, y) {
+  return MAP_PLACEMENT_SURFACES.some((surface) => Math.hypot(surface.x - x, surface.y - y) <= surface.radius);
 }
 
 // Open-field rework: builds one enemy's own route from its spawn point to

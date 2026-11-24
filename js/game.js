@@ -1700,7 +1700,13 @@ function render() {
       canAfford(getShopItemCost(selectedShopItem)) &&
       !isPointOnPath(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
       !isPointInMagmaPool(mouseX, mouseY) &&
-      !isPointInObstacle(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
+      // Island placement follow-up #2 (relayed from the peer session):
+      // obstacles (rafts/ruins) now count as valid placement GROUND on
+      // Whirlpool/Deep Sea — isOnValidTowerGround() below already allows
+      // them there — so the usual "obstacles block placement" rule is
+      // skipped on exactly those 2 maps; everywhere else this is
+      // unchanged.
+      (!isPointInObstacle(mouseX, mouseY, PLACEMENT_PATH_MARGIN) || MAP_REQUIRES_LAND_PLACEMENT) &&
       !isPointInGoal(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
       !isTowerPlacementBlocked(mouseX, mouseY, selectedShopItem.typeKey) &&
       isOnValidTowerGround(mouseX, mouseY, selectedShopItem.typeKey);
@@ -2003,10 +2009,36 @@ function getShopPreviewTower(typeKey) {
 // TOWER_TYPES' own top comment), so right now every placement on those
 // 2 maps needs an island; that's the intentional consequence the
 // request itself flagged, not a bug.
+//
+// Widened in a direct follow-up (relayed from the peer session): "ANY
+// existing non-water terrain object should be valid placement ground
+// for a non-water-type tower, not just the 5 dedicated islands — this
+// includes the rafts/driftwood (Whirlpool) and ruins/sand/dune terrain
+// (Deep Sea), plus anything else solid on those maps... Keep the
+// existing impassable-to-movement behavior on rafts/driftwood/ruins
+// exactly as it is — this is purely widening what counts as valid
+// placement ground, not changing what blocks movement." isPointIn
+// Obstacle() (map.js) is the same geometric check that already blocks
+// ENEMY/TOWER movement around rafts/ruins — reading it here widens
+// PLACEMENT validity only, since movement-blocking is decided entirely
+// separately, in buildOpenFieldRoute()/updateTowerMovement (unaffected
+// by this function). isPointOnPlacementSurface() (map.js) covers the
+// rest of each map's own "solid enough to stand on, but never an actual
+// obstacle" terrain — Deep Sea's sand dunes are the only thing in that
+// category right now (Whirlpool has none, so it's a no-op there); see
+// that function's own comment for why dunes get their own array instead
+// of either MAP_ISLANDS or MAP_OBSTACLES. The goal structure itself
+// (ship/submarine) is deliberately NOT included in this widening — this
+// assistant's own call, per the request's own "use your own judgment":
+// it's already excluded from placement everywhere in the game via the
+// universal isPointInGoal() rule (handleCanvasTap()/render()), and
+// carving out a map-specific exception to let towers sit directly on
+// the goal felt like a bigger, less consistent change than what this
+// request was actually asking for.
 function isOnValidTowerGround(x, y, typeKey) {
   if (!MAP_REQUIRES_LAND_PLACEMENT) return true;
   if (TOWER_TYPES[typeKey].waterType) return true;
-  return isPointOnIsland(x, y);
+  return isPointOnIsland(x, y) || isPointInObstacle(x, y) || isPointOnPlacementSurface(x, y);
 }
 
 function isTowerPlacementBlocked(x, y, typeKey) {
@@ -3897,7 +3929,22 @@ function handleCanvasTap(x, y) {
     // the same reason magma pools/the old path itself were already
     // off-limits. Both are no-ops (MAP_OBSTACLES empty, MAP_GOAL null) on
     // every map before this conversion.
-    if (isPointInObstacle(x, y, PLACEMENT_PATH_MARGIN)) return;
+    //
+    // Island placement follow-up #2 (relayed from the peer session):
+    // "ANY existing non-water terrain object should be valid placement
+    // ground for a non-water-type tower, not just the 5 dedicated
+    // islands — this includes the rafts/driftwood (Whirlpool) and
+    // ruins/sand/dune terrain (Deep Sea)." Obstacles now count as valid
+    // ground on those 2 maps specifically (isOnValidTowerGround() below
+    // already allows them there), so this exclusion is skipped exactly
+    // there; every other map keeps obstacles fully off-limits, unchanged.
+    // The goal structure itself is deliberately left OUT of that
+    // widening (this assistant's own call, per the request's own "use
+    // your own judgment") — it's already covered by the universal,
+    // map-agnostic isPointInGoal() rule below, same as every other map,
+    // and carving out a map-specific exception there would be a bigger,
+    // less consistent change than this request asked for.
+    if (isPointInObstacle(x, y, PLACEMENT_PATH_MARGIN) && !MAP_REQUIRES_LAND_PLACEMENT) return;
     if (isPointInGoal(x, y, PLACEMENT_PATH_MARGIN)) return;
     if (isTowerPlacementBlocked(x, y, selectedShopItem.typeKey)) return;
     if (!isOnValidTowerGround(x, y, selectedShopItem.typeKey)) return;

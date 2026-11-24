@@ -18,10 +18,8 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 // Design calls made for this feature, documented here and in map.js/
 // game.js/towers.js's own comments:
 //   - Islands are a NEW, separate data structure (MAP_ISLANDS) from the
-//     existing raft/ruins MAP_OBSTACLES — obstacles stay fully
-//     impassable/unplaceable (isPointInObstacle/MAP_OBSTACLES
-//     untouched); islands are placement-ENABLING instead, checked via
-//     their own isPointOnIsland().
+//     existing raft/ruins MAP_OBSTACLES — islands are placement-ENABLING,
+//     checked via their own isPointOnIsland().
 //   - Enemy routing: "make sure enemy routing still treats water as
 //     walkable... islands/rocks don't block enemy movement unless you
 //     think they should read as obstacles too (your call)." This
@@ -32,6 +30,25 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 //     PLACEMENT-only rule, per the request's own literal wording; an
 //     already-placed tower can still wander anywhere in the open field
 //     chasing enemies, same as on every other map.
+//
+// Widened in a direct follow-up (relayed from the peer session): "ANY
+// existing non-water terrain object should be valid placement ground
+// for a non-water-type tower, not just the 5 dedicated islands — this
+// includes the rafts/driftwood (Whirlpool) and ruins/sand/dune terrain
+// (Deep Sea), plus anything else solid on those maps... Keep the
+// existing impassable-to-movement behavior on rafts/driftwood/ruins
+// exactly as it is — this is purely widening what counts as valid
+// placement ground, not changing what blocks movement." See
+// isOnValidTowerGround()'s own comment (game.js) and
+// isPointOnPlacementSurface()'s own comment (map.js, for Deep Sea's
+// dunes specifically) for the full design — obstacles now count as
+// valid placement ground too (isPointInObstacle/MAP_OBSTACLES is no
+// longer "fully unplaceable," the opposite of what this file's own
+// header originally said before that follow-up), but still block
+// movement exactly as before. The goal structure stays excluded from
+// placement everywhere, including these 2 maps — this assistant's own
+// call, via the pre-existing, map-agnostic isPointInGoal() rule, not a
+// new map-specific carve-out.
 
 test('Whirlpool and Deep Sea both have requiresLandPlacement + a varied-size island list; every other map has neither', () => {
   const game = loadGameContext();
@@ -254,4 +271,118 @@ test('renderMap/renderMapPreview never throw for Whirlpool/Deep Sea\'s own new i
     assert.doesNotThrow(() => game.renderMap(ctx, { width: 960, height: 640 }, 1.4));
     assert.doesNotThrow(() => game.renderMapPreview(ctx, game.MAP_TYPES[id], 0, 0, 400, 260, 1.4));
   });
+});
+
+// --- Widening follow-up #2: obstacles/dunes also count as valid ground ---
+
+test('isOnValidTowerGround now accepts a point on a raft (Whirlpool) or a ruin/dune (Deep Sea), not just an island', () => {
+  const game = loadFullGameContext();
+
+  game.setSelectedMap(game.MAP_TYPES.whirlpool);
+  game.startGame('sandbox');
+  const raft = game.MAP_TYPES.whirlpool.obstacles[0];
+  const raftMidX = (raft.x1 + raft.x2) / 2;
+  const raftMidY = (raft.y1 + raft.y2) / 2;
+  assert.equal(game.isOnValidTowerGround(raftMidX, raftMidY, 'sunflower'), true);
+
+  game.setSelectedMap(game.MAP_TYPES.deepSea);
+  game.startGame('sandbox');
+  const ruin = game.MAP_TYPES.deepSea.obstacles[0];
+  const ruinMidX = (ruin.x1 + ruin.x2) / 2;
+  const ruinMidY = (ruin.y1 + ruin.y2) / 2;
+  assert.equal(game.isOnValidTowerGround(ruinMidX, ruinMidY, 'sunflower'), true);
+
+  const dune = game.MAP_TYPES.deepSea.placementSurfaces[0];
+  assert.equal(game.isOnValidTowerGround(dune.x, dune.y, 'sunflower'), true);
+
+  // Open water, far from every island/obstacle/dune, is still refused.
+  assert.equal(game.isOnValidTowerGround(500, 500, 'sunflower'), false);
+});
+
+test('handleCanvasTap actually places a tower on a raft/ruin/dune now, but still refuses the goal structure and open water', () => {
+  const game = loadFullGameContext();
+
+  game.setSelectedMap(game.MAP_TYPES.whirlpool);
+  game.startGame('sandbox');
+  const raft = game.MAP_TYPES.whirlpool.obstacles[0];
+  const raftMidX = (raft.x1 + raft.x2) / 2;
+  const raftMidY = (raft.y1 + raft.y2) / 2;
+  game.setSelectedShopItem({ typeKey: 'sunflower' });
+  game.handleCanvasTap(raftMidX, raftMidY);
+  assert.equal(game.getTowers().length, 1);
+
+  const whirlpoolGoal = game.MAP_TYPES.whirlpool.goal;
+  game.setSelectedShopItem({ typeKey: 'sunflower' });
+  game.handleCanvasTap(whirlpoolGoal.x, whirlpoolGoal.y);
+  assert.equal(game.getTowers().length, 1); // still refused — unchanged
+
+  game.setSelectedMap(game.MAP_TYPES.deepSea);
+  game.startGame('sandbox');
+  const ruin = game.MAP_TYPES.deepSea.obstacles[0];
+  const ruinMidX = (ruin.x1 + ruin.x2) / 2;
+  const ruinMidY = (ruin.y1 + ruin.y2) / 2;
+  game.setSelectedShopItem({ typeKey: 'sunflower' });
+  game.handleCanvasTap(ruinMidX, ruinMidY);
+  assert.equal(game.getTowers().length, 1);
+
+  const dune = game.MAP_TYPES.deepSea.placementSurfaces[0];
+  game.setSelectedShopItem({ typeKey: 'sunflower' });
+  game.handleCanvasTap(dune.x, dune.y);
+  assert.equal(game.getTowers().length, 2);
+
+  game.setSelectedShopItem({ typeKey: 'sunflower' });
+  game.handleCanvasTap(500, 500); // open water
+  assert.equal(game.getTowers().length, 2); // still refused
+});
+
+test('obstacles still block enemy movement exactly as before — the placement widening has no effect on routing', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.deepSea);
+  const ruin = game.MAP_TYPES.deepSea.obstacles[0];
+  const ruinMidX = (ruin.x1 + ruin.x2) / 2;
+  const ruinMidY = (ruin.y1 + ruin.y2) / 2;
+  const goal = game.MAP_TYPES.deepSea.goal;
+
+  const route = game.buildOpenFieldRoute(
+    ruinMidX + 150,
+    ruinMidY,
+    goal.x,
+    goal.y,
+    game.getMapObstacles().concat(game.getMapIslands()),
+    10
+  );
+  assert.ok(route.length > 2, 'expected a real detour around the ruin');
+  for (let s = 0; s < route.length - 1; s += 1) {
+    const a = route[s];
+    const b = route[s + 1];
+    for (let t = 0; t <= 20; t += 1) {
+      const tt = t / 20;
+      const px = a.x + (b.x - a.x) * tt;
+      const py = a.y + (b.y - a.y) * tt;
+      const clearance = game.distanceToObstacle(px, py, ruin) - 10;
+      assert.ok(clearance > -1, `route clipped the ruin by ${-clearance}px`);
+    }
+  }
+});
+
+test('MAP_PLACEMENT_SURFACES is Deep Sea\'s dunes only — Whirlpool and every other map default to []', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.deepSea);
+  assert.ok(game.MAP_TYPES.deepSea.placementSurfaces.length > 0);
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+  assert.equal(game.MAP_TYPES.whirlpool.placementSurfaces, undefined);
+  game.setActiveMap(game.MAP_TYPES.deepForest);
+  assert.equal(game.MAP_TYPES.deepForest.placementSurfaces, undefined);
+});
+
+test('the widened placement rule changes nothing on a map without requiresLandPlacement — obstacles still block placement there', () => {
+  const game = loadFullGameContext();
+  game.setSelectedMap(game.MAP_TYPES.deepForest);
+  game.startGame('sandbox');
+  const log = game.MAP_TYPES.deepForest.obstacles[0];
+  const logMidX = (log.x1 + log.x2) / 2;
+  const logMidY = (log.y1 + log.y2) / 2;
+  game.setSelectedShopItem({ typeKey: 'sunflower' });
+  game.handleCanvasTap(logMidX, logMidY);
+  assert.equal(game.getTowers().length, 0); // still refused, unaffected
 });
