@@ -410,6 +410,60 @@ function drawOrganicBlobPath(ctx, cx, cy, r, seed, flatten = 1) {
   ctx.closePath();
 }
 
+const ROCK_ISLAND_COLOR = '#9a8f72';
+
+// Shared by every open-water map with the new placement-island mechanic
+// (Whirlpool/Deep Sea, follow-up request relayed from the peer session):
+// "a natural rounded boulder/rock-island, tan/gray mottled stone
+// texture, similar to a weathered landscaping boulder (smooth-ish
+// rounded form, textured rough surface, not jagged/sharp)." Built from
+// drawOrganicBlobPath() above (the same "smooth irregular blob, not a
+// perfect circle" technique this file's own pond shorelines already
+// use) rather than a plain circle, so it reads as a natural rock mass
+// rather than a geometric marker despite being, mechanically, just a
+// circle for placement/collision purposes (see isPointOnIsland()/
+// createEnemyInstance's own routing comment). A soft shadow ring at the
+// base suggests it's sitting IN water (distinct from drawSandDune/
+// drawCaveRockObstacle, neither of which needs that — nothing else in
+// this file sits in open water like this does), and a scatter of
+// darker/lighter mottled patches (deterministic from `seed`, same
+// "sine-hash, not real randomness" convention this file's other
+// scattered decor already uses) gives it a rough, weathered surface
+// instead of a flat fill.
+function drawRockIsland(ctx, x, y, radius, seed = 0) {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + radius * 0.1, radius * 1.1, radius * 0.42, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = ROCK_ISLAND_COLOR;
+  drawOrganicBlobPath(ctx, x, y, radius, seed, 0.88);
+  ctx.fill();
+
+  const patchCount = Math.max(5, Math.round(radius / 9));
+  for (let i = 0; i < patchCount; i += 1) {
+    const hashA = Math.sin((seed + 1) * (i + 1) * 12.9898) * 43758.5453;
+    const hashB = Math.sin((seed + 1) * (i + 1) * 78.233) * 12543.123;
+    const fracA = hashA - Math.floor(hashA);
+    const fracB = hashB - Math.floor(hashB);
+    const px = x + (fracA - 0.5) * radius * 1.3;
+    const py = y + (fracB - 0.5) * radius * 1.1;
+    if (Math.hypot(px - x, py - y) > radius * 0.78) continue; // keep patches on the rock's own body
+    const patchSize = radius * (0.1 + fracA * 0.08);
+    ctx.fillStyle = i % 2 === 0 ? shadeColor(ROCK_ISLAND_COLOR, -20) : shadeColor(ROCK_ISLAND_COLOR, 16);
+    ctx.beginPath();
+    ctx.ellipse(px, py, patchSize, patchSize * 0.7, fracB * Math.PI * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  applyBlobShading(ctx, x, y, radius);
+
+  ctx.strokeStyle = shadeColor(ROCK_ISLAND_COLOR, -34);
+  ctx.lineWidth = Math.max(1.5, radius * 0.05);
+  drawOrganicBlobPath(ctx, x, y, radius, seed, 0.88);
+  ctx.stroke();
+}
+
 // Cooler/bluer than the warm-olive ground fill so standing water reads
 // clearly against it instead of blending in (an earlier version used
 // near-ground olive tones here and the puddles nearly disappeared at a
@@ -1668,6 +1722,29 @@ const WHIRLPOOL_RAFTS = [
   { x1: 244, y1: 388, x2: 284, y2: 408, radius: 19 },
 ];
 
+// Follow-up request, relayed from the peer session: "scatter several
+// island/rock formations across each map that towers CAN be placed
+// on... distinct from the existing raft/driftwood obstacles (which stay
+// impassable/unplaceable as before)." Stored in the same degenerate-
+// capsule shape (x1===x2, y1===y2) as every obstacle, so distanceToObstacle/
+// isPointOnIsland/routing all reuse the exact same math with zero new
+// geometry — see isPointOnIsland()'s own comment for why. "Vary sizes —
+// some big enough to host a couple of towers, some small single-tower
+// rocks": radius 60 (WHIRLPOOL_ISLANDS[1]) comfortably fits 2 of this
+// game's base tower sizes (18-26px) at least getTowerVisualSize-apart
+// from each other (isTowerPlacementBlocked's own spacing rule, game.js);
+// the rest (34-50) fit one tower with room to spare. Spread across open
+// water clear of the goal/every raft/every spawn edge (at least ~100px
+// of clearance from each), same "spread from day one" lesson every
+// other obstacle layout in this file already applies.
+const WHIRLPOOL_ISLANDS = [
+  { x1: 120, y1: 120, x2: 120, y2: 120, radius: 34, seed: 0.4 },
+  { x1: 820, y1: 120, x2: 820, y2: 120, radius: 60, seed: 1.7 },
+  { x1: 130, y1: 560, x2: 130, y2: 560, radius: 50, seed: 2.6 },
+  { x1: 830, y1: 560, x2: 830, y2: 560, radius: 40, seed: 3.3 },
+  { x1: 420, y1: 80, x2: 420, y2: 80, radius: 36, seed: 4.1 },
+];
+
 const WHIRLPOOL_DECOR = {
   coral: WHIRLPOOL_CORAL,
   seaweed: WHIRLPOOL_SEAWEED,
@@ -1680,6 +1757,7 @@ const WHIRLPOOL_DECOR = {
   messageBottle: WHIRLPOOL_MESSAGE_BOTTLE,
   snorkelAnt: WHIRLPOOL_SNORKEL_ANT,
   rafts: WHIRLPOOL_RAFTS,
+  islands: WHIRLPOOL_ISLANDS,
 };
 
 // The ship being dragged down into the vortex itself — this map's own
@@ -1770,6 +1848,9 @@ function drawRaftObstacle(ctx, obstacle) {
 }
 
 function renderOceanDecor(ctx, decor, time = 0) {
+  // Placement islands, drawn first — the "ground" layer everything else
+  // floats or sits on top of.
+  if (decor.islands) decor.islands.forEach((island) => drawRockIsland(ctx, island.x1, island.y1, island.radius, island.seed));
   decor.rocks.forEach((rock) => drawOceanRock(ctx, rock.x, rock.y, rock.r));
   decor.seaweed.forEach((kelp) => drawSeaweed(ctx, kelp.x, kelp.y, kelp.size, time));
   decor.coral.forEach((piece) => drawCoral(ctx, piece.x, piece.y, piece.size));
@@ -3356,10 +3437,26 @@ const DEEP_SEA_DUNES = [
   { x: 700, y: 350, r: 28 }, { x: 150, y: 580, r: 26 }, { x: 420, y: 440, r: 28 },
 ];
 
+// Island/rock placement surfaces follow-up, relayed from the peer
+// session — see WHIRLPOOL_ISLANDS' own comment (map.js) for the full
+// design (same degenerate-capsule shape, same drawRockIsland() art, same
+// "vary sizes — some big enough to host a couple of towers, some small
+// single-tower rocks" sizing: DEEP_SEA_ISLANDS[1]'s radius 58 fits 2,
+// the rest fit one). Spread clear of the submarine goal, every ruins
+// obstacle, and the (single, left-side) spawn edge.
+const DEEP_SEA_ISLANDS = [
+  { x1: 700, y1: 80, x2: 700, y2: 80, radius: 42, seed: 0.9 },
+  { x1: 620, y1: 180, x2: 620, y2: 180, radius: 58, seed: 1.5 },
+  { x1: 480, y1: 460, x2: 480, y2: 460, radius: 46, seed: 2.2 },
+  { x1: 760, y1: 560, x2: 760, y2: 560, radius: 36, seed: 3.0 },
+  { x1: 160, y1: 280, x2: 160, y2: 280, radius: 34, seed: 3.8 },
+];
+
 const DEEP_SEA_DECOR = {
   submarine: DEEP_SEA_SUBMARINE,
   ruins: DEEP_SEA_RUINS,
   dunes: DEEP_SEA_DUNES,
+  islands: DEEP_SEA_ISLANDS,
 };
 
 // Follow-up request, relayed from the peer session: "add tiny
@@ -3602,6 +3699,9 @@ function renderDeepSeaBiolumFish(ctx, width, time) {
 }
 
 function renderDeepSeaDecor(ctx, decor, time = 0) {
+  // Placement islands, drawn first — the "ground" layer everything else
+  // sits on top of.
+  if (decor.islands) decor.islands.forEach((island) => drawRockIsland(ctx, island.x1, island.y1, island.radius, island.seed));
   decor.dunes.forEach((dune) => drawSandDune(ctx, dune.x, dune.y, dune.r));
   decor.ruins.forEach((ruin) => drawRuinsObstacle(ctx, ruin));
   if (decor.submarine) drawSubmarine(ctx, decor.submarine.x, decor.submarine.y, decor.submarine.size, time);
@@ -3914,6 +4014,13 @@ const MAP_TYPES = {
     // a 1-element array wrapping their single `spawnEdge` and behaves
     // exactly as before.
     spawnEdges: WHIRLPOOL_SPAWN_EDGES,
+    // Island/rock placement surfaces follow-up — see WHIRLPOOL_ISLANDS'
+    // own comment above. Every other map leaves `islands`/
+    // `requiresLandPlacement` unset, so MAP_ISLANDS stays [] and
+    // MAP_REQUIRES_LAND_PLACEMENT stays false for them — tower placement
+    // everywhere else is completely unaffected.
+    islands: WHIRLPOOL_ISLANDS,
+    requiresLandPlacement: true,
   },
   // Direct request: a snowy Hard-tier map (MAP_DIFFICULTY_MULTIPLIER,
   // enemies.js) — two fully separate paths, each with its own ice cave
@@ -4033,6 +4140,10 @@ const MAP_TYPES = {
     goal: DEEP_SEA_SUBMARINE,
     obstacles: DEEP_SEA_RUINS,
     spawnEdge: DEEP_SEA_SPAWN_EDGE,
+    // Island/rock placement surfaces follow-up — see DEEP_SEA_ISLANDS'
+    // own comment above (and WHIRLPOOL_ISLANDS' own, for the full design).
+    islands: DEEP_SEA_ISLANDS,
+    requiresLandPlacement: true,
   },
 };
 
@@ -4077,6 +4188,19 @@ let MAP_SPAWN_EDGE = activeMap.spawnEdge || null;
 // map that doesn't set `spawnEdges` itself, so nothing about any other
 // map's spawn behavior changes.
 let MAP_SPAWN_EDGES = activeMap.spawnEdges || (activeMap.spawnEdge ? [activeMap.spawnEdge] : []);
+// Island/rock placement surfaces follow-up (Whirlpool/Deep Sea, relayed
+// from the peer session): MAP_ISLANDS is the list of placement-ENABLING
+// capsule shapes (same {x1,y1,x2,y2,radius} shape every obstacle already
+// uses, with x1===x2/y1===y2 so they read as plain circles — see
+// isPointOnIsland()/the WHIRLPOOL_ISLANDS/DEEP_SEA_ISLANDS own comments
+// below) a tower CAN be placed on, distinct from MAP_OBSTACLES (rafts/
+// ruins), which stay placement-blocking as before. MAP_REQUIRES_LAND_
+// PLACEMENT gates the new rule itself — only Whirlpool/Deep Sea set
+// `requiresLandPlacement: true`, so every other map's own tower
+// placement is completely unaffected (game.js only even checks
+// isPointOnIsland() when this is true).
+let MAP_ISLANDS = activeMap.islands || [];
+let MAP_REQUIRES_LAND_PLACEMENT = Boolean(activeMap.requiresLandPlacement);
 
 function setActiveMap(map) {
   activeMap = map;
@@ -4088,6 +4212,8 @@ function setActiveMap(map) {
   MAP_OBSTACLES = map.obstacles || [];
   MAP_SPAWN_EDGE = map.spawnEdge || null;
   MAP_SPAWN_EDGES = map.spawnEdges || (map.spawnEdge ? [map.spawnEdge] : []);
+  MAP_ISLANDS = map.islands || [];
+  MAP_REQUIRES_LAND_PLACEMENT = Boolean(map.requiresLandPlacement);
 }
 
 function getActiveMap() {
@@ -4146,6 +4272,22 @@ function isPointInObstacle(x, y, margin = 0) {
 // hasn't been converted to the open-field system yet).
 function isPointInGoal(x, y, margin = 0) {
   return Boolean(MAP_GOAL) && Math.hypot(MAP_GOAL.x - x, MAP_GOAL.y - y) < MAP_GOAL.radius + margin;
+}
+
+// Island/rock placement surfaces follow-up: whether a point sits on (or
+// inside) any of the active map's own placement-enabling islands —
+// game.js checks this (only when MAP_REQUIRES_LAND_PLACEMENT is true)
+// before allowing a non-water-type tower to be placed. Reuses
+// distanceToObstacle() directly (an island is the exact same
+// {x1,y1,x2,y2,radius} capsule shape every obstacle already is, just a
+// degenerate point-radius "capsule" rather than an elongated one) rather
+// than a second distance formula — `<= 0` is "inside," the same meaning
+// distanceToObstacle's own negative-when-inside convention already gives
+// isPointInObstacle() above. Defaults to false on every map (MAP_ISLANDS
+// is [] everywhere except Whirlpool/Deep Sea), so this is a safe no-op
+// everywhere else.
+function isPointOnIsland(x, y) {
+  return MAP_ISLANDS.some((island) => distanceToObstacle(x, y, island) <= 0);
 }
 
 // Open-field rework: builds one enemy's own route from its spawn point to

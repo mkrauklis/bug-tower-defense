@@ -1523,7 +1523,16 @@ function createEnemyInstance(entry, spawnDelay) {
     const t = random();
     const spawnX = edge.x1 + (edge.x2 - edge.x1) * t;
     const spawnY = edge.y1 + (edge.y2 - edge.y1) * t;
-    path = buildOpenFieldRoute(spawnX, spawnY, MAP_GOAL.x, MAP_GOAL.y, MAP_OBSTACLES, entry.radius);
+    // Island/rock placement surfaces follow-up (Whirlpool/Deep Sea,
+    // relayed from the peer session): "make sure enemy routing still
+    // treats water as walkable... islands/rocks don't block enemy
+    // movement unless you think they should read as obstacles too (your
+    // call)." This assistant's own call: yes — a solid rock mass sitting
+    // in open water should block movement the same as any other
+    // obstacle, so routes thread around islands here too. MAP_ISLANDS is
+    // [] on every map except those two, so this is a no-op concat
+    // (identical route) everywhere else.
+    path = buildOpenFieldRoute(spawnX, spawnY, MAP_GOAL.x, MAP_GOAL.y, MAP_OBSTACLES.concat(MAP_ISLANDS), entry.radius);
   } else {
     // Multi-path maps (Savanah): each enemy independently rolls which of
     // the map's paths it spawns onto, via the game's own seeded random()

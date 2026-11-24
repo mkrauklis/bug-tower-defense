@@ -9,6 +9,19 @@
 //
 // A path that hasn't been designed yet is represented as `null` in
 // `upgradePaths` rather than omitted, so every tower visibly has 3 slots.
+//
+// Island/rock placement surfaces follow-up (Whirlpool/Deep Sea, relayed
+// from the peer session): an optional top-level `waterType: true` flag,
+// checked by game.js's own placement validity logic (isPointOnIsland()/
+// MAP_REQUIRES_LAND_PLACEMENT, map.js) wherever a map requires tower
+// placement to be on solid land/rock rather than directly in open
+// water. None of the 5 towers below set it — every placement on those 2
+// maps currently needs an island/rock, an intentional consequence of the
+// request as given ("adds real placement-real-estate strategy to these
+// maps") until a water-type tower exists. Left unset (not `false`) on
+// every tower here, same "a flag is only written where it's true"
+// convention `isBoss`/other boolean flags already follow in this
+// codebase, rather than boilerplating `waterType: false` onto all 5.
 
 const TOWER_TYPES = {
   sunflower: {

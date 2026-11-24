@@ -103,6 +103,12 @@ function loadGameContext() {
       // full edge list createEnemyInstance (enemies.js) round-robins
       // across, instead of only the single-edge fallback above.
       getMapSpawnEdges: () => MAP_SPAWN_EDGES,
+      // Island/rock placement surfaces follow-up (Whirlpool/Deep Sea):
+      // lets a test read the active map's own island list/flag and the
+      // actual containment check directly.
+      isPointOnIsland,
+      getMapIslands: () => MAP_ISLANDS,
+      getMapRequiresLandPlacement: () => MAP_REQUIRES_LAND_PLACEMENT,
       // Deep Sea darkening + ambient bioluminescent fish follow-up: lets a
       // test read the actual theme background color and the fish lanes'
       // own deterministic data/render function directly.
@@ -248,6 +254,9 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       renderUpgradePaths,
       getPathTheme, getTierThemeColor, mixHexColors, PATH_THEMES,
       getCanvasPoint, isWorldPoint, activateRegion, getTooltipLines, handleCanvasTap,
+      // Island/rock placement surfaces follow-up: lets a test call the
+      // actual combined placement-ground check directly.
+      isOnValidTowerGround,
       isPointInMagmaPool,
       renderUI, getSellRefund,
       // Top-level \`let\`/\`const\` bindings from a vm-run classic script
@@ -382,6 +391,12 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       // full edge list createEnemyInstance (enemies.js) round-robins
       // across, instead of only the single-edge fallback above.
       getMapSpawnEdges: () => MAP_SPAWN_EDGES,
+      // Island/rock placement surfaces follow-up (Whirlpool/Deep Sea):
+      // lets a test read the active map's own island list/flag and the
+      // actual containment check directly.
+      isPointOnIsland,
+      getMapIslands: () => MAP_ISLANDS,
+      getMapRequiresLandPlacement: () => MAP_REQUIRES_LAND_PLACEMENT,
       // Deep Sea darkening + ambient bioluminescent fish follow-up: lets a
       // test read the fish lanes' own deterministic data/render function
       // directly (TERRAIN_THEMES, for the background color, is already

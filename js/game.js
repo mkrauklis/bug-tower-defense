@@ -1702,7 +1702,8 @@ function render() {
       !isPointInMagmaPool(mouseX, mouseY) &&
       !isPointInObstacle(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
       !isPointInGoal(mouseX, mouseY, PLACEMENT_PATH_MARGIN) &&
-      !isTowerPlacementBlocked(mouseX, mouseY, selectedShopItem.typeKey);
+      !isTowerPlacementBlocked(mouseX, mouseY, selectedShopItem.typeKey) &&
+      isOnValidTowerGround(mouseX, mouseY, selectedShopItem.typeKey);
     ctx.fillStyle = buildable ? 'rgba(76, 175, 80, 0.4)' : 'rgba(229, 57, 53, 0.4)';
     ctx.beginPath();
     ctx.arc(mouseX, mouseY, 20, 0, Math.PI * 2);
@@ -1991,6 +1992,23 @@ function getShopPreviewTower(typeKey) {
 // preview (render()) and the actual placement (handleCanvasTap()) so
 // both agree on exactly the same spots, in both normal play and Sandbox
 // — handleCanvasTap is the one placement code path for both.
+// Island/rock placement surfaces follow-up, relayed from the peer
+// session: "towers can no longer be placed directly in open water —
+// placement is only valid on these islands/rocks (or any other existing
+// solid ground on those maps), UNLESS a tower is tagged as a 'water
+// type' (which can be placed directly in water)." A no-op (always true)
+// on every map except Whirlpool/Deep Sea — MAP_REQUIRES_LAND_PLACEMENT
+// (map.js) is only ever true there — so no other map's placement rules
+// change at all. None of the 5 current towers set `waterType` (see
+// TOWER_TYPES' own top comment), so right now every placement on those
+// 2 maps needs an island; that's the intentional consequence the
+// request itself flagged, not a bug.
+function isOnValidTowerGround(x, y, typeKey) {
+  if (!MAP_REQUIRES_LAND_PLACEMENT) return true;
+  if (TOWER_TYPES[typeKey].waterType) return true;
+  return isPointOnIsland(x, y);
+}
+
 function isTowerPlacementBlocked(x, y, typeKey) {
   const newSize = getTowerVisualSize(getShopPreviewTower(typeKey));
   // Checked against each existing tower's own HOME spot (follow-up
@@ -3882,6 +3900,7 @@ function handleCanvasTap(x, y) {
     if (isPointInObstacle(x, y, PLACEMENT_PATH_MARGIN)) return;
     if (isPointInGoal(x, y, PLACEMENT_PATH_MARGIN)) return;
     if (isTowerPlacementBlocked(x, y, selectedShopItem.typeKey)) return;
+    if (!isOnValidTowerGround(x, y, selectedShopItem.typeKey)) return;
 
     const tower = createTower(selectedShopItem.typeKey);
     tower.x = x;
