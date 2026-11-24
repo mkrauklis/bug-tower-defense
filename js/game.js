@@ -253,6 +253,7 @@ const SHOP_ITEMS = [
   { typeKey: 'mushroom', name: 'Mushroom', cost: 150 }, // was 75
   { typeKey: 'corpseFlower', name: 'Corpse Flower', cost: 750 }, // direct request — a brand-new 5th base tower
   { typeKey: 'arcticWillow', name: 'Arctic Willow', cost: 80 }, // direct request — a brand-new 6th base tower
+  { typeKey: 'bananaPlant', name: 'Banana Plant', cost: 70 }, // direct request — a brand-new 7th base tower, the first waterType: true tower
 ];
 
 function getShopItemCost(item) {
@@ -561,6 +562,18 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
     // one chosen path), but both fields are forwarded unconditionally
     // the same way — whichever one the tower doesn't have is just null.
     freeze: tower.freeze || null,
+    // Banana Plant's Tangle Path (direct follow-up request, relayed from
+    // the peer session): the exact same generalization pipeline as slow/
+    // freeze above — tower.root is null for every tower without it, so
+    // this is a no-op for everyone else. See resolveProjectile()'s own
+    // `if (projectile.root)` branch and applyRoot() in enemies.js.
+    root: tower.root || null,
+    // Banana Plant's Bloom Path (same follow-up, "a genuinely new
+    // mechanic"): same pipeline again — tower.pollenCloud is null for
+    // every tower without it. See resolveProjectile()'s own
+    // `if (projectile.pollenCloud)` branch and applyPollenCloud() in
+    // enemies.js.
+    pollenCloud: tower.pollenCloud || null,
     color: tower.attackType === 'fireball' ? '#ff5722' : tower.stats.color,
     shape:
       tower.attackType === 'fireball'
@@ -569,7 +582,9 @@ function spawnProjectile(tower, target, damageMultiplier = 1) {
           ? 'spore'
           : tower.type === 'arcticWillow'
             ? 'icicle'
-            : 'petal',
+            : tower.type === 'bananaPlant'
+              ? 'stem'
+              : 'petal',
     // Mushroom's Zombify: carried per-projectile (not read from the tower
     // at resolve time) since the tower that fired it is the one and only
     // source of truth for "was this a spore, and at what chance/damage" —
@@ -702,6 +717,10 @@ function resolveProjectile(projectile) {
   // enemies.js) — the same per-tower damage-dealt counter every other
   // damage source in the game already feeds.
   if (projectile.freeze) applyFreeze(target, projectile.freeze, projectile.sourceTower);
+  // Banana Plant's Tangle Path/Bloom Path: same pipeline as burn/slow/
+  // freeze just above.
+  if (projectile.root) applyRoot(target, projectile.root, projectile.sourceTower);
+  if (projectile.pollenCloud) applyPollenCloud(target, projectile.pollenCloud, projectile.sourceTower);
   // Arctic Willow's Avalanche Path: the splash itself, plus (tier 3+) a
   // chance for the eruption to burst a second time at the same point —
   // "a chain feel, without literally chaining to new targets... just a
@@ -800,6 +819,25 @@ function renderProjectiles(ctx) {
       ctx.arc(projectile.x, projectile.y, 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
+      return;
+    }
+
+    if (projectile.shape === 'stem') {
+      // Banana Plant's own base attack: a thin, slightly curved whip-like
+      // stem tip, point-first along its direction of travel — longer and
+      // thinner than the thorn/icicle shapes above, matching its own
+      // "long thin stems lash out whip-like" flavor.
+      ctx.save();
+      ctx.translate(projectile.x, projectile.y);
+      ctx.rotate(Math.atan2(projectile.vy, projectile.vx));
+      ctx.strokeStyle = projectile.color;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-9, 1.5);
+      ctx.quadraticCurveTo(-2, -1.5, 9, 0);
+      ctx.stroke();
+      ctx.restore();
       return;
     }
 
@@ -913,6 +951,8 @@ function updateTowerAttack(tower, x, y, deltaSeconds) {
   if (tower.acid) updateTowerAcidShot(tower, x, y, deltaSeconds);
   if (tower.gasRing) updateTowerGasRing(tower, x, y, deltaSeconds);
   if (tower.bloom) updateTowerBloom(tower, x, y, deltaSeconds);
+  if (tower.rootPulse) updateTowerRootPulse(tower, x, y, deltaSeconds);
+  if (tower.stems) updateTowerStems(tower, x, y, deltaSeconds);
   tower.shockwavePulse = Math.max(0, tower.shockwavePulse - deltaSeconds);
 }
 
@@ -1049,6 +1089,50 @@ function updateTowerInfectStun(tower, x, y, deltaSeconds) {
       enemy.infectedRemaining = Math.max(enemy.infectedRemaining, tower.infectStun.duration);
     }
   });
+}
+
+// Banana Plant's Tangle Path, tier 3 (direct follow-up request, relayed
+// from the peer session: "a periodic small root-zone pulses out
+// passively" — independent of the tower's own attack cycle, same
+// periodic-own-timer shape updateTowerInfectStun above already uses).
+// Every tower.rootPulse.interval seconds, rolls applyRoot() (enemies.js —
+// the exact same chance/duration/dot mechanics the base attack's own
+// on-hit root already uses) against every enemy currently within
+// tower.rootPulse.radius, regardless of whether this tower is even
+// attacking anything right now.
+function updateTowerRootPulse(tower, x, y, deltaSeconds) {
+  tower.rootPulseCooldown -= deltaSeconds;
+  if (tower.rootPulseCooldown > 0) return;
+  tower.rootPulseCooldown = tower.rootPulse.interval;
+
+  getEnemiesInRadius(x, y, tower.rootPulse.radius).forEach((enemy) => {
+    applyRoot(enemy, { chance: tower.rootPulse.chance, duration: tower.rootPulse.duration }, tower);
+  });
+}
+
+// Banana Plant's Bulb Path, tiers 3-4 (direct follow-up request, relayed
+// from the peer session: "escalating into additional attacking stems
+// that let it hit multiple targets per cycle, culminating in a wide
+// simultaneous lash hitting everything in range"). A second, independent
+// attack on its own cooldown — same "closest N targets in range" shape
+// updateTowerBloom above already uses — hitting up to
+// tower.stems.targetCount enemies per cycle with an instant direct hit
+// (same "no travel time" convention updateTowerGrab's own grab damage
+// already uses, rather than spawning N more projectiles). Tier 4 reuses
+// this exact same field/function, just with targetCount set high enough
+// that `.slice()` never actually truncates the list — "everything in
+// range," achieved by widening the existing mechanism rather than
+// building a structurally different attack, the same approach Arctic
+// Willow's own Avalanche Path tier 4 took with its splash radius.
+function updateTowerStems(tower, x, y, deltaSeconds) {
+  tower.stemsCooldown -= deltaSeconds;
+  if (tower.stemsCooldown > 0) return;
+  tower.stemsCooldown = tower.stems.interval;
+
+  const targets = getEnemiesInRadius(x, y, tower.stats.range).sort(
+    (a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)
+  );
+  targets.slice(0, tower.stems.targetCount).forEach((target) => damageEnemy(target, tower.stems.damage, tower));
 }
 
 // Every other tower whose center sits within `mushroom`'s own range stat —

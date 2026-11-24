@@ -1701,6 +1701,13 @@ function createEnemyInstance(entry, spawnDelay) {
     // single hit below this amount is fully negated. 0 for every type
     // without one, so the gate never applies by accident.
     armorThreshold: entry.armorThreshold || 0,
+    // Banana Plant's Bloom Path (direct follow-up request, relayed from
+    // the peer session): a temporary REDUCTION of the armorThreshold gate
+    // above — {multiplier, remaining}, null until something actually
+    // applies it (applyArmorShred() below). Same plain-overwrite-and-
+    // tick-down shape applySlow()'s own enemy.slow already uses, not a
+    // new mechanic pattern.
+    armorShred: null,
   };
 }
 
@@ -1892,7 +1899,15 @@ function getEnemiesInRadius(x, y, radius) {
 // itself going off — so those calls simply omit the argument rather than
 // forcing a dubious attribution.
 function damageEnemy(enemy, amount, sourceTower) {
-  if (enemy.armorThreshold > 0 && amount < enemy.armorThreshold) return;
+  // Banana Plant's Bloom Path (direct follow-up request, relayed from
+  // the peer session): "reduces a hit enemy's armor threshold... for a
+  // few seconds — a real counter to armored enemies." Read generically,
+  // right here at the one choke point every damage source already goes
+  // through (same spirit as the sourceTower/totalDamageDealt comment
+  // above) — enemy.armorShred is null for every enemy nothing has ever
+  // applied it to, so this is a no-op everywhere else in the game.
+  const effectiveArmorThreshold = enemy.armorShred ? enemy.armorThreshold * enemy.armorShred.multiplier : enemy.armorThreshold;
+  if (effectiveArmorThreshold > 0 && amount < effectiveArmorThreshold) return;
   const wasAlive = enemy.health > 0;
   enemy.health -= amount;
   if (sourceTower) {
@@ -1951,6 +1966,69 @@ function applyFreeze(enemy, freeze, sourceTower) {
   enemy.frozenTick = { damage: freeze.tickDamage, timer: 0.25, sourceTower };
 }
 
+// Banana Plant's Tangle Path (direct follow-up request, relayed from the
+// peer session): "roots occasionally snake out and root an enemy in
+// place briefly on hit." Deliberately reuses Rose's own
+// immobilizedRemaining field directly, rather than a new xRemaining
+// field — this IS the same "rooted in place" effect Rose's own
+// Tanglement already causes (conceptually identical regardless of which
+// tower causes it), unlike Arctic Willow's frozenRemaining, which needed
+// its own field specifically because conflating it with another effect
+// would misrepresent a genuinely distinct visual. `root` is
+// {chance, duration, catchSecond?, catchRadius?, dot?}: catchSecond
+// (tier 2+) independently re-rolls the same chance against one more
+// random nearby enemy ("roots can catch a 2nd enemy"); dot (tier 4)
+// layers Burn on top via the existing generic applyBurn() — composing 2
+// already-generic effects, not a new damage-over-time mechanic of its
+// own.
+function applyRoot(enemy, root, sourceTower) {
+  if (random() >= root.chance) return;
+  enemy.immobilizedRemaining = Math.max(enemy.immobilizedRemaining, root.duration);
+  if (root.dot) applyBurn(enemy, { damagePerSecond: root.dot, duration: root.duration }, sourceTower);
+
+  if (root.catchSecond) {
+    const others = getEnemiesInRadius(enemy.x, enemy.y, root.catchRadius || 80).filter((other) => other !== enemy);
+    if (others.length > 0 && random() < root.chance) {
+      const second = others[Math.floor(random() * others.length)];
+      second.immobilizedRemaining = Math.max(second.immobilizedRemaining, root.duration);
+      if (root.dot) applyBurn(second, { damagePerSecond: root.dot, duration: root.duration }, sourceTower);
+    }
+  }
+}
+
+// Banana Plant's Bloom Path (direct follow-up request, relayed from the
+// peer session — "a genuinely new mechanic, not reused from another
+// tower"): a temporary reduction of enemy.armorThreshold, read generically
+// by damageEnemy() above. Same plain-overwrite convention applySlow's own
+// enemy.slow already uses — a fresh application replaces whatever shred
+// was already active rather than stacking.
+function applyArmorShred(enemy, shred) {
+  enemy.armorShred = { multiplier: shred.multiplier, remaining: shred.duration };
+}
+
+// The pollen/spore cloud itself: always shreds armor on the directly-hit
+// enemy, and (tier 3+, once `radius` is set) also hits every other enemy
+// within that radius — the same getEnemiesInRadius()-based "AoE centered
+// on the hit point" shape updateTowerGrab/updateTowerInfectStun already
+// use elsewhere in this file, just triggered per-hit instead of on an
+// independent timer. `dot`/`slow` (tiers 2/4) layer Burn/Slow on top via
+// the existing generic applyBurn()/applySlow() — composing already-
+// generic effects again, not inventing parallel ones.
+function applyPollenCloud(target, cloud, sourceTower) {
+  applyArmorShred(target, { multiplier: cloud.multiplier, duration: cloud.duration });
+  if (cloud.dot) applyBurn(target, { damagePerSecond: cloud.dot, duration: cloud.duration }, sourceTower);
+  if (cloud.slow) applySlow(target, { multiplier: cloud.slow, duration: cloud.duration });
+
+  if (cloud.radius) {
+    getEnemiesInRadius(target.x, target.y, cloud.radius).forEach((other) => {
+      if (other === target) return;
+      applyArmorShred(other, { multiplier: cloud.multiplier, duration: cloud.duration });
+      if (cloud.dot) applyBurn(other, { damagePerSecond: cloud.dot, duration: cloud.duration }, sourceTower);
+      if (cloud.slow) applySlow(other, { multiplier: cloud.slow, duration: cloud.duration });
+    });
+  }
+}
+
 function updateEnemies(deltaSeconds) {
   enemyMovementClock += deltaSeconds;
   activeEnemies.forEach((enemy) => {
@@ -2004,6 +2082,14 @@ function updateEnemies(deltaSeconds) {
     if (enemy.slow) {
       enemy.slow.remaining -= deltaSeconds;
       if (enemy.slow.remaining <= 0) enemy.slow = null;
+    }
+
+    // Banana Plant's Bloom Path: ticks down the same way slow does just
+    // above — the actual armor-threshold reduction itself is read
+    // generically in damageEnemy(), not here; this is only the timer.
+    if (enemy.armorShred) {
+      enemy.armorShred.remaining -= deltaSeconds;
+      if (enemy.armorShred.remaining <= 0) enemy.armorShred = null;
     }
 
     // Arctic Willow's Brittle Path: ticks (and deals its own damage)

@@ -94,8 +94,9 @@ test('starting money and base tower costs all reflect the balance pass', () => {
   assert.equal(game.STARTING_MONEY, 75);
   assert.deepEqual(
     Object.fromEntries(game.SHOP_ITEMS.map((item) => [item.typeKey, item.cost])),
-    // arcticWillow added in its own later follow-up (direct request) — its
-    // own $80 is a brand-new baseline, not itself part of this balance pass.
-    { sunflower: 50, rose: 90, mushroom: 150, corpseFlower: 750, arcticWillow: 80 }
+    // arcticWillow/bananaPlant were both added in their own later follow-
+    // ups (direct requests) — their own $80/$70 are brand-new baselines,
+    // not themselves part of this balance pass.
+    { sunflower: 50, rose: 90, mushroom: 150, corpseFlower: 750, arcticWillow: 80, bananaPlant: 70 }
   );
 });

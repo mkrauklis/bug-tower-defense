@@ -1125,6 +1125,185 @@ const TOWER_TYPES = {
       },
     ],
   },
+  // Banana Plant (direct follow-up request, relayed from the peer
+  // session): a 7th base tower, modeled on a real aquarium plant
+  // (Nymphoides aquatica) — a cluster of smooth bulbous green "banana"
+  // floats at the base, thin curling stems rising to small round lily-
+  // pad leaves, fine white roots trailing beneath. Attack flavor: its
+  // long thin stems lash out whip-like at nearby enemies — a genuinely
+  // short-to-medium range (140, below every other base tower's 170
+  // baseline) rather than the usual range, read literally from "whip-
+  // like... within short-to-medium range."
+  //
+  // The first waterType: true tower (TOWER_TYPES' own top comment) — a
+  // real aquatic plant is the natural fit for the water-placement
+  // mechanic (Whirlpool/Deep Sea). This assistant's own call, per the
+  // request's own "water-exclusive... your call": water-type PLUS normal
+  // land placement everywhere else, not water-exclusive — restricting a
+  // whole base tower to 2 of the game's 8 maps felt like a worse value
+  // proposition than "also usable in water," and isOnValidTowerGround()
+  // (game.js) already reads waterType as "placeable anywhere, land or
+  // water" for exactly this reason, not "water only."
+  //
+  // 3 mutually exclusive paths, per the request's own given breakdown:
+  //   - Tangle Path (CC, from its real wispy root system): a root/snare
+  //     chance on hit, reusing Rose's own immobilizedRemaining mechanism
+  //     directly (applyRoot(), enemies.js) rather than a parallel one —
+  //     conceptually the same "rooted in place" effect regardless of
+  //     which tower causes it. Escalates: higher chance -> also attempts
+  //     to catch a 2nd nearby enemy -> a periodic small root-zone pulses
+  //     out on its own timer, independent of the attack cycle
+  //     (updateTowerRootPulse(), game.js, modeled on Mushroom's own
+  //     updateTowerInfectStun()) -> rooted enemies also burn for the
+  //     snare's own duration (applyBurn() layered on top, not a new DoT
+  //     mechanic).
+  //   - Bulb Path (raw damage): straightforward damageMultiplier scaling
+  //     for 2 tiers, then a 2nd independent attack (tower.stems,
+  //     updateTowerStems() in game.js, modeled directly on Amorphophallus
+  //     titanum's own updateTowerBloom()) hitting the closest 2 enemies
+  //     in range each cycle, culminating in the SAME field with
+  //     targetCount widened far past any realistic enemy count in range —
+  //     "everything in range," achieved by widening the existing
+  //     mechanism rather than a structurally different attack, the same
+  //     approach Arctic Willow's own Avalanche Path tier 4 took by sizing
+  //     its splash radius near the tower's own range.
+  //   - Bloom Path (support/utility — "a genuinely new mechanic, not
+  //     reused from another tower," per the request's own words): a
+  //     pollen/spore cloud on hit that temporarily reduces a hit enemy's
+  //     armorThreshold (applyArmorShred(), enemies.js — a real counter to
+  //     armored enemies no other tower currently has). Escalates: bigger
+  //     reduction/duration -> adds a minor burn DoT in the cloud -> the
+  //     cloud becomes a genuine AoE (radius added, hitting every nearby
+  //     enemy via getEnemiesInRadius(), the same technique updateTowerGrab/
+  //     updateTowerInfectStun already use elsewhere) with near-total
+  //     reduction -> bigger radius again, a long-enough duration that it
+  //     never meaningfully lapses between this tower's own hits
+  //     ("continuous application," this assistant's own reading of that
+  //     loosely-specified 4th tier, rather than building a whole separate
+  //     persistent-ground-zone mechanic the request never actually asked
+  //     for), plus a small slow.
+  //
+  // Costs set via the same DPS-per-dollar methodology the recent pricing
+  // passes used (a $/tier survey against the other 6 base towers' own
+  // roughly $50/$250-300/$650-750/$900-1500 curve), not invented from
+  // scratch — Tangle/Bloom's own damageMultiplier chains are deliberately
+  // modest (most of their value is the CC/utility effect itself,
+  // matching Arctic Willow's Frosted Path's own modest 1.3/1.4/1.5/1.6
+  // chain alongside its slow escalation) while Bulb Path carries this
+  // tower's actual DPS budget.
+  bananaPlant: {
+    name: 'Banana Plant',
+    baseStats: {
+      damage: 4,
+      size: 20,
+      color: '#3a9b4a',
+      range: 140,
+      attackInterval: 0.75,
+    },
+    waterType: true,
+    upgradePaths: [
+      {
+        name: 'Tangle Path',
+        upgrades: [
+          {
+            name: 'Snag',
+            description:
+              'Banana Plant\'s roots occasionally snake out and root an enemy in place briefly on hit; it deals a bit more damage.',
+            cost: 50,
+            effects: { root: { chance: 0.3, duration: 1.5 }, damageMultiplier: 1.2 },
+          },
+          {
+            name: 'Double Snag',
+            description:
+              'Roots snare more often, and can now catch a 2nd nearby enemy at the same time; damage increases again.',
+            cost: 250,
+            effects: { root: { chance: 0.45, duration: 1.5, catchSecond: true, catchRadius: 90 }, damageMultiplier: 1.3 },
+          },
+          {
+            name: 'Root Pulse',
+            description:
+              'A small root-zone periodically pulses out from the plant on its own, snaring anything caught in it, regardless of whether it\'s currently attacking; damage increases again.',
+            cost: 650,
+            effects: { rootPulse: { interval: 4, radius: 110, chance: 0.6, duration: 1.5 }, damageMultiplier: 1.2 },
+          },
+          {
+            name: 'Withering Grip',
+            description:
+              'Roots snare even more often and hold longer; anything snared also withers from a slow burn the whole time it\'s held; damage increases again.',
+            cost: 1100,
+            effects: {
+              root: { chance: 0.6, duration: 2, catchSecond: true, catchRadius: 100, dot: 8 },
+              damageMultiplier: 1.3,
+            },
+          },
+        ],
+      },
+      {
+        name: 'Bulb Path',
+        upgrades: [
+          {
+            name: 'Budding',
+            description: 'Banana Plant\'s bulb cluster swells; damage doubles.',
+            cost: 50,
+            effects: { damageMultiplier: 2, sizeMultiplier: 1.15 },
+          },
+          {
+            name: 'Swollen Bulb',
+            description: 'The bulb cluster swells further; damage increases again.',
+            cost: 250,
+            effects: { damageMultiplier: 1.8, sizeMultiplier: 1.15 },
+          },
+          {
+            name: 'Twin Stems',
+            description:
+              'A 2nd pair of stems grows in, lashing out at a 2nd nearby enemy every cycle on top of the normal attack.',
+            cost: 650,
+            effects: { stems: { interval: 0.9, damage: 7, targetCount: 2 } },
+          },
+          {
+            name: 'Lashing Stems',
+            description:
+              'Every one of Banana Plant\'s stems lashes out at once — a single attack now hits every enemy within range simultaneously.',
+            cost: 1150,
+            effects: { stems: { interval: 0.9, damage: 11, targetCount: 50 } },
+          },
+        ],
+      },
+      {
+        name: 'Bloom Path',
+        upgrades: [
+          {
+            name: 'Pollen Burst',
+            description:
+              'Banana Plant releases a pollen cloud on hit that weakens a hit enemy\'s armor for a few seconds; it deals a bit more damage.',
+            cost: 50,
+            effects: { pollenCloud: { multiplier: 0.6, duration: 4 }, damageMultiplier: 1.15 },
+          },
+          {
+            name: 'Spore Cloud',
+            description:
+              'The pollen cloud weakens armor further and now also lightly burns whatever it\'s applied to; damage increases again.',
+            cost: 300,
+            effects: { pollenCloud: { multiplier: 0.4, duration: 4, dot: 4 }, damageMultiplier: 1.15 },
+          },
+          {
+            name: 'Toxic Bloom',
+            description:
+              'The cloud grows into a real area — anything nearby when it bursts gets weakened and burned too, not just the hit enemy.',
+            cost: 750,
+            effects: { pollenCloud: { multiplier: 0.2, duration: 4, dot: 6, radius: 70 } },
+          },
+          {
+            name: 'Blight Bloom',
+            description:
+              'The cloud grows bigger still, weakens armor to almost nothing, lingers long enough to feel continuous, and lightly slows everything it touches.',
+            cost: 1250,
+            effects: { pollenCloud: { multiplier: 0.05, duration: 7, dot: 8, radius: 100, slow: 0.85 } },
+          },
+        ],
+      },
+    ],
+  },
   // Prodigies (direct request, reworked from an earlier standalone-tower
   // design to an UPGRADE instead): one ultimate, 4th-tier form per base
   // type (Sunflower/Rose/Mushroom). Once a tower of one of these 3
@@ -1510,6 +1689,32 @@ function createTower(typeKey) {
     hasSnowdrift: false,
     hasSnowDrape: false,
     hasFallingIceShards: false,
+    // Banana Plant's Tangle Path (direct follow-up request, relayed from
+    // the peer session): root is a whole-object replace (same convention
+    // as slow/freeze/splash above) — {chance, duration, catchSecond?,
+    // catchRadius?, dot?}, null until the path's first tier. Rides along
+    // on the tower's own ordinary attack via the generalized
+    // projectile.root field (spawnProjectile()/resolveProjectile(),
+    // game.js) and applyRoot() (enemies.js), not a separate shot.
+    root: null,
+    // Tangle Path tier 3 only: a periodic, attack-cycle-independent pulse
+    // (own cooldown, same "don't fire instantly" convention puddle/spark/
+    // shockwave already use) — see updateTowerRootPulse() in game.js.
+    rootPulse: null,
+    rootPulseCooldown: 0,
+    // Banana Plant's Bulb Path, tiers 3-4 only: a second, independent
+    // attack hitting up to targetCount enemies per cycle (whole-object
+    // replace, same convention as root above) — see updateTowerStems() in
+    // game.js.
+    stems: null,
+    stemsCooldown: 0,
+    // Banana Plant's Bloom Path (direct follow-up request: "a genuinely
+    // new mechanic, not reused from another tower"): whole-object replace,
+    // same convention as root/slow/freeze/splash above — {multiplier,
+    // duration, dot?, radius?, slow?}, null until the path's first tier.
+    // Rides along on the tower's own ordinary attack via the generalized
+    // projectile.pollenCloud field and applyPollenCloud() (enemies.js).
+    pollenCloud: null,
     // The Mangler (Rose's Prodigy) only: every grabInterval seconds,
     // grabs one random non-boss enemy in range for grabDamage bonus
     // damage, holding it immobilized for grabDuration — on top of (not
@@ -1763,6 +1968,23 @@ function purchaseUpgrade(tower, pathIndex) {
   if (effects.hasSnowdrift) tower.hasSnowdrift = true;
   if (effects.hasSnowDrape) tower.hasSnowDrape = true;
   if (effects.hasFallingIceShards) tower.hasFallingIceShards = true;
+  // Banana Plant's Tangle Path: whole-object replace, no cooldown of its
+  // own to reset (rides along on the ordinary attack), same convention
+  // slow/freeze/splash above already use.
+  if (effects.root) tower.root = effects.root;
+  if (effects.rootPulse) {
+    tower.rootPulse = effects.rootPulse;
+    tower.rootPulseCooldown = effects.rootPulse.interval; // don't fire instantly on purchase
+  }
+  // Banana Plant's Bulb Path: whole-object replace, same "don't fire
+  // instantly" convention puddle/spark/shockwave already use.
+  if (effects.stems) {
+    tower.stems = effects.stems;
+    tower.stemsCooldown = effects.stems.interval;
+  }
+  // Banana Plant's Bloom Path: whole-object replace, same convention as
+  // root/slow/freeze/splash above.
+  if (effects.pollenCloud) tower.pollenCloud = effects.pollenCloud;
 
   tower.upgradesPurchased += 1;
   return true;
@@ -1919,6 +2141,7 @@ const TOWER_WALK_SPEED = {
   mushroom: 11, // a stout, dense fungal body — the slowest, heaviest walker
   corpseFlower: 13, // a large, heavy bloom, only slightly nimbler than the mushroom
   arcticWillow: 16, // a small tree — more mass than a flower, less than a fungal mass
+  bananaPlant: 15, // a root-anchored aquatic plant, not built for walking — slower than the airy flowers, a touch quicker than the dense fungal/heavy-bloom towers
 };
 const TOWER_LEG_COUNT = {
   sunflower: 4,
@@ -1926,6 +2149,7 @@ const TOWER_LEG_COUNT = {
   mushroom: 2, // a single stout toadstool body reads better hopping on 2 stubby legs than splayed across 4
   corpseFlower: 4,
   arcticWillow: 4,
+  bananaPlant: 4,
 };
 const DEFAULT_TOWER_WALK_SPEED = 14;
 const DEFAULT_TOWER_LEG_COUNT = 4;
@@ -1990,6 +2214,7 @@ const TOWER_HOME_POT_COLOR = {
   mushroom: '#c9a876', // tan
   corpseFlower: '#a85a5a', // dark pale red — deliberately darker/muddier than Rose's own pale red
   arcticWillow: '#a8c9d9', // pale blue
+  bananaPlant: '#b8d9a0', // pale green
 };
 const DEFAULT_TOWER_HOME_POT_COLOR = '#b8b8a8';
 
@@ -2171,6 +2396,15 @@ function renderTower(ctx, tower, x, y, time) {
     drawMangler(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount, tower.grabFlash);
   } else if (tower.type === 'fungalMess') {
     drawFungalMess(ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount, tower.killFlash);
+  } else if (tower.type === 'bananaPlant') {
+    drawBananaPlant(
+      ctx, x, y, size, tower.stats.color, tower.glow, time, flashAmount,
+      // Each path's own tiered visual escalation — same chosenPath +
+      // upgradesPurchased gating every other tower's own tiered art uses.
+      tower.chosenPath === 0 ? tower.upgradesPurchased : 0,
+      tower.chosenPath === 1 ? tower.upgradesPurchased : 0,
+      tower.chosenPath === 2 ? tower.upgradesPurchased : 0
+    );
   } else if (tower.type === 'amorphophallusTitanum') {
     // The gas ring is drawn first/behind the flower itself — same
     // "ambient effect renders under the tower's own body" convention
@@ -3483,6 +3717,152 @@ function drawArcticWillow(
 
   drawArcticWillowCatkin(ctx, x, y, size, color, icicleCount, hasIceSpikes, hasIceCubes, hasSnowballClusters, hasSnowDrape);
 
+  ctx.restore();
+}
+
+// Banana Plant (direct follow-up request, relayed from the peer
+// session) — modeled on a real aquarium plant (Nymphoides aquatica): a
+// tight cluster of smooth, bulbous green "banana" floats at the base
+// (groundY, same "stem extends down to ground, canopy sits at (x, y)"
+// convention every other upright plant tower here already uses — see
+// drawSunflower's own comment), thin curling stems rising up to small
+// round lily-pad-style leaves at the top (the tower's own attack-flash
+// pulse point, same role Sunflower's flower head/Rose's bloom play), and
+// fine white wispy roots trailing beneath the bulb cluster. Glossy,
+// wet-looking green throughout, per the reference's own description.
+// tangleTier/bulbTier/bloomTier (chosenPath/upgradesPurchased gated, same
+// convention every other tower's own tiered art uses) each nudge a small
+// visual detail without needing a dedicated `has*` flag per tier: more
+// visible roots (Tangle Path), an extra bulb/stem/leaf (Bulb Path), and a
+// drifting pollen puff that grows once bought (Bloom Path).
+function drawBananaPlant(ctx, x, y, size, color, glow, time, flashAmount, tangleTier, bulbTier, bloomTier) {
+  const stemHeight = size * 1.2;
+  const groundY = y + stemHeight;
+  const sway = Math.sin(time * 1.3 + x * 0.013) * 0.05;
+
+  ctx.save();
+  ctx.translate(x, groundY);
+  ctx.rotate(sway);
+  ctx.translate(-x, -groundY);
+
+  // Fine white wispy roots, trailing beneath the bulb cluster.
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.lineWidth = Math.max(1, size * 0.03);
+  ctx.lineCap = 'round';
+  const rootCount = 3 + Math.min(tangleTier, 4);
+  for (let i = 0; i < rootCount; i += 1) {
+    const t = rootCount === 1 ? 0.5 : i / (rootCount - 1);
+    const rootX = x + (t - 0.5) * size * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(rootX, groundY + size * 0.05);
+    ctx.quadraticCurveTo(
+      rootX + Math.sin(time * 2 + i) * size * 0.08,
+      groundY + size * 0.3,
+      rootX + (t - 0.5) * size * 0.3,
+      groundY + size * 0.55
+    );
+    ctx.stroke();
+  }
+
+  // The bulb cluster itself — a handful of smooth, glossy, bulbous green
+  // "banana" floats, slightly overlapping.
+  const bulbCount = 3 + (bulbTier >= 1 ? 1 : 0);
+  ctx.fillStyle = color;
+  for (let i = 0; i < bulbCount; i += 1) {
+    const t = bulbCount === 1 ? 0.5 : i / (bulbCount - 1);
+    const bulbX = x + (t - 0.5) * size * 1.1;
+    const bulbY = groundY - size * 0.05 + Math.sin(i * 2.1) * size * 0.06;
+    ctx.beginPath();
+    ctx.ellipse(bulbX, bulbY, size * 0.26, size * 0.42, (t - 0.5) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // A glossy highlight on each bulb — "glossy, wet-looking."
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  for (let i = 0; i < bulbCount; i += 1) {
+    const t = bulbCount === 1 ? 0.5 : i / (bulbCount - 1);
+    const bulbX = x + (t - 0.5) * size * 1.1;
+    const bulbY = groundY - size * 0.05 + Math.sin(i * 2.1) * size * 0.06;
+    ctx.beginPath();
+    ctx.ellipse(bulbX - size * 0.08, bulbY - size * 0.18, size * 0.08, size * 0.16, (t - 0.5) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Thin curling stems rising from the bulb cluster up to the leaves.
+  ctx.strokeStyle = shadeColor(color, -10);
+  ctx.lineWidth = Math.max(1.5, size * 0.05);
+  const stemCount = 2 + (bulbTier >= 3 ? 1 : 0);
+  for (let i = 0; i < stemCount; i += 1) {
+    const t = stemCount === 1 ? 0.5 : i / (stemCount - 1);
+    const baseX = x + (t - 0.5) * size * 0.7;
+    const curl = Math.sin(time * 0.8 + i * 1.7) * size * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(baseX, groundY - size * 0.3);
+    ctx.quadraticCurveTo(baseX + curl, y + stemHeight * 0.4, x + (t - 0.5) * size * 0.3, y + size * 0.1);
+    ctx.stroke();
+  }
+
+  // The leaves pulse slightly bigger right after an attack, same
+  // convention Sunflower's own flower head/Rose's own bloom already use.
+  ctx.translate(x, y);
+  ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
+  ctx.translate(-x, -y);
+
+  if (glow) {
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 20;
+  }
+
+  // Small round lily-pad-style leaves with a slightly scalloped/ruffled
+  // edge, clustered at the top of the stems.
+  const leafCount = 3 + (bulbTier >= 1 ? 1 : 0);
+  for (let i = 0; i < leafCount; i += 1) {
+    const angle = (i / leafCount) * Math.PI * 2 + 0.4;
+    const leafX = x + Math.cos(angle) * size * 0.32;
+    const leafY = y + Math.sin(angle) * size * 0.22;
+    drawBananaLeaf(ctx, leafX, leafY, size * 0.42, color, angle);
+  }
+  ctx.shadowBlur = 0;
+
+  // Bloom Path's own pollen puff, once bought — a small soft cloud
+  // drifting just above the leaves, growing once the cloud becomes a
+  // real AoE (tier 3+).
+  if (bloomTier >= 1) {
+    const pulse = 0.5 + 0.5 * Math.sin(time * 2);
+    ctx.fillStyle = `rgba(230, 210, 140, ${0.35 + pulse * 0.25})`;
+    ctx.beginPath();
+    ctx.arc(x, y - size * 0.55, size * (0.22 + (bloomTier >= 3 ? 0.18 : 0)), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// One small round lily-pad-style leaf with a scalloped/ruffled edge —
+// shared by every leaf drawBananaPlant scatters around its own stem
+// tops.
+function drawBananaLeaf(ctx, x, y, size, color, angle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.fillStyle = color;
+  const scallops = 10;
+  ctx.beginPath();
+  for (let i = 0; i <= scallops; i += 1) {
+    const a = (i / scallops) * Math.PI * 2;
+    const wobble = 1 + 0.08 * Math.sin(a * 5);
+    const px = Math.cos(a) * size * 0.5 * wobble;
+    const py = Math.sin(a) * size * 0.5 * wobble;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(color, -20);
+  ctx.lineWidth = Math.max(1, size * 0.04);
+  ctx.beginPath();
+  ctx.moveTo(0, -size * 0.1);
+  ctx.lineTo(0, size * 0.4);
+  ctx.stroke();
   ctx.restore();
 }
 

@@ -44,6 +44,10 @@ function loadGameContext() {
       getTotalWaveSize,
       generateWave, spawnWave, updateEnemies, getLastLeakedEnemies, eatRandomEligibleEnemy,
       findNearestEnemyInRange, damageEnemy, applyBurn, applySlow, applyFreeze, getEnemiesInRadius,
+      // Banana Plant follow-up (relayed from the peer session): lets a
+      // test drive the actual root/armor-shred/pollen-cloud mechanics
+      // directly, same convention as applyBurn/applySlow/applyFreeze above.
+      applyRoot, applyArmorShred, applyPollenCloud,
       ARMORED_BEETLE_TIERS, getUnlockedArmoredBeetleKeys, getArmoredBeetleTier,
       getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey, spawnSingleEnemy,
       MAP_PATH_WAYPOINTS, MAP_PATH_WIDTH, isPointOnPath, isPointInMagmaPool,

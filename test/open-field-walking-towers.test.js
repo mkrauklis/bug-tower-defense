@@ -120,7 +120,7 @@ test('a tower chases the nearest enemy within its own interest radius and stops 
   assert.equal(game.getTowerMovementTarget(tower), null);
 });
 
-test('each of the 5 base tower types has its own distinct walk speed (Mushroom slowest/2 legs, Sunflower fastest/4 legs), and a Prodigy inherits its base type\'s numbers', () => {
+test('each of the 6 base tower types has its own distinct walk speed (Mushroom slowest/2 legs, Sunflower fastest/4 legs), and a Prodigy inherits its base type\'s numbers', () => {
   const game = loadFullGameContext();
   const speeds = {
     sunflower: game.getTowerWalkSpeed('sunflower'),
@@ -128,9 +128,10 @@ test('each of the 5 base tower types has its own distinct walk speed (Mushroom s
     mushroom: game.getTowerWalkSpeed('mushroom'),
     corpseFlower: game.getTowerWalkSpeed('corpseFlower'),
     arcticWillow: game.getTowerWalkSpeed('arcticWillow'),
+    bananaPlant: game.getTowerWalkSpeed('bananaPlant'),
   };
   const uniqueSpeeds = new Set(Object.values(speeds));
-  assert.equal(uniqueSpeeds.size, 5); // all 5 distinct, not sharing one flat number
+  assert.equal(uniqueSpeeds.size, 6); // all 6 distinct, not sharing one flat number
   assert.equal(speeds.mushroom, Math.min(...Object.values(speeds)));
   assert.equal(speeds.sunflower, Math.max(...Object.values(speeds)));
   assert.equal(game.getTowerLegCount('mushroom'), 2);

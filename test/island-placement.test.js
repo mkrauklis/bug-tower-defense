@@ -128,10 +128,15 @@ test('isOnValidTowerGround: a non-water-type tower can only be placed on an isla
   assert.equal(game.isOnValidTowerGround(island.x1, island.y1, 'sunflower'), true);
   assert.equal(game.isOnValidTowerGround(500, 500, 'sunflower'), false); // open water, far from every island
 
-  // Every current tower type is non-water — confirms the request's own
-  // stated "intentional consequence" holds for all 5.
+  // Every tower type that existed at the time of the original request is
+  // non-water — confirms the request's own stated "intentional
+  // consequence" held for all 5. Banana Plant (added in a later follow-
+  // up) is deliberately excluded from this check — it's the first
+  // waterType: true tower, and is covered by its own dedicated test file
+  // instead (test/banana-plant.test.js) rather than needing a bespoke
+  // exclusion threaded through this one.
   Object.keys(game.TOWER_TYPES).forEach((typeKey) => {
-    assert.equal(Boolean(game.TOWER_TYPES[typeKey].waterType), false);
+    if (game.TOWER_TYPES[typeKey].waterType) return;
     assert.equal(game.isOnValidTowerGround(500, 500, typeKey), false);
   });
 

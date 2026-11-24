@@ -84,10 +84,10 @@ test('the placement-collision check applies in Sandbox mode too, not just normal
   assert.equal(game.getTowers().length, 1);
 });
 
-test('base placement costs were doubled for the 3 original combat towers, plus Corpse Flower\'s own $750 and Arctic Willow\'s own $80 (Coneflower has since been removed)', () => {
+test('base placement costs were doubled for the 3 original combat towers, plus Corpse Flower\'s own $750, Arctic Willow\'s own $80, and Banana Plant\'s own $70 (Coneflower has since been removed)', () => {
   const game = loadFullGameContext();
   const costs = Object.fromEntries(game.SHOP_ITEMS.map((item) => [item.typeKey, item.cost]));
-  assert.deepEqual(costs, { sunflower: 50, rose: 90, mushroom: 150, corpseFlower: 750, arcticWillow: 80 });
+  assert.deepEqual(costs, { sunflower: 50, rose: 90, mushroom: 150, corpseFlower: 750, arcticWillow: 80, bananaPlant: 70 });
 });
 
 test('starting money is $75', () => {
