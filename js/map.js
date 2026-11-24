@@ -2208,12 +2208,136 @@ const VOLCANIC_MAGMA_POOLS = [
 // Savanah's two temples use for the exact point every enemy walks into.
 const VOLCANIC_GOAL_VENT = { x: 760, y: 480, size: 70 };
 
+// Open-field rollout, Volcanic's turn (6th and final of the 6 remaining
+// maps, relayed from the peer session — see TUNDRA_FORTRESS's own
+// comment for the full design history this follows). VOLCANIC_WAYPOINTS
+// above is kept exactly as it was — a harmless unused fallback, same
+// convention as every prior conversion. The existing VOLCANIC_MAGMA_POOLS/
+// isPointInMagmaPool mechanic (tower-placement-only, round pools) is left
+// completely untouched — a separate, new VOLCANIC_FISSURES array (the
+// follow-up request's own per-map terrain list: "Volcanic: magma pits")
+// supplies the actual open-field blocking obstacles instead, same
+// capsule shape every other map's obstacles share, drawn as elongated
+// glowing cracks rather than round pools so the two hazards stay visually
+// distinct from each other.
+//
+// Goal structure is a fortified bunker (assistant's own judgment call,
+// per the original request's own "fortified bunker" suggestion) drawn
+// just above the existing lava vent rather than replacing it — same
+// "permanent addition on top of decor that was already unconditionally
+// drawn" pattern Whirlpool's own sinking ship used on its vortex, reading
+// as defenders holding a line right at the volcano's own mouth.
+const VOLCANIC_GOAL = { x: VOLCANIC_GOAL_VENT.x, y: VOLCANIC_GOAL_VENT.y, size: VOLCANIC_GOAL_VENT.size, radius: 66 };
+
+const VOLCANIC_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
+
+const VOLCANIC_FISSURES = [
+  { x1: 170, y1: 180, x2: 230, y2: 220, radius: 20 },
+  { x1: 470, y1: 130, x2: 530, y2: 170, radius: 19 },
+  { x1: 200, y1: 500, x2: 260, y2: 540, radius: 20 },
+  { x1: 520, y1: 480, x2: 580, y2: 520, radius: 19 },
+  { x1: 650, y1: 130, x2: 710, y2: 170, radius: 18 },
+  { x1: 390, y1: 400, x2: 450, y2: 440, radius: 20 },
+];
+
 const VOLCANIC_DECOR = {
   obsidianRocks: VOLCANIC_OBSIDIAN_ROCKS,
   ashVents: VOLCANIC_ASH_VENTS,
   magmaPools: VOLCANIC_MAGMA_POOLS,
   goal: VOLCANIC_GOAL_VENT,
+  bunker: VOLCANIC_GOAL,
+  fissures: VOLCANIC_FISSURES,
 };
+
+// Volcanic's own open-field goal structure: a low, sandbagged concrete
+// bunker with a glowing gun-slit (lit by the lava below) and a radio
+// antenna, drawn just above the existing lava vent.
+function drawFortifiedBunker(ctx, x, y, size, time = 0) {
+  ctx.save();
+
+  const bodyW = size * 1.4;
+  const bodyH = size * 0.7;
+
+  ctx.fillStyle = '#4a4238';
+  ctx.beginPath();
+  ctx.moveTo(x - bodyW / 2, y);
+  ctx.quadraticCurveTo(x - bodyW / 2, y - bodyH, x, y - bodyH * 1.1);
+  ctx.quadraticCurveTo(x + bodyW / 2, y - bodyH, x + bodyW / 2, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = shadeColor('#4a4238', -15);
+  ctx.beginPath();
+  ctx.ellipse(x, y, bodyW / 2, bodyH * 0.25, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 1.5);
+  ctx.shadowColor = `rgba(255, 120, 40, ${0.5 + pulse * 0.3})`;
+  ctx.shadowBlur = size * 0.2;
+  ctx.fillStyle = '#1a0d06';
+  ctx.fillRect(x - size * 0.35, y - bodyH * 0.65, size * 0.7, size * 0.14);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#6b5a3a';
+  for (let i = -2; i <= 2; i += 1) {
+    ctx.beginPath();
+    ctx.ellipse(x + i * size * 0.26, y + bodyH * 0.3, size * 0.16, size * 0.09, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = '#2e2a22';
+  ctx.lineWidth = Math.max(1, size * 0.03);
+  ctx.beginPath();
+  ctx.moveTo(x + bodyW * 0.3, y - bodyH);
+  ctx.lineTo(x + bodyW * 0.3, y - bodyH - size * 0.5);
+  ctx.stroke();
+  ctx.fillStyle = '#c62828';
+  ctx.beginPath();
+  ctx.arc(x + bodyW * 0.3, y - bodyH - size * 0.5, size * 0.04, 0, Math.PI * 2);
+  ctx.fill();
+
+  applyBlobShading(ctx, x, y - bodyH * 0.3, bodyW * 0.4);
+  ctx.restore();
+}
+
+// A magma-pit/fissure obstacle (follow-up request's own per-map terrain
+// list: "Volcanic: magma pits"). Same capsule shape {x1,y1,x2,y2,radius}
+// every open-field obstacle shares — drawn as a dark, elongated crack
+// with pulsing glowing lava showing through, distinct from the existing
+// VOLCANIC_MAGMA_POOLS' own round ponds (those stay a separate,
+// placement-only hazard, untouched by this conversion).
+function drawLavaFissure(ctx, obstacle, time = 0) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  ctx.fillStyle = '#1c0f08';
+  ctx.beginPath();
+  ctx.moveTo(-length / 2, -radius * 0.5);
+  ctx.lineTo(length / 2, -radius * 0.35);
+  ctx.lineTo(length / 2, radius * 0.35);
+  ctx.lineTo(-length / 2, radius * 0.5);
+  ctx.closePath();
+  ctx.fill();
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 2);
+  ctx.fillStyle = `rgba(232, 84, 15, ${0.7 + pulse * 0.3})`;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, length * 0.42, radius * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(255, 180, 60, ${0.5 + pulse * 0.3})`;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, length * 0.25, radius * 0.16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  applyBlobShading(ctx, 0, 0, radius);
+  ctx.restore();
+}
 
 // Same layered-ellipse-cluster body Tundra's drawSnowBoulder/Savanah's
 // drawSandstoneFormation use, just a near-black obsidian body with a
@@ -2327,7 +2451,9 @@ function renderVolcanicDecor(ctx, decor, time = 0) {
   decor.obsidianRocks.forEach((rock) => drawObsidianRock(ctx, rock.x, rock.y, rock.r));
   decor.ashVents.forEach((vent) => drawAshVent(ctx, vent.x, vent.y, vent.r, time));
   decor.magmaPools.forEach((pool) => drawMagmaPool(ctx, pool.x, pool.y, pool.r, time));
+  if (decor.fissures) decor.fissures.forEach((fissure) => drawLavaFissure(ctx, fissure, time));
   drawLavaVent(ctx, decor.goal.x, decor.goal.y, decor.goal.size, time);
+  if (decor.bunker) drawFortifiedBunker(ctx, decor.bunker.x, decor.bunker.y - decor.goal.size * 0.9, decor.goal.size * 0.7, time);
 }
 
 // ---------------------------------------------------------------------------
@@ -3285,11 +3411,18 @@ const MAP_TYPES = {
     id: 'volcanic',
     name: 'Volcanic',
     builtin: true,
+    // Kept as an unused fallback, same convention as every prior
+    // conversion's own `paths` — see VOLCANIC_GOAL/VOLCANIC_FISSURES'
+    // own comment above (6th and final map converted).
     paths: [VOLCANIC_WAYPOINTS],
     pathWidth: 56,
     pathColors: VOLCANIC_PATH_COLORS,
     terrain: 'volcano',
     decor: VOLCANIC_DECOR,
+    openField: true,
+    goal: VOLCANIC_GOAL,
+    obstacles: VOLCANIC_FISSURES,
+    spawnEdge: VOLCANIC_SPAWN_EDGE,
   },
   // Direct request, relayed from the peer session: a dark cave interior
   // lit by glowing multi-colored crystals, with the enemy path itself a

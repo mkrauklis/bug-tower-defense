@@ -28,14 +28,18 @@ const { loadGameContext, loadFullGameContext } = require('./support/loadGame');
 //     Savanah's own temple-hiding guard hit and fixed, applied correctly
 //     here from the start).
 
-test('MAP_TYPES.tundra is now open-field too (5th map converted) — Volcanic/Caves remain untouched', () => {
+// Volcanic has since converted too (see open-field-volcanic.test.js) —
+// only Caves is still checked here as "not yet" so this test keeps
+// matching the codebase's current state instead of this map's own
+// conversion-day snapshot.
+test('MAP_TYPES.tundra is now open-field too (5th map converted) — Caves remains untouched', () => {
   const game = loadGameContext();
   assert.equal(game.MAP_TYPES.deepForest.openField, true);
   assert.equal(game.MAP_TYPES.marshland.openField, true);
   assert.equal(game.MAP_TYPES.savanah.openField, true);
   assert.equal(game.MAP_TYPES.whirlpool.openField, true);
   assert.equal(game.MAP_TYPES.tundra.openField, true);
-  ['volcanic', 'caves'].forEach((id) => {
+  ['caves'].forEach((id) => {
     assert.equal(Boolean(game.MAP_TYPES[id].openField), false, `${id} should not be open-field yet`);
   });
 });
@@ -65,20 +69,20 @@ test('setActiveMap() updates the open-field bindings for Tundra the same way it 
   assert.deepEqual(game.getMapObstacles(), game.MAP_TYPES.tundra.obstacles);
   assert.deepEqual(game.getMapSpawnEdge(), game.MAP_TYPES.tundra.spawnEdge);
 
-  game.setActiveMap(game.MAP_TYPES.volcanic);
+  game.setActiveMap(game.MAP_TYPES.caves);
   assert.equal(game.getIsOpenField(), false);
 });
 
-test('isPointOnPath always reads clear on Tundra now, on both of its old paths, but Volcanic (not yet converted) still blocks on its own path', () => {
+test('isPointOnPath always reads clear on Tundra now, on both of its old paths, but Caves (not yet converted) still blocks on its own path', () => {
   const game = loadGameContext();
   game.setActiveMap(game.MAP_TYPES.tundra);
   const [pathA, pathB] = game.MAP_TYPES.tundra.paths;
   assert.equal(game.isPointOnPath(pathA[0].x + 20, pathA[0].y, 28), false);
   assert.equal(game.isPointOnPath(pathB[0].x - 20, pathB[0].y, 28), false);
 
-  game.setActiveMap(game.MAP_TYPES.volcanic);
-  const volcanicStart = game.MAP_TYPES.volcanic.paths[0][0];
-  assert.equal(game.isPointOnPath(volcanicStart.x + 20, volcanicStart.y, 28), true);
+  game.setActiveMap(game.MAP_TYPES.caves);
+  const cavesStart = game.MAP_TYPES.caves.paths[0][0];
+  assert.equal(game.isPointOnPath(cavesStart.x + 20, cavesStart.y, 28), true);
 });
 
 test('isPointInObstacle/isPointInGoal block placement on Tundra\'s own snowballs/fortress, and are harmless no-ops elsewhere on the map', () => {

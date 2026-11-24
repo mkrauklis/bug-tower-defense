@@ -38,10 +38,14 @@ const { loadGameContext } = require('./support/loadGame');
 //     DEEP_FOREST_WAYPOINTS directly for its own fixed-path run) stay
 //     completely untouched.
 
-test('MAP_TYPES.deepForest is the only built-in map converted so far — every other map (and The Hollow Event) is untouched', () => {
+// Marshland/Savanah/Whirlpool/Tundra/Volcanic have since converted too
+// (see their own open-field-*.test.js files) — only Caves is still
+// checked here as "not yet" so this test keeps matching the codebase's
+// current state instead of this map's own conversion-day snapshot.
+test('MAP_TYPES.deepForest was the first built-in map converted — Caves remains untouched', () => {
   const game = loadGameContext();
   assert.equal(game.MAP_TYPES.deepForest.openField, true);
-  ['marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic', 'caves'].forEach((id) => {
+  ['caves'].forEach((id) => {
     assert.equal(Boolean(game.MAP_TYPES[id].openField), false, `${id} should not be open-field yet`);
   });
   // The Hollow Event reuses Deep Forest's own waypoint array directly for
@@ -51,7 +55,7 @@ test('MAP_TYPES.deepForest is the only built-in map converted so far — every o
   assert.equal(game.MAP_TYPES.theHollowEvent.paths[0], game.MAP_TYPES.deepForest.paths[0]);
 });
 
-test('Deep Forest has a goal structure, a spawn edge, and obstacles; every other map has none of the 3', () => {
+test('Deep Forest has a goal structure, a spawn edge, and obstacles; Caves (not yet converted) has none of the 3', () => {
   const game = loadGameContext();
   const deepForest = game.MAP_TYPES.deepForest;
   assert.equal(typeof deepForest.goal.x, 'number');
@@ -60,7 +64,7 @@ test('Deep Forest has a goal structure, a spawn edge, and obstacles; every other
   assert.ok(Array.isArray(deepForest.obstacles) && deepForest.obstacles.length > 0);
   assert.equal(typeof deepForest.spawnEdge.x1, 'number');
 
-  ['marshland', 'savanah', 'whirlpool', 'tundra', 'volcanic', 'caves'].forEach((id) => {
+  ['caves'].forEach((id) => {
     const map = game.MAP_TYPES[id];
     assert.equal(map.goal, undefined);
     assert.equal(map.obstacles, undefined);
@@ -76,7 +80,7 @@ test('setActiveMap() updates the open-field bindings (MAP_OPEN_FIELD/MAP_GOAL/MA
   assert.ok(game.getMapObstacles().length > 0);
   assert.ok(game.getMapSpawnEdge());
 
-  game.setActiveMap(game.MAP_TYPES.marshland);
+  game.setActiveMap(game.MAP_TYPES.caves);
   assert.equal(game.getIsOpenField(), false);
   assert.equal(game.getMapGoal(), null);
   assert.deepEqual(game.getMapObstacles(), []);
@@ -90,11 +94,11 @@ test('isPointOnPath always reads as clear on an open-field map (no fixed path ge
   // placement on the pre-conversion map; must not any more.
   assert.equal(game.isPointOnPath(220, 80, 28), false);
 
-  game.setActiveMap(game.MAP_TYPES.marshland);
-  // Marshland is untouched — its own path still blocks placement exactly
-  // as before.
-  const marshStart = game.MAP_TYPES.marshland.paths[0][0];
-  assert.equal(game.isPointOnPath(marshStart.x + 20, marshStart.y, 28), true);
+  game.setActiveMap(game.MAP_TYPES.caves);
+  // Caves is untouched (the last remaining 2-path map) — its own path
+  // still blocks placement exactly as before.
+  const cavesStart = game.MAP_TYPES.caves.paths[0][0];
+  assert.equal(game.isPointOnPath(cavesStart.x + 20, cavesStart.y, 28), true);
 });
 
 test('isPointInObstacle/isPointInGoal block placement on Deep Forest\'s logs/cabin, and are harmless no-ops on every other map', () => {
@@ -110,7 +114,7 @@ test('isPointInObstacle/isPointInGoal block placement on Deep Forest\'s logs/cab
   assert.equal(game.isPointInGoal(goal.x, goal.y), true);
   assert.equal(game.isPointInGoal(-500, -500), false);
 
-  game.setActiveMap(game.MAP_TYPES.marshland);
+  game.setActiveMap(game.MAP_TYPES.caves);
   assert.equal(game.isPointInObstacle(midX, midY), false); // no obstacles on this map at all
   assert.equal(game.isPointInGoal(goal.x, goal.y), false); // no goal structure on this map at all
 });

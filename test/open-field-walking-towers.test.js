@@ -232,11 +232,13 @@ test('applyWalkingLegs draws exactly one stroked hip->knee->foot path per leg', 
 
 test('towers on every map not yet converted to open-field stay completely static — no movement applied, and renderTower never reaches its legs branch', () => {
   const game = loadFullGameContext();
-  // Savanah, not Marshland — Marshland was converted to open-field in the
-  // rollout's 2nd step (see open-field-marshland.test.js) and now moves
-  // its towers too, so it no longer serves as the "still static" example
-  // this test needs.
-  game.setActiveMap(game.MAP_TYPES.savanah);
+  // Caves — the last remaining unconverted map. Marshland/Savanah/
+  // Whirlpool/Tundra/Volcanic were converted to open-field one at a time
+  // through this same rollout (see each one's own open-field-*.test.js)
+  // and now move their towers too, so none of them serve as the "still
+  // static" example this test needs any more; this will need repointing
+  // again once Caves itself converts.
+  game.setActiveMap(game.MAP_TYPES.caves);
   // renderTower's own legs call is gated on exactly this flag — the
   // authoritative guarantee that part-2 rendering is a no-op here.
   assert.equal(game.getIsOpenField(), false);
