@@ -358,6 +358,13 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       // directly, same "renderX never throws" pattern already used
       // elsewhere in this file.
       drawFrog, createWildlifeEntity, renderWildlife,
+      // Tower home-spot tracking + pot markers + dirt trail (follow-up
+      // requests, relayed from the peer session): lets a test drive the
+      // actual return-home targeting, placement-blocking-by-home-spot,
+      // and dirt-trail spawn/fade logic directly.
+      getTowerHomePotColor, drawTowerHomePot,
+      getDirtTrailMarks: () => dirtTrailMarks,
+      DIRT_TRAIL_SPACING, DIRT_TRAIL_DURATION,
     };
     `,
     context

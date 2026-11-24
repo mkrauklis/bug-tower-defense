@@ -1963,6 +1963,60 @@ function applyWalkingLegs(ctx, x, y, size, legCount, phase, color) {
   ctx.restore();
 }
 
+// Home-spot pot markers (follow-up to the open-field home-spot tracking,
+// relayed from the peer session): one pale, type-tinted pot per base
+// tower type, left sitting at a tower's own home tile for as long as it's
+// currently standing elsewhere — a visual cue that doubles as an obvious
+// "why can't I place here" indicator for the placement-blocking rule
+// game.js's isTowerPlacementBlocked() enforces against that same spot.
+// Keyed by the 5 base types, same "a Prodigy looks up its own base type's
+// value" convention TOWER_WALK_SPEED/TOWER_LEG_COUNT above already use.
+const TOWER_HOME_POT_COLOR = {
+  sunflower: '#e8d9a0', // pale yellow
+  rose: '#d99a9a', // pale red
+  mushroom: '#c9a876', // tan
+  corpseFlower: '#a85a5a', // dark pale red — deliberately darker/muddier than Rose's own pale red
+  arcticWillow: '#a8c9d9', // pale blue
+};
+const DEFAULT_TOWER_HOME_POT_COLOR = '#b8b8a8';
+
+function getTowerHomePotColor(typeKey) {
+  const baseType = PRODIGY_BASE_TYPE[typeKey] || typeKey;
+  return TOWER_HOME_POT_COLOR[baseType] || DEFAULT_TOWER_HOME_POT_COLOR;
+}
+
+// A simple canvas-drawn planter pot — a trapezoid body, a slightly darker
+// rim, and a dark soil patch inside it — consistent with this project's
+// hand-drawn vector style everywhere else. Deliberately plain/empty (no
+// plant drawn in it): the empty pot itself is the "this spot is taken,
+// its tower just isn't standing here right now" cue.
+function drawTowerHomePot(ctx, x, y, size, color) {
+  const potW = size * 0.9;
+  const potH = size * 0.55;
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x - potW * 0.4, y - potH * 0.4);
+  ctx.lineTo(x + potW * 0.4, y - potH * 0.4);
+  ctx.lineTo(x + potW * 0.3, y + potH * 0.5);
+  ctx.lineTo(x - potW * 0.3, y + potH * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = shadeColor(color, -25);
+  ctx.lineWidth = Math.max(1, size * 0.04);
+  ctx.stroke();
+
+  ctx.fillStyle = shadeColor(color, -15);
+  ctx.beginPath();
+  ctx.ellipse(x, y - potH * 0.4, potW * 0.42, potH * 0.12, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#2e2014';
+  ctx.beginPath();
+  ctx.ellipse(x, y - potH * 0.4, potW * 0.32, potH * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 // Visuals, kept alongside each tower's data so a new tower type brings its
 // own look with it. Canvas primitives only, no external art. `time` is the
 // game's own deterministic simulation clock (seconds), used for idle

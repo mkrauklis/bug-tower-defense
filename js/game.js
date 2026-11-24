@@ -384,6 +384,7 @@ function startGame(modeKey) {
   towers = [];
   selectedTower = null;
   selectedShopItem = null;
+  dirtTrailMarks = [];
   projectiles = [];
   round = 1;
   money = STARTING_MONEY;
@@ -1292,6 +1293,19 @@ function getTowerMovementTarget(tower) {
     return { x: nearestEnemy.x - (dx / dist) * standoff, y: nearestEnemy.y - (dy / dist) * standoff, idle: false };
   }
 
+  // Between waves/rounds — nothing alive ANYWHERE to chase, not just
+  // nothing nearby (follow-up request, relayed from the peer session):
+  // every tower should return to its own original placed spot rather than
+  // drifting toward the spawn-goal corridor, so the next round's
+  // placement/upgrade phase finds it exactly where the player left it.
+  // `tower.homeX` is undefined only for a tower created before this field
+  // existed (shouldn't happen in practice — nothing persists across a
+  // page load — but defensive rather than assuming).
+  if (activeEnemies.length === 0 && tower.homeX !== undefined) {
+    if (Math.hypot(tower.homeX - tower.x, tower.homeY - tower.y) < 2) return null; // already home
+    return { x: tower.homeX, y: tower.homeY, idle: true };
+  }
+
   const spawnMidX = (MAP_SPAWN_EDGE.x1 + MAP_SPAWN_EDGE.x2) / 2;
   const spawnMidY = (MAP_SPAWN_EDGE.y1 + MAP_SPAWN_EDGE.y2) / 2;
   const dx = MAP_GOAL.x - spawnMidX;
@@ -1341,6 +1355,59 @@ function updateTowerMovement(tower, deltaSeconds) {
   tower.x = Math.max(visualSize, Math.min(WORLD_WIDTH - visualSize, next.x));
   tower.y = Math.max(visualSize, Math.min(WORLD_HEIGHT - visualSize, next.y));
   tower.walkPhase += deltaSeconds * (speed / 6); // legs animate faster for a faster-walking tower
+
+  // Dirt trail (follow-up request, relayed from the peer session): a
+  // fading scuffed-earth mark left behind ONLY while a tower is actually
+  // moving (this function already returned early above for idle/boxed-in
+  // towers, so reaching here means it just took a real step) — same
+  // spawn-with-a-remaining-duration/fade/filter-when-expired shape as
+  // this file's own floating-text popups (spawnFloatingText/
+  // updateFloatingTexts), just for ground marks instead of text. Spaced
+  // out by actual distance walked (DIRT_TRAIL_SPACING), not one mark per
+  // frame, so a trail of distinct footprints forms instead of one solid
+  // smear — same "distance moved, not frames elapsed" spirit
+  // enemies.js's own TRAIL_POINT_SPACING already uses for its millipede
+  // body trail.
+  tower.trailAccum = (tower.trailAccum || 0) + step;
+  if (tower.trailAccum >= DIRT_TRAIL_SPACING) {
+    tower.trailAccum = 0;
+    spawnDirtTrailMark(tower.x, tower.y);
+  }
+}
+
+const DIRT_TRAIL_SPACING = 12;
+const DIRT_TRAIL_DURATION = 2.5;
+let dirtTrailMarks = [];
+
+function spawnDirtTrailMark(x, y) {
+  // A small deterministic-from-position rotation/size wobble (same
+  // "seeded by position, not real randomness" convention this project's
+  // other scattered decor already uses) so consecutive marks don't all
+  // look identical.
+  const seed = (x * 0.37 + y * 0.53) % (Math.PI * 2);
+  dirtTrailMarks.push({ x, y, remaining: DIRT_TRAIL_DURATION, angle: seed, scale: 0.8 + 0.4 * Math.sin(seed * 3) });
+}
+
+function updateDirtTrailMarks(deltaSeconds) {
+  dirtTrailMarks.forEach((mark) => {
+    mark.remaining -= deltaSeconds;
+  });
+  dirtTrailMarks = dirtTrailMarks.filter((mark) => mark.remaining > 0);
+}
+
+function renderDirtTrailMarks(ctx) {
+  dirtTrailMarks.forEach((mark) => {
+    const progress = 1 - mark.remaining / DIRT_TRAIL_DURATION; // 0 -> 1 as it fades
+    ctx.save();
+    ctx.translate(mark.x, mark.y);
+    ctx.rotate(mark.angle);
+    ctx.globalAlpha = 0.35 * (1 - progress);
+    ctx.fillStyle = '#2e2014';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 5 * mark.scale, 2.6 * mark.scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
 }
 
 function update(deltaSeconds) {
@@ -1387,6 +1454,7 @@ function update(deltaSeconds) {
   // can fire immediately rather than waiting a frame. No-op on every
   // map before Deep Forest.
   if (MAP_OPEN_FIELD) towers.forEach((tower) => updateTowerMovement(tower, deltaSeconds));
+  updateDirtTrailMarks(deltaSeconds);
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
   updateProjectiles(deltaSeconds);
   updateConsumedTowerEffects(deltaSeconds);
@@ -1515,6 +1583,19 @@ function render() {
   // of how big the real canvas is (map.js itself is untouched).
   renderMap(ctx, { width: WORLD_WIDTH, height: WORLD_HEIGHT }, animationTime);
   renderWildlife(ctx, wildlife, animationTime, 'frog'); // ground-level, under everything else
+  if (MAP_OPEN_FIELD) renderDirtTrailMarks(ctx); // ground-level marks, under the pots/towers above them
+
+  // Home-spot pot markers (follow-up to the open-field home-spot
+  // tracking) — drawn before the towers themselves so a tower currently
+  // standing on its own home tile simply covers its own pot rather than
+  // the two looking stacked; only shown once it's actually wandered off.
+  if (MAP_OPEN_FIELD) {
+    towers.forEach((tower) => {
+      if (tower.homeX === undefined) return;
+      if (Math.hypot(tower.x - tower.homeX, tower.y - tower.homeY) <= 2) return;
+      drawTowerHomePot(ctx, tower.homeX, tower.homeY, getTowerVisualSize(tower), getTowerHomePotColor(tower.type));
+    });
+  }
 
   towers.forEach((tower) => renderTowerGroundEffects(ctx, tower));
   towers.forEach((tower) => drawTowerWithRay(tower, tower.x, tower.y));
@@ -1827,7 +1908,18 @@ function getShopPreviewTower(typeKey) {
 // — handleCanvasTap is the one placement code path for both.
 function isTowerPlacementBlocked(x, y, typeKey) {
   const newSize = getTowerVisualSize(getShopPreviewTower(typeKey));
-  return towers.some((tower) => Math.hypot(tower.x - x, tower.y - y) < newSize + getTowerVisualSize(tower));
+  // Checked against each existing tower's own HOME spot (follow-up
+  // request, relayed from the peer session), not wherever it currently
+  // happens to be standing — a walking tower that's wandered off mid-
+  // round still reserves its own home tile, so the player can't drop a
+  // new tower there just because it looks empty right now. `?? tower.x/y`
+  // covers a tower from before this field existed and every tower on a
+  // map that never moves them, where home always equals current anyway.
+  return towers.some((tower) => {
+    const towerX = tower.homeX ?? tower.x;
+    const towerY = tower.homeY ?? tower.y;
+    return Math.hypot(towerX - x, towerY - y) < newSize + getTowerVisualSize(tower);
+  });
 }
 
 const SHOP_TILE_SIZE = 60;
@@ -3517,6 +3609,11 @@ function activateRegion(region) {
     const prodigy = createTower(option.typeKey);
     prodigy.x = selectedTower.x;
     prodigy.y = selectedTower.y;
+    // Inherits the base tower's own HOME spot, not just its current
+    // (possibly wandered-away-from-home) position — same "same slot/
+    // investment" spirit moneySpent carrying over already has.
+    prodigy.homeX = selectedTower.homeX ?? selectedTower.x;
+    prodigy.homeY = selectedTower.homeY ?? selectedTower.y;
     prodigy.moneySpent = selectedTower.moneySpent + option.cost;
 
     if (sameTypeVictims.length > 0) destroyTowers(sameTypeVictims);
@@ -3704,6 +3801,15 @@ function handleCanvasTap(x, y) {
     const tower = createTower(selectedShopItem.typeKey);
     tower.x = x;
     tower.y = y;
+    // Open-field rework follow-up: the exact tile the player placed this
+    // tower at, independent of tower.x/y once it starts wandering —
+    // getTowerMovementTarget() sends it walking back here once a wave
+    // fully clears, and isTowerPlacementBlocked() below blocks new
+    // placements against this spot even while the tower itself is
+    // currently standing somewhere else. Equal to tower.x/y here and
+    // forever after on every map that doesn't move its towers.
+    tower.homeX = x;
+    tower.homeY = y;
     tower.moneySpent = cost; // tracked for the Sell button's refund — see getSellRefund()
     towers.push(tower);
     money -= cost;
