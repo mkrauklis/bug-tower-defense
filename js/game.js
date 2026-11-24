@@ -385,6 +385,9 @@ function startGame(modeKey) {
   selectedTower = null;
   selectedShopItem = null;
   dirtTrailMarks = [];
+  lanternfishActive = false;
+  lanternfishTimer = 0;
+  lanternfishTriggeredRound = 0;
   projectiles = [];
   round = 1;
   money = STARTING_MONEY;
@@ -1410,6 +1413,80 @@ function renderDirtTrailMarks(ctx) {
   });
 }
 
+// Deep Sea lanternfish event (direct follow-up request, relayed from the
+// peer session): "a giant lanternfish that rises up from the shadows
+// every 5 rounds (round 5, 10, 15, 20...), stays for about 2 seconds,
+// then fades back into the depths. If there are more than 10 enemies
+// currently on the board when it triggers, it eats one of them (removes
+// it from play) during that window; if there aren't more than 10 enemies
+// on the board, it still rises/fades for the visual but doesn't eat
+// anything." A fixed, central-ish spot on the field (not the submarine
+// goal, not the spawn edge) rather than anywhere tied to enemies/towers,
+// since this is explicitly "purely atmospheric... no gameplay
+// interaction" beyond the one-time eat roll itself.
+const LANTERNFISH_INTERVAL = 5;
+const LANTERNFISH_DURATION = 2; // seconds, "stays for about 2 seconds"
+const LANTERNFISH_MIN_ENEMIES_TO_EAT = 10; // "MORE than 10" — 11+ required, matching the request's own wording
+const LANTERNFISH_X = 380;
+const LANTERNFISH_Y = 300;
+
+let lanternfishActive = false;
+let lanternfishTimer = 0;
+// The round this event last fired on — a guard against re-triggering
+// every single frame while `round` SITS at a multiple of 5 (it only
+// advances once per round-clear, but update() runs every frame), rather
+// than hooking into every individual place `round` can be incremented
+// (startNextRound(), Horde's own manual increment in update() below) —
+// one check here catches all of them for free and can't be missed if a
+// future round-advance path is ever added.
+let lanternfishTriggeredRound = 0;
+
+function maybeTriggerLanternfishEvent() {
+  if (getActiveMap().terrain !== 'deepSea') return;
+  if (round <= 0 || round % LANTERNFISH_INTERVAL !== 0) return;
+  if (lanternfishTriggeredRound === round) return;
+  lanternfishTriggeredRound = round;
+
+  lanternfishActive = true;
+  lanternfishTimer = LANTERNFISH_DURATION;
+  // "Random pick among current enemies (avoid anything that looks like
+  // deliberately sniping a dangerous enemy/boss unfairly)... must NOT
+  // allow eating boss-tier enemies" — eatRandomEligibleEnemy() (enemies.js)
+  // already excludes bosses and picks uniformly at random; this is simply
+  // the ">10 enemies" gate the request asked for.
+  if (activeEnemies.length > LANTERNFISH_MIN_ENEMIES_TO_EAT) {
+    eatRandomEligibleEnemy();
+  }
+}
+
+function updateLanternfishEvent(deltaSeconds) {
+  if (!lanternfishActive) return;
+  lanternfishTimer -= deltaSeconds;
+  if (lanternfishTimer <= 0) lanternfishActive = false;
+}
+
+// 0 at the very start/end of the window (fully submerged/faded), 1
+// through the held middle stretch — a short rise-in and fade-out rather
+// than an instant pop in either direction, "rises up... fades back into
+// the depths" read literally as eased transitions, not a hard cut.
+const LANTERNFISH_TRANSITION = 0.4;
+
+function getLanternfishVisibility() {
+  if (!lanternfishActive) return 0;
+  const elapsed = LANTERNFISH_DURATION - lanternfishTimer;
+  if (elapsed < LANTERNFISH_TRANSITION) return elapsed / LANTERNFISH_TRANSITION;
+  const remaining = lanternfishTimer;
+  if (remaining < LANTERNFISH_TRANSITION) return remaining / LANTERNFISH_TRANSITION;
+  return 1;
+}
+
+function renderLanternfishEvent(ctx, time) {
+  if (!lanternfishActive) return;
+  const visibility = getLanternfishVisibility();
+  if (visibility <= 0) return;
+  drawLanternfish(ctx, LANTERNFISH_X, LANTERNFISH_Y, visibility, time);
+}
+
 function update(deltaSeconds) {
   animationTime += deltaSeconds;
   updateWildlife(wildlife, deltaSeconds);
@@ -1455,6 +1532,13 @@ function update(deltaSeconds) {
   // map before Deep Forest.
   if (MAP_OPEN_FIELD) towers.forEach((tower) => updateTowerMovement(tower, deltaSeconds));
   updateDirtTrailMarks(deltaSeconds);
+  // Checked every frame (cheap — a terrain check plus a modulo; see
+  // lanternfishTriggeredRound's own comment for why a guard here, rather
+  // than hooking every individual round-advance call site, is enough to
+  // catch Horde Mode's manual round increment below just as well as the
+  // ordinary startNextRound() path).
+  maybeTriggerLanternfishEvent();
+  updateLanternfishEvent(deltaSeconds);
   towers.forEach((tower) => updateTowerAttack(tower, tower.x, tower.y, deltaSeconds));
   updateProjectiles(deltaSeconds);
   updateConsumedTowerEffects(deltaSeconds);
@@ -1604,6 +1688,7 @@ function render() {
   renderProjectiles(ctx);
   renderConsumedTowerEffects(ctx);
   renderWildlife(ctx, wildlife, animationTime, 'firefly'); // glowing, drawn on top so it reads over everything
+  renderLanternfishEvent(ctx, animationTime); // Deep Sea only, and only during its own brief rise/fade window
   renderFloatingTexts(ctx); // "+$X" income popups etc. — always the topmost world layer, so they stay legible
 
   // The Hollow Event ("Adventures") only — every other mode/map leaves

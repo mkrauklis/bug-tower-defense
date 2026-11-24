@@ -42,7 +42,7 @@ function loadGameContext() {
       BOSS_INTERVAL, BASE_SPEED,
       isBossRound, getBossForRound, getUnlockedEnemyTypes, getRoundScaling,
       getTotalWaveSize,
-      generateWave, spawnWave, updateEnemies, getLastLeakedEnemies,
+      generateWave, spawnWave, updateEnemies, getLastLeakedEnemies, eatRandomEligibleEnemy,
       findNearestEnemyInRange, damageEnemy, applyBurn, applySlow, applyFreeze, getEnemiesInRadius,
       ARMORED_BEETLE_TIERS, getUnlockedArmoredBeetleKeys, getArmoredBeetleTier,
       getAllSpawnableEnemyKeys, getSpawnEntryForEnemyKey, spawnSingleEnemy,
@@ -222,6 +222,7 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       createTower, purchaseUpgrade, getAvailableUpgrade, TOWER_TYPES,
       damageEnemy, applyBurn, applySlow, applyFreeze, findNearestEnemyInRange, getEnemiesInRadius,
       updateTowerAttack, spawnProjectile, resolveProjectile, updateProjectiles, updateEnemies, getLastLeakedEnemies,
+      eatRandomEligibleEnemy,
       getStrongestAuraFor,
       spawnFloatingText, updateFloatingTexts,
       getFloatingTexts: () => floatingTexts,
@@ -398,6 +399,15 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getTowerHomePotColor, drawTowerHomePot,
       getDirtTrailMarks: () => dirtTrailMarks,
       DIRT_TRAIL_SPACING, DIRT_TRAIL_DURATION,
+      // Deep Sea lanternfish event (follow-up request, relayed from the
+      // peer session): lets a test drive the actual trigger/update/
+      // visibility logic directly, and read its own state.
+      maybeTriggerLanternfishEvent, updateLanternfishEvent, renderLanternfishEvent,
+      getLanternfishVisibility, drawLanternfish,
+      getLanternfishActive: () => lanternfishActive,
+      getLanternfishTimer: () => lanternfishTimer,
+      getLanternfishTriggeredRound: () => lanternfishTriggeredRound,
+      LANTERNFISH_INTERVAL, LANTERNFISH_DURATION, LANTERNFISH_MIN_ENEMIES_TO_EAT,
     };
     `,
     context

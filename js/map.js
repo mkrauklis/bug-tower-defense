@@ -3611,6 +3611,109 @@ function renderDeepSeaDecor(ctx, decor, time = 0) {
   renderDeepSeaBiolumFish(ctx, MAP_WORLD_WIDTH, time);
 }
 
+// Deep Sea lanternfish event (direct follow-up request, relayed from the
+// peer session): the giant lanternfish's own art — drawn big enough to
+// read as a genuine "something huge just rose out of the dark," distinct
+// from the small ambient drawBiolumFish specks above. NOT part of
+// renderDeepSeaDecor/DEEP_SEA_DECOR — this is an event-driven visual with
+// its own timer state (lanternfishActive/lanternfishTimer, game.js),
+// called directly from render() only while that event is active, rather
+// than every frame like the rest of this map's own static/ambient decor.
+// `visibility` (0-1, game.js's own getLanternfishVisibility()) drives
+// both the fade (globalAlpha) and a short vertical rise/sink so it reads
+// as surfacing from below and sinking back rather than popping in place.
+function drawLanternfish(ctx, x, y, visibility, time = 0) {
+  const size = 70;
+  const riseOffset = (1 - visibility) * size * 0.8;
+
+  ctx.save();
+  ctx.globalAlpha = visibility;
+  ctx.translate(x, y + riseOffset);
+
+  // Tail fin, behind the body.
+  ctx.fillStyle = '#05070b';
+  ctx.beginPath();
+  ctx.moveTo(-size * 1.05, 0);
+  ctx.lineTo(-size * 1.55, -size * 0.38);
+  ctx.lineTo(-size * 1.4, 0);
+  ctx.lineTo(-size * 1.55, size * 0.38);
+  ctx.closePath();
+  ctx.fill();
+
+  // Body — a heavy, blunt deep-sea silhouette, near-black.
+  ctx.fillStyle = '#0a0e14';
+  ctx.beginPath();
+  ctx.moveTo(-size * 1.1, 0);
+  ctx.quadraticCurveTo(-size * 0.6, -size * 0.58, size * 0.5, -size * 0.35);
+  ctx.quadraticCurveTo(size * 1.05, -size * 0.1, size * 1.2, 0.02);
+  ctx.quadraticCurveTo(size * 1.0, size * 0.12, size * 0.5, size * 0.35);
+  ctx.quadraticCurveTo(-size * 0.6, size * 0.58, -size * 1.1, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // Oversized jaw, jutting past the body's own front curve, with a row
+  // of small pale teeth.
+  ctx.fillStyle = '#05070a';
+  ctx.beginPath();
+  ctx.moveTo(size * 0.55, -size * 0.08);
+  ctx.lineTo(size * 1.1, size * 0.12);
+  ctx.lineTo(size * 0.55, size * 0.3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#e8e4d8';
+  for (let i = 0; i < 5; i += 1) {
+    const t = i / 4;
+    const jx = size * 0.62 + t * size * 0.4;
+    const jy = size * 0.05 + t * size * 0.16;
+    ctx.beginPath();
+    ctx.moveTo(jx, jy);
+    ctx.lineTo(jx + size * 0.04, jy + size * 0.08);
+    ctx.lineTo(jx - size * 0.04, jy + size * 0.08);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // A small pale eye.
+  ctx.fillStyle = '#d8d8d8';
+  ctx.beginPath();
+  ctx.arc(size * 0.25, -size * 0.24, size * 0.07, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.arc(size * 0.27, -size * 0.24, size * 0.035, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The lanternfish's own signature feature — a stalked lure (esca)
+  // arching up off the head, tipped with a pulsing bioluminescent glow,
+  // same "radial glow behind a silhouette" technique this map's own
+  // drawBiolumFish/drawSubmarine porthole already use.
+  const lureX = size * 0.3;
+  const lureBaseY = -size * 0.52;
+  const lureTipY = lureBaseY - size * 0.48;
+  ctx.strokeStyle = '#0a0e14';
+  ctx.lineWidth = Math.max(2, size * 0.045);
+  ctx.beginPath();
+  ctx.moveTo(lureX, lureBaseY);
+  ctx.quadraticCurveTo(lureX + size * 0.18, lureBaseY - size * 0.22, lureX + size * 0.06, lureTipY);
+  ctx.stroke();
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 3);
+  const gradient = ctx.createRadialGradient(lureX + size * 0.06, lureTipY, 0, lureX + size * 0.06, lureTipY, size * 0.4);
+  gradient.addColorStop(0, `rgba(120, 255, 230, ${0.55 + pulse * 0.4})`);
+  gradient.addColorStop(1, 'rgba(120, 255, 230, 0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(lureX + size * 0.06, lureTipY, size * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(175, 255, 235, ${0.8 + pulse * 0.2})`;
+  ctx.beginPath();
+  ctx.arc(lureX + size * 0.06, lureTipY, size * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
 // ---------------------------------------------------------------------------
 // Terrain theme registry — each theme owns a background color plus a decor
 // renderer taking that map's own `decor` object. renderMap()/

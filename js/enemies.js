@@ -1323,6 +1323,32 @@ function getLastLeakedEnemies() {
   return lastLeakedEnemies;
 }
 
+// Deep Sea lanternfish event (direct follow-up request, relayed from the
+// peer session): "if there are more than 10 enemies currently on the
+// board when it triggers, it eats one of them (removes it from play)
+// during that window." Removes the enemy directly from activeEnemies —
+// deliberately NOT via damageEnemy/setting health to 0, which would route
+// it through updateEnemies()'s own "killed" sweep and award its bounty;
+// the peer's own stated default is "no bounty/kill credit for the eaten
+// enemy," so a plain removal is the correct mechanism, not a shortcut.
+// Bosses are excluded from eligibility (this assistant's own call, per
+// the request's own explicit guidance: "must NOT allow eating boss-tier
+// enemies in a way that could trivialize a boss fight") — picked
+// uniformly at random (the game's own seeded random(), same reproducible-
+// under-?seed= convention every other roll in this file already follows)
+// among whatever's left. Returns the eaten enemy (or null if nothing was
+// eligible — e.g. every current enemy happens to be a boss) so game.js
+// can use it for logging/floating-text if it ever wants to, though the
+// request's own "purely atmospheric... doesn't eat anything" framing
+// doesn't currently ask for that.
+function eatRandomEligibleEnemy() {
+  const eligible = activeEnemies.filter((enemy) => !enemy.isBoss);
+  if (eligible.length === 0) return null;
+  const chosen = eligible[Math.floor(random() * eligible.length)];
+  activeEnemies = activeEnemies.filter((enemy) => enemy !== chosen);
+  return chosen;
+}
+
 // Facing direction baked into each type's hand-drawn art (the angle, in the
 // un-rotated drawing, that the enemy's "front" points toward) — used to
 // offset the computed movement heading so the art actually turns to face
