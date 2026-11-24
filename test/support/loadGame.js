@@ -99,6 +99,10 @@ function loadGameContext() {
       getMapGoal: () => MAP_GOAL,
       getMapObstacles: () => MAP_OBSTACLES,
       getMapSpawnEdge: () => MAP_SPAWN_EDGE,
+      // Spawn-from-all-sides follow-up (Whirlpool): lets a test see the
+      // full edge list createEnemyInstance (enemies.js) round-robins
+      // across, instead of only the single-edge fallback above.
+      getMapSpawnEdges: () => MAP_SPAWN_EDGES,
     };
     `,
     context
@@ -369,6 +373,10 @@ function loadFullGameContext({ localStorageStore = {} } = {}) {
       getMapGoal: () => MAP_GOAL,
       getMapObstacles: () => MAP_OBSTACLES,
       getMapSpawnEdge: () => MAP_SPAWN_EDGE,
+      // Spawn-from-all-sides follow-up (Whirlpool): lets a test see the
+      // full edge list createEnemyInstance (enemies.js) round-robins
+      // across, instead of only the single-edge fallback above.
+      getMapSpawnEdges: () => MAP_SPAWN_EDGES,
       // Frog art pass (direct request, with a reference photo): lets a
       // test call the actual draw code and exercise entity creation
       // directly, same "renderX never throws" pattern already used

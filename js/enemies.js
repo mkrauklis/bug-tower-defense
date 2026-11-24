@@ -1482,7 +1482,18 @@ function createEnemyInstance(entry, spawnDelay) {
   let path = null;
   let pathIndex = 0;
   if (MAP_OPEN_FIELD) {
-    const edge = MAP_SPAWN_EDGE;
+    // Spawn-from-all-sides follow-up (Whirlpool, relayed from the peer
+    // session): "Distribute each wave's spawns across all sides (random
+    // or round-robin per enemy, your judgment) rather than adding extra
+    // enemies — same total enemy count per round." Round-robin chosen
+    // over random specifically so a short wave still visibly covers
+    // every side rather than clustering by chance — spawnEdgeRoundRobin
+    // is a simple, ever-incrementing module-level counter (not reset per
+    // wave/round) shared by every open-field map; for every map besides
+    // Whirlpool, MAP_SPAWN_EDGES is a 1-element array, so `% length` is
+    // always 0 and behavior is identical to before this change.
+    const edge = MAP_SPAWN_EDGES[spawnEdgeRoundRobin % MAP_SPAWN_EDGES.length];
+    spawnEdgeRoundRobin += 1;
     const t = random();
     const spawnX = edge.x1 + (edge.x2 - edge.x1) * t;
     const spawnY = edge.y1 + (edge.y2 - edge.y1) * t;
@@ -1594,8 +1605,17 @@ function createEnemyInstance(entry, spawnDelay) {
   };
 }
 
+// Spawn-from-all-sides follow-up (Whirlpool) — see createEnemyInstance's
+// own comment above for why round-robin, not random. Reset alongside
+// activeEnemies at the top of every spawnWave() call (start of a run AND
+// every subsequent round) so each round's own distribution starts from
+// the same first edge rather than carrying an odd remainder in from
+// whatever the previous round's enemy count happened to be.
+let spawnEdgeRoundRobin = 0;
+
 function spawnWave(composition) {
   activeEnemies = [];
+  spawnEdgeRoundRobin = 0;
   let spawnDelay = 0;
 
   composition.forEach((entry) => {

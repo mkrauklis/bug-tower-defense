@@ -190,3 +190,120 @@ test('renderMap/renderMapPreview never throw for Whirlpool\'s own open-field ter
   assert.doesNotThrow(() => game.renderMap(ctx, { width: 960, height: 640 }, 1.4));
   assert.doesNotThrow(() => game.renderMapPreview(ctx, game.MAP_TYPES.whirlpool, 0, 0, 400, 260, 1.4));
 });
+
+// Follow-up request, relayed from the peer session: "unlike the other
+// maps so far, Whirlpool's enemies should spawn from ALL sides of the
+// map, not a single edge — fits the whirlpool theme... Distribute each
+// wave's spawns across all sides (random or round-robin per enemy, your
+// judgment) rather than adding extra enemies — same total enemy count
+// per round... Each enemy still pathfinds toward the central goal
+// structure same as your other open-field maps." Round-robin was chosen
+// over random specifically so a short wave still visibly covers every
+// side rather than clustering by chance (see createEnemyInstance's own
+// comment, enemies.js). whirlpool.spawnEdge (singular) is left exactly
+// as it was — it's still read as the map's one-edge fallback (the idle-
+// tower-drift corridor target, game.js) — spawnEdges (plural, new) is
+// what the actual per-enemy spawn-side selection reads instead.
+test('Whirlpool now has 4 spawnEdges, one per side of the map, in addition to its original single spawnEdge', () => {
+  const game = loadGameContext();
+  const whirlpool = game.MAP_TYPES.whirlpool;
+  assert.ok(Array.isArray(whirlpool.spawnEdges));
+  assert.equal(whirlpool.spawnEdges.length, 4);
+  assert.deepEqual(whirlpool.spawnEdges[0], whirlpool.spawnEdge); // the original edge is still one of the four
+
+  // Each edge sits near a distinct side of the 960x640 world, not
+  // clustered on the same side as any other.
+  const sides = whirlpool.spawnEdges.map((edge) => {
+    if (edge.x1 > 900 && edge.x2 > 900) return 'right';
+    if (edge.x1 < 50 && edge.x2 < 50) return 'left';
+    if (edge.y1 < 50 && edge.y2 < 50) return 'top';
+    if (edge.y1 > 600 && edge.y2 > 600) return 'bottom';
+    return 'unknown';
+  });
+  assert.deepEqual([...new Set(sides)].sort(), ['bottom', 'left', 'right', 'top']);
+});
+
+test('setActiveMap() exposes Whirlpool\'s 4 spawn edges via getMapSpawnEdges(), and every other map still falls back to its own single edge wrapped in a 1-element array', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+  assert.deepEqual(game.getMapSpawnEdges(), game.MAP_TYPES.whirlpool.spawnEdges);
+
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  assert.deepEqual(game.getMapSpawnEdges(), [game.MAP_TYPES.marshland.spawnEdge]);
+
+  game.setActiveMap(FAKE_LEGACY_MAP);
+  assert.deepEqual(game.getMapSpawnEdges(), []); // no spawnEdge at all on a legacy map
+});
+
+test('a full wave of Whirlpool enemies round-robins across all 4 spawn edges — same total enemy count per round, evenly spread rather than funneled from one side', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+  const entry = game.getSpawnEntryForEnemyKey(game.getAllSpawnableEnemyKeys()[0]);
+  game.spawnWave([{ ...entry, count: 12 }]);
+
+  const enemies = game.getActiveEnemies();
+  assert.equal(enemies.length, 12); // same total count per round — no extra enemies added
+
+  const edges = game.MAP_TYPES.whirlpool.spawnEdges;
+  const onEdge = (point, edge) => {
+    const minX = Math.min(edge.x1, edge.x2) - 1;
+    const maxX = Math.max(edge.x1, edge.x2) + 1;
+    const minY = Math.min(edge.y1, edge.y2) - 1;
+    const maxY = Math.max(edge.y1, edge.y2) + 1;
+    return point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY;
+  };
+  const edgeCounts = edges.map(() => 0);
+  enemies.forEach((enemy) => {
+    const spawnPoint = enemy.path[0];
+    const matches = edges.map((edge) => onEdge(spawnPoint, edge));
+    const matchCount = matches.filter(Boolean).length;
+    assert.equal(matchCount, 1, 'each enemy should spawn on exactly one of the 4 edges');
+    edgeCounts[matches.indexOf(true)] += 1;
+
+    // Still pathfinds toward the same central goal every other open-field
+    // enemy on this map uses, regardless of which side it spawned from.
+    const goal = game.MAP_TYPES.whirlpool.goal;
+    assert.equal(enemy.path[enemy.path.length - 1].x, goal.x);
+    assert.equal(enemy.path[enemy.path.length - 1].y, goal.y);
+  });
+
+  // 12 enemies round-robin over 4 edges = exactly 3 each.
+  assert.deepEqual(edgeCounts, [3, 3, 3, 3]);
+});
+
+test('Whirlpool\'s spawn-edge round-robin resets at the start of each new wave, so every round starts from the same first edge', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.whirlpool);
+  const entry = game.getSpawnEntryForEnemyKey(game.getAllSpawnableEnemyKeys()[0]);
+  // Which of the 4 edges a spawn point lies on — the exact point along
+  // that edge is still independently randomized (not reset between
+  // waves), so this compares edges, not exact coordinates.
+  const edgeIndexOf = (point) => game.MAP_TYPES.whirlpool.spawnEdges.findIndex((edge) => {
+    const minX = Math.min(edge.x1, edge.x2) - 1;
+    const maxX = Math.max(edge.x1, edge.x2) + 1;
+    const minY = Math.min(edge.y1, edge.y2) - 1;
+    const maxY = Math.max(edge.y1, edge.y2) + 1;
+    return point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY;
+  });
+
+  game.spawnWave([{ ...entry, count: 3 }]); // not a multiple of 4 — leaves a remainder
+  const firstRoundFirstEdge = edgeIndexOf(game.getActiveEnemies()[0].path[0]);
+
+  game.spawnWave([{ ...entry, count: 3 }]); // next round, same composition
+  const secondRoundFirstEdge = edgeIndexOf(game.getActiveEnemies()[0].path[0]);
+
+  assert.equal(firstRoundFirstEdge, 0); // always starts from spawnEdges[0] (the original single edge)
+  assert.equal(secondRoundFirstEdge, 0);
+});
+
+test('a non-Whirlpool open-field map (Marshland) is completely unaffected by the round-robin change — every enemy still spawns on its own single spawn edge', () => {
+  const game = loadGameContext();
+  game.setActiveMap(game.MAP_TYPES.marshland);
+  const entry = game.getSpawnEntryForEnemyKey(game.getAllSpawnableEnemyKeys()[0]);
+  game.spawnWave([{ ...entry, count: 6 }]);
+
+  const edge = game.MAP_TYPES.marshland.spawnEdge;
+  game.getActiveEnemies().forEach((enemy) => {
+    assert.equal(enemy.path[0].x, edge.x1); // marshland's edge is vertical — x is constant along it
+  });
+});

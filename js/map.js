@@ -1631,6 +1631,30 @@ const WHIRLPOOL_SNORKEL_ANT = { x: 820, y: 45, size: 24 };
 // stay untouched, so these are placed well inside that ellipse instead.
 const WHIRLPOOL_SPAWN_EDGE = { x1: 970, y1: 150, x2: 970, y2: 490 };
 
+// Follow-up request: unlike every other open-field map (one spawn edge),
+// Whirlpool's enemies should spawn from ALL SIDES of the map — "fits the
+// whirlpool theme" (things get pulled in toward the vortex from every
+// direction, not funneled in from one side). WHIRLPOOL_SPAWN_EDGE above is
+// kept as-is (the right edge, now just one of four) since it's still read
+// directly as the map's single `spawnEdge` fallback — getTowerMovementTarget
+// (game.js) uses that one edge's own midpoint for its idle-drift corridor,
+// and that's a cosmetic between-rounds fallback, not worth a 4-sided
+// version of its own. The actual spawn-side selection (round-robin across
+// all four, see createEnemyInstance, enemies.js) reads MAP_SPAWN_EDGES
+// (plural) instead. Each of the other three mirrors the right edge's own
+// span, offset the same 10px past the map's own WORLD_WIDTH/WORLD_HEIGHT
+// bounds (960x640), centered on WHIRLPOOL_CENTER (480, 320) the same way
+// the right edge already is.
+const WHIRLPOOL_SPAWN_EDGE_LEFT = { x1: -10, y1: 150, x2: -10, y2: 490 };
+const WHIRLPOOL_SPAWN_EDGE_TOP = { x1: 310, y1: -10, x2: 650, y2: -10 };
+const WHIRLPOOL_SPAWN_EDGE_BOTTOM = { x1: 310, y1: 650, x2: 650, y2: 650 };
+const WHIRLPOOL_SPAWN_EDGES = [
+  WHIRLPOOL_SPAWN_EDGE,
+  WHIRLPOOL_SPAWN_EDGE_LEFT,
+  WHIRLPOOL_SPAWN_EDGE_TOP,
+  WHIRLPOOL_SPAWN_EDGE_BOTTOM,
+];
+
 const WHIRLPOOL_RAFTS = [
   { x1: 633, y1: 410, x2: 673, y2: 430, radius: 18 },
   { x1: 398, y1: 479, x2: 438, y2: 499, radius: 18 },
@@ -3494,6 +3518,12 @@ const MAP_TYPES = {
     goal: { x: WHIRLPOOL_CENTER.x, y: WHIRLPOOL_CENTER.y, size: 46, radius: 60 },
     obstacles: WHIRLPOOL_RAFTS,
     spawnEdge: WHIRLPOOL_SPAWN_EDGE,
+    // Spawn-from-all-sides follow-up — see WHIRLPOOL_SPAWN_EDGES' own
+    // comment above. Every other map leaves this unset, so
+    // MAP_SPAWN_EDGES (map.js's own active-map state below) falls back to
+    // a 1-element array wrapping their single `spawnEdge` and behaves
+    // exactly as before.
+    spawnEdges: WHIRLPOOL_SPAWN_EDGES,
   },
   // Direct request: a snowy Hard-tier map (MAP_DIFFICULTY_MULTIPLIER,
   // enemies.js) — two fully separate paths, each with its own ice cave
@@ -3642,6 +3672,13 @@ let MAP_OPEN_FIELD = Boolean(activeMap.openField);
 let MAP_GOAL = activeMap.goal || null;
 let MAP_OBSTACLES = activeMap.obstacles || [];
 let MAP_SPAWN_EDGE = activeMap.spawnEdge || null;
+// Spawn-from-all-sides follow-up (Whirlpool): the list of edges an
+// open-field enemy can actually spawn from, read by createEnemyInstance
+// (enemies.js) instead of MAP_SPAWN_EDGE directly. Defaults to a
+// 1-element array wrapping the map's own single `spawnEdge` for every
+// map that doesn't set `spawnEdges` itself, so nothing about any other
+// map's spawn behavior changes.
+let MAP_SPAWN_EDGES = activeMap.spawnEdges || (activeMap.spawnEdge ? [activeMap.spawnEdge] : []);
 
 function setActiveMap(map) {
   activeMap = map;
@@ -3652,6 +3689,7 @@ function setActiveMap(map) {
   MAP_GOAL = map.goal || null;
   MAP_OBSTACLES = map.obstacles || [];
   MAP_SPAWN_EDGE = map.spawnEdge || null;
+  MAP_SPAWN_EDGES = map.spawnEdges || (map.spawnEdge ? [map.spawnEdge] : []);
 }
 
 function getActiveMap() {
