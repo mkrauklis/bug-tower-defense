@@ -5386,22 +5386,45 @@ function drawElectricEelSegment(ctx, x, y, radius, color, heading, segmentIndex)
 // own heading computed from the segment just ahead of it — this is what
 // actually produces the "curls around corners" look instead of the whole
 // body snapping to one rotation.
+// Slither (direct request, applies to every snake/eel-type enemy — this
+// whole shared-body system already exists ONLY for MILLIPEDE_FAMILY_KEYS
+// members, so nothing new to gate or configure per type): "the body
+// visibly undulates side to side along its length as it advances, not a
+// rigid shape translating in a straight line." Each segment gets its own
+// small sideways offset, PERPENDICULAR to its own local heading, from a
+// sine wave that travels down the body over time (phased by segment
+// index, same "wave with a per-segment phase offset" technique this
+// project's own grass/seaweed sway already uses elsewhere) — the classic
+// traveling S-curve a real snake's body shows while moving. Scales with
+// the enemy's own radius so a tiny Gardener Snake and a huge Anaconda
+// both read as a proportional wiggle rather than the same fixed pixel
+// amount looking enormous on one and invisible on the other.
+const SLITHER_SPEED = 6;
+const SLITHER_WAVELENGTH = 0.9;
+
 function renderMillipedeBody(ctx, enemy, time) {
   const body = MILLIPEDE_BODY[enemy.enemyKey] || DEFAULT_MILLIPEDE_BODY;
   const draw = body.segmentDrawFn || drawMillipedeSegment;
   const spacing = enemy.radius * body.spacingFactor;
+  const amplitude = enemy.radius * 0.35;
 
-  draw(ctx, enemy.x, enemy.y, enemy.radius, enemy.color, enemy.heading, 0, time);
+  const headWave = Math.sin(time * SLITHER_SPEED) * amplitude;
+  const headX = enemy.x - Math.sin(enemy.heading) * headWave;
+  const headY = enemy.y + Math.cos(enemy.heading) * headWave;
+  draw(ctx, headX, headY, enemy.radius, enemy.color, enemy.heading, 0, time);
 
-  let prevX = enemy.x;
-  let prevY = enemy.y;
+  let prevX = headX;
+  let prevY = headY;
   for (let i = 1; i <= body.segmentCount; i += 1) {
     const point = getTrailPointAtDistance(enemy, i * spacing);
     const heading = Math.atan2(point.y - prevY, point.x - prevX) + Math.PI; // facing back toward the segment ahead
+    const wave = Math.sin(time * SLITHER_SPEED - i * SLITHER_WAVELENGTH) * amplitude;
+    const waveX = point.x - Math.sin(heading) * wave;
+    const waveY = point.y + Math.cos(heading) * wave;
     const taper = Math.max(0.4, 1 - i * 0.09);
-    draw(ctx, point.x, point.y, enemy.radius * taper, enemy.color, heading, i, time);
-    prevX = point.x;
-    prevY = point.y;
+    draw(ctx, waveX, waveY, enemy.radius * taper, enemy.color, heading, i, time);
+    prevX = waveX;
+    prevY = waveY;
   }
 }
 
@@ -5423,6 +5446,18 @@ function drawZombieMushroomCap(ctx, x, y, size) {
   ctx.fillStyle = '#efebe9';
   ctx.fillRect(x - size * 0.15, y, size * 0.3, size * 0.45);
 }
+
+// Hop (direct request, applies to every frog-type enemy — not Tadpole or
+// Frog Larva, both legless/larval and still swimming rather than
+// hopping; checked against the full roster, not just memory of it, per
+// the request's own instruction). A periodic jump arc — rises and falls
+// with each stride rather than smoothly sliding along its route — with a
+// brief squash on landing. Phased by position (same "seeded by where it
+// is, not real randomness" convention this project's other periodic
+// animations already use) so multiple frogs hopping at once don't all
+// land in lockstep.
+const HOPPING_ENEMY_KEYS = new Set(['froglet', 'marsh-boss-tier-1']);
+const HOP_SPEED = 5;
 
 function renderEnemies(ctx, time) {
   activeEnemies.forEach((enemy) => {
@@ -5461,6 +5496,15 @@ function renderEnemies(ctx, time) {
       ctx.translate(enemy.x, enemy.y);
       ctx.rotate(enemy.heading + facingOffset);
       ctx.translate(-enemy.x, -enemy.y);
+      if (HOPPING_ENEMY_KEYS.has(enemy.enemyKey)) {
+        const hopPhase = (time * HOP_SPEED + (enemy.x + enemy.y) * 0.03) % (Math.PI * 2);
+        const lift = Math.max(0, Math.sin(hopPhase)); // 0 while grounded, up to 1 at the peak of each hop
+        const stretch = lift * 0.15; // a touch taller/thinner mid-air
+        const squash = Math.cos(hopPhase) < 0 && lift < 0.1 ? 0.15 : 0; // a brief squash right on landing
+        ctx.translate(enemy.x, enemy.y - lift * enemy.radius * 0.6);
+        ctx.scale(1 - stretch * 0.5 + squash * 0.5, 1 + stretch - squash);
+        ctx.translate(-enemy.x, -enemy.y);
+      }
       if (enemy.isZombie) {
         // Zombies render green regardless of their original type's color —
         // cheapest way to reuse every type's existing art is to draw it

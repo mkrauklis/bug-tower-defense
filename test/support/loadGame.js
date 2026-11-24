@@ -58,6 +58,11 @@ function loadGameContext() {
       // the per-type segment-count/spacing numbers rather than only
       // inferring them indirectly through trail-length side effects.
       MILLIPEDE_BODY,
+      // Hop/slither movement-animation pass: lets a test exercise the
+      // real render dispatch directly (same "renderX never throws"
+      // pattern already used throughout this file) and check which
+      // enemy keys are opted into the hop animation.
+      renderEnemies, HOPPING_ENEMY_KEYS,
       MAP_TYPES, getActiveMap, setActiveMap,
       PRODIGY_BASE_TYPE, turnIntoPurpleZombie,
       // New export: lets a test actually call a specific enemy's own draw
