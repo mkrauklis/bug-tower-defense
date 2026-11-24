@@ -977,16 +977,181 @@ const SAVANAH_SANDSTONE = [
 const SAVANAH_TEMPLE_A = { x: 480, y: 320, size: 70 };
 const SAVANAH_TEMPLE_B = { x: 820, y: 160, size: 70 };
 
+// Open-field rollout, Savanah's turn (3rd of the 6 remaining maps,
+// relayed from the peer session: "Roll the open-field system out to the
+// remaining 6 maps... Same incremental commit/report pattern as Deep
+// Forest" — see MARSHLAND_HUT's own comment for the 2nd map's full
+// design history, which this follows exactly). SAVANAH_PATH_A/B and the
+// two temples above are kept exactly as they were, same unused-fallback
+// convention every prior conversion uses — nothing else reuses them, and
+// renderDesertDecor below now skips drawing the temples once this map is
+// open-field (see its own comment) rather than leaving 2 inert decorative
+// structures that could read as extra goals.
+//
+// Goal structure is a watchtower/outpost (the follow-up request's own
+// phrase for Savanah) — an open lookout platform on angled, cross-braced
+// timber legs, distinct from both Deep Forest's enclosed log cabin and
+// Marshland's stilt-shack. Obstacles are sandstone rock formations (the
+// follow-up request's own per-map terrain list), a new blocking-terrain
+// array separate from the existing, purely decorative SAVANAH_SANDSTONE
+// clusters above — same reasoning as Marshland's new MARSHLAND_TALL_GRASS
+// staying separate from its own decorative puddles.
+const SAVANAH_WATCHTOWER = { x: 800, y: 380, size: 46, radius: 58 };
+
+const SAVANAH_SPAWN_EDGE = { x1: -10, y1: 60, x2: -10, y2: 580 };
+
+const SAVANAH_ROCK_OBSTACLES = [
+  { x1: 250, y1: 200, x2: 300, y2: 230, radius: 22 },
+  { x1: 450, y1: 150, x2: 500, y2: 180, radius: 20 },
+  { x1: 550, y1: 350, x2: 600, y2: 380, radius: 22 },
+  { x1: 250, y1: 450, x2: 300, y2: 480, radius: 20 },
+  { x1: 500, y1: 480, x2: 550, y2: 500, radius: 19 },
+  { x1: 620, y1: 200, x2: 670, y2: 230, radius: 20 },
+];
+
 const SAVANAH_DECOR = {
   cacti: SAVANAH_CACTI,
   sandstone: SAVANAH_SANDSTONE,
   temples: [SAVANAH_TEMPLE_A, SAVANAH_TEMPLE_B],
+  watchtower: SAVANAH_WATCHTOWER,
+  rockObstacles: SAVANAH_ROCK_OBSTACLES,
 };
 
-function renderDesertDecor(ctx, decor) {
+// Savanah's own open-field goal structure: a tall timber watchtower on
+// angled, cross-braced support legs — an open lookout platform rather
+// than an enclosed building (distinct from Deep Forest's cabin/
+// Marshland's stilt-shack), topped with a small roofed lookout cabin, a
+// lit window, and a gently waving signal flag.
+function drawWatchtower(ctx, x, y, size, time = 0) {
+  ctx.save();
+
+  const legSpread = size * 0.55;
+  const platformY = y - size * 1.05;
+
+  ctx.strokeStyle = '#4a3220';
+  ctx.lineWidth = Math.max(2.5, size * 0.1);
+  [-1, 1].forEach((side) => {
+    ctx.beginPath();
+    ctx.moveTo(x + side * legSpread * 0.3, platformY);
+    ctx.lineTo(x + side * legSpread, y + size * 0.5);
+    ctx.stroke();
+  });
+
+  ctx.strokeStyle = shadeColor('#4a3220', -10);
+  ctx.lineWidth = Math.max(1.5, size * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(x - legSpread * 0.9, y + size * 0.1);
+  ctx.lineTo(x + legSpread * 0.2, platformY + size * 0.3);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + legSpread * 0.9, y + size * 0.1);
+  ctx.lineTo(x - legSpread * 0.2, platformY + size * 0.3);
+  ctx.stroke();
+
+  const deckW = size * 1.2;
+  ctx.fillStyle = shadeColor(SANDSTONE_COLOR, -10);
+  ctx.fillRect(x - deckW / 2, platformY, deckW, size * 0.14);
+  ctx.strokeStyle = '#4a3220';
+  ctx.lineWidth = Math.max(1.5, size * 0.04);
+  ctx.strokeRect(x - deckW / 2, platformY - size * 0.22, deckW, size * 0.22);
+
+  const cabinW = size * 0.7;
+  const cabinH = size * 0.5;
+  const cabinY = platformY - size * 0.22 - cabinH;
+  ctx.fillStyle = '#5c4328';
+  ctx.fillRect(x - cabinW / 2, cabinY, cabinW, cabinH);
+  ctx.fillStyle = '#3d2c18';
+  ctx.beginPath();
+  ctx.moveTo(x - cabinW / 2 - size * 0.1, cabinY);
+  ctx.lineTo(x, cabinY - size * 0.3);
+  ctx.lineTo(x + cabinW / 2 + size * 0.1, cabinY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowColor = 'rgba(255, 200, 110, 0.8)';
+  ctx.shadowBlur = size * 0.25;
+  ctx.fillStyle = '#ffcf7a';
+  ctx.fillRect(x - size * 0.12, cabinY + cabinH * 0.25, size * 0.24, size * 0.2);
+  ctx.shadowBlur = 0;
+
+  const wave = Math.sin(time * 1.2 + x * 0.01) * size * 0.08;
+  ctx.strokeStyle = '#2e2210';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x, cabinY - size * 0.3);
+  ctx.lineTo(x, cabinY - size * 0.55);
+  ctx.stroke();
+  ctx.fillStyle = '#c9402a';
+  ctx.beginPath();
+  ctx.moveTo(x, cabinY - size * 0.55);
+  ctx.quadraticCurveTo(x + size * 0.18 + wave, cabinY - size * 0.5, x + size * 0.26 + wave, cabinY - size * 0.42);
+  ctx.lineTo(x, cabinY - size * 0.4);
+  ctx.closePath();
+  ctx.fill();
+
+  applyBlobShading(ctx, x, platformY, deckW * 0.5);
+  ctx.restore();
+}
+
+// A sandstone rock-formation obstacle (follow-up request's own per-map
+// terrain list: "Savanah: sandstone"). Same capsule shape
+// {x1,y1,x2,y2,radius} every open-field obstacle shares — drawn as a
+// cluster of overlapping boulders along the capsule's own footprint
+// (reusing SANDSTONE_COLOR/the same light-over-dark layering
+// drawSandstoneFormation already established) rather than a single
+// smooth shape, so it reads as a rock formation, not a log or a patch of
+// grass.
+function drawSandstoneObstacle(ctx, obstacle) {
+  const { x1, y1, x2, y2, radius } = obstacle;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const cx = (x1 + x2) / 2;
+  const cy = (y1 + y2) / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  const boulderCount = Math.max(2, Math.round(length / (radius * 1.1)));
+  for (let i = 0; i < boulderCount; i += 1) {
+    const t = boulderCount === 1 ? 0.5 : i / (boulderCount - 1);
+    const bx = -length / 2 + t * length;
+    const scale = 0.85 + 0.3 * Math.sin(i * 1.7);
+    ctx.fillStyle = SANDSTONE_COLOR;
+    ctx.beginPath();
+    ctx.ellipse(bx, 0, radius * 0.7 * scale, radius * 0.55 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = shadeColor(SANDSTONE_COLOR, 16);
+    ctx.beginPath();
+    ctx.ellipse(bx - radius * 0.15, -radius * 0.2, radius * 0.22 * scale, radius * 0.14 * scale, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function renderDesertDecor(ctx, decor, time = 0) {
   decor.sandstone.forEach((rock) => drawSandstoneFormation(ctx, rock.x, rock.y, rock.r));
   decor.cacti.forEach((cactus) => drawCactus(ctx, cactus.x, cactus.y, cactus.size));
-  decor.temples.forEach((temple) => drawTemple(ctx, temple.x, temple.y, temple.size));
+  // Once Savanah is open-field, the old per-path temples are no longer
+  // this map's actual goal (see MAP_TYPES.savanah's own openField/goal
+  // fields below) — hidden instead of left rendering as 2 decorative
+  // structures that could read as extra live goals, same "defaults to a
+  // no-op once a map converts" spirit every other guard in this file
+  // already uses. Checked against `decor.watchtower` itself (this exact
+  // decor object's own data), NOT the global MAP_OPEN_FIELD binding —
+  // renderMapPreview() calls this same function for whichever map is
+  // being browsed in the carousel, which is very often NOT the currently
+  // active map (e.g. still playing a Tundra round while previewing
+  // Savanah), so reading the global "currently active map" flag here
+  // would show/hide Savanah's own temples based on some OTHER map's
+  // open-field-ness — a real bug caught via live preview-carousel
+  // testing (browsing to Savanah's preview while Tundra was the active
+  // map incorrectly showed all 3 structures: the new watchtower AND both
+  // old temples).
+  if (!decor.watchtower) decor.temples.forEach((temple) => drawTemple(ctx, temple.x, temple.y, temple.size));
+  if (decor.rockObstacles) decor.rockObstacles.forEach((rock) => drawSandstoneObstacle(ctx, rock));
+  if (decor.watchtower) drawWatchtower(ctx, decor.watchtower.x, decor.watchtower.y, decor.watchtower.size, time);
 }
 
 const SAVANAH_PATH_COLORS = { outline: '#3d2c18', fill: '#a67c3f' };
@@ -2594,11 +2759,19 @@ const MAP_TYPES = {
     id: 'savanah',
     name: 'Savanah',
     builtin: true,
+    // Kept as an unused fallback, same convention as every prior
+    // conversion's own `paths` — see SAVANAH_WATCHTOWER/
+    // SAVANAH_ROCK_OBSTACLES/SAVANAH_SPAWN_EDGE's own comment above
+    // (3rd map converted, after Deep Forest and Marshland).
     paths: [SAVANAH_PATH_A, SAVANAH_PATH_B],
     pathWidth: 56,
     pathColors: SAVANAH_PATH_COLORS,
     terrain: 'desert',
     decor: SAVANAH_DECOR,
+    openField: true,
+    goal: SAVANAH_WATCHTOWER,
+    obstacles: SAVANAH_ROCK_OBSTACLES,
+    spawnEdge: SAVANAH_SPAWN_EDGE,
   },
   // Direct request: an ocean-floor map whose single path spirals inward
   // into a central vortex (the goal) rather than any straight-segment
