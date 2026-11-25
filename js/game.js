@@ -2215,7 +2215,13 @@ function renderSelectedTowerSection(ctx, x, width, startY) {
   ctx.font = 'bold 15px sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText('Selected Tower', x, y);
+  // Direct request (relayed from the peer session): once a tower is
+  // actually selected, name it in the header instead of the generic
+  // placeholder — "Selected Sunflower Tower," "Selected Banana Plant
+  // Tower," etc. Before anything's selected there's no name to show, so
+  // the header stays the plain placeholder prompt below.
+  const headerText = selectedTower ? `Selected ${TOWER_TYPES[selectedTower.type].name} Tower` : 'Selected Tower';
+  ctx.fillText(headerText, x, y);
   y += 22;
 
   if (!selectedTower) {
