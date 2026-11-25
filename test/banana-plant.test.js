@@ -330,6 +330,114 @@ test('Banana Plant\'s bulb cluster renders within its own selection ring (regres
   });
 });
 
+// A richer mock ctx than the bulb-bounds one above, for the escalating-
+// visuals regression tests below (direct follow-up request, relayed from
+// the peer session: "its sprite doesn't visually change enough as you
+// upgrade through a path... same bar as the other 6 towers' paths").
+// Tracks every stroke()'s lineWidth at the moment it fires, every
+// ellipse()'s own radii, every arc()'s own radius, and every distinct
+// value ever assigned to shadowBlur — enough to tell a flat look apart
+// from a genuinely escalating one without caring about exact pixel art.
+function makeMockCtx() {
+  const state = { lineWidth: 1, shadowBlur: 0 };
+  const log = { strokeLineWidths: [], ellipses: [], arcs: [], shadowBlurValues: [] };
+  const ctx = new Proxy({}, {
+    get: (obj, prop) => {
+      if (prop === 'createRadialGradient') return () => ({ addColorStop: () => {} });
+      if (prop === 'stroke') return () => log.strokeLineWidths.push(state.lineWidth);
+      if (prop === 'ellipse') return (cx, cy, rx, ry) => log.ellipses.push({ rx, ry });
+      if (prop === 'arc') return (cx, cy, r) => log.arcs.push({ r });
+      if (prop in state) return state[prop];
+      return () => {};
+    },
+    set: (obj, prop, value) => {
+      state[prop] = value;
+      if (prop === 'shadowBlur') log.shadowBlurValues.push(value);
+      return true;
+    },
+  });
+  return { ctx, log };
+}
+
+test('Tangle Path: roots render visibly thicker and more elaborate (more root/wrap strokes) at higher tiers, not a flat look across all 4', () => {
+  const game = loadFullGameContext();
+  // On an open-field map (the current default), renderTower also draws a
+  // constant set of walking legs, and the Bulb Path's own stems always
+  // draw too (2 of them, unaffected by tangleTier) — both at their own
+  // fixed, tangleTier-independent lineWidths. Filtering those two known
+  // constants out of the stroke log isolates the root/wrap strokes this
+  // test actually cares about, regardless of whether legs happen to be
+  // drawn in whatever environment this runs in.
+  const results = [0, 1, 2, 3, 4].map((tier) => {
+    const tower = game.createTower('bananaPlant');
+    tower.x = 100; tower.y = 100;
+    for (let i = 0; i < tier; i += 1) game.purchaseUpgrade(tower, 0);
+    const legWidth = Math.max(1.5, tower.stats.size * 0.07);
+    const stemWidth = Math.max(1.5, tower.stats.size * 0.05);
+    const { ctx, log } = makeMockCtx();
+    game.renderTower(ctx, tower, tower.x, tower.y, 1.3);
+    const rootWidths = log.strokeLineWidths.filter(
+      (w) => Math.abs(w - legWidth) > 1e-9 && Math.abs(w - stemWidth) > 1e-9
+    );
+    return { strokeCount: log.strokeLineWidths.length, maxRootLineWidth: Math.max(0, ...rootWidths) };
+  });
+
+  assert.ok(
+    results[4].strokeCount > results[2].strokeCount && results[2].strokeCount > results[0].strokeCount,
+    `expected a steadily more elaborate root/wrap tangle at higher tiers, got stroke counts ${JSON.stringify(results.map((r) => r.strokeCount))}`
+  );
+  assert.ok(
+    results[4].maxRootLineWidth > results[0].maxRootLineWidth,
+    `expected visibly thicker roots at tier 4 than tier 0, got ${results[0].maxRootLineWidth} vs ${results[4].maxRootLineWidth}`
+  );
+});
+
+test('Bulb Path: the bulb cluster itself visibly grows (more bulbs, each bigger) at higher tiers, not a flat look across all 4', () => {
+  const game = loadFullGameContext();
+  const results = [0, 1, 2, 3, 4].map((tier) => {
+    const tower = game.createTower('bananaPlant');
+    tower.x = 100; tower.y = 100;
+    for (let i = 0; i < tier; i += 1) game.purchaseUpgrade(tower, 1);
+    const { ctx, log } = makeMockCtx();
+    game.renderTower(ctx, tower, tower.x, tower.y, 1.3);
+    return { bulbEllipseCount: log.ellipses.length, maxBulbRy: Math.max(0, ...log.ellipses.map((e) => e.ry)) };
+  });
+
+  assert.ok(
+    results[4].bulbEllipseCount > results[0].bulbEllipseCount,
+    `expected more bulbs drawn at tier 4 than tier 0, got ${results[0].bulbEllipseCount} vs ${results[4].bulbEllipseCount}`
+  );
+  assert.ok(
+    results[4].maxBulbRy > results[0].maxBulbRy,
+    `expected bigger bulbs at tier 4 than tier 0, got ${results[0].maxBulbRy} vs ${results[4].maxBulbRy}`
+  );
+});
+
+test('Bloom Path: the pollen haze grows bigger, more opaque, and more glowing at higher tiers, not a flat look across all 4', () => {
+  const game = loadFullGameContext();
+  const results = [0, 1, 2, 3, 4].map((tier) => {
+    const tower = game.createTower('bananaPlant');
+    tower.x = 100; tower.y = 100;
+    for (let i = 0; i < tier; i += 1) game.purchaseUpgrade(tower, 2);
+    const { ctx, log } = makeMockCtx();
+    game.renderTower(ctx, tower, tower.x, tower.y, 1.3);
+    return {
+      hazeRadius: log.arcs.length ? Math.max(...log.arcs.map((a) => a.r)) : 0,
+      maxGlow: Math.max(0, ...log.shadowBlurValues),
+    };
+  });
+
+  assert.equal(results[0].hazeRadius, 0, 'expected no pollen haze at all before Bloom Path is even chosen');
+  assert.ok(
+    results[4].hazeRadius > results[1].hazeRadius,
+    `expected a bigger haze at tier 4 than tier 1, got ${results[1].hazeRadius} vs ${results[4].hazeRadius}`
+  );
+  assert.ok(
+    results[4].maxGlow > results[1].maxGlow,
+    `expected a stronger glow at tier 4 than tier 1, got ${results[1].maxGlow} vs ${results[4].maxGlow}`
+  );
+});
+
 test('renderTower never throws for a Banana Plant across every path/tier combination', () => {
   const game = loadFullGameContext();
   const ctx = new Proxy({}, { get: (obj, prop) => (prop === 'createRadialGradient' ? () => ({ addColorStop: () => {} }) : () => {}) });

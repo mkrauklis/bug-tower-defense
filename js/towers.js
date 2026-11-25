@@ -3755,9 +3755,11 @@ function drawBananaPlant(ctx, x, y, size, color, glow, time, flashAmount, tangle
   ctx.rotate(sway);
   ctx.translate(-x, -groundY);
 
-  // Fine white wispy roots, trailing beneath the bulb cluster.
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-  ctx.lineWidth = Math.max(1, size * 0.03);
+  // Fine white wispy roots, trailing beneath the bulb cluster — Tangle
+  // Path escalation: more of them, progressively thicker and brighter
+  // (reading as "more visible"), reaching further down each tier.
+  ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(0.9, 0.5 + tangleTier * 0.1)})`;
+  ctx.lineWidth = Math.max(1, size * 0.05) * (1 + tangleTier * 0.3);
   ctx.lineCap = 'round';
   const rootCount = 3 + Math.min(tangleTier, 4);
   for (let i = 0; i < rootCount; i += 1) {
@@ -3769,46 +3771,81 @@ function drawBananaPlant(ctx, x, y, size, color, glow, time, flashAmount, tangle
       rootX + Math.sin(time * 2 + i) * size * 0.08,
       groundY + size * 0.3,
       rootX + (t - 0.5) * size * 0.3,
-      groundY + size * 0.55
+      groundY + size * (0.55 + tangleTier * 0.04)
     );
+    ctx.stroke();
+  }
+  // Tangle Path tier 2+: a couple of roots visibly loop/wrap around the
+  // bulb cluster's own base instead of just trailing straight down —
+  // reads as the plant's own snare literally wrapping its base, growing
+  // more tangled (more loops, wider) each tier on top of tier 1's look.
+  const wrapCount = Math.max(0, tangleTier - 1);
+  for (let i = 0; i < wrapCount; i += 1) {
+    const wrapTilt = (i - (wrapCount - 1) / 2) * 0.35;
+    ctx.beginPath();
+    ctx.ellipse(x, groundY - size * 0.02, size * (0.5 + i * 0.1), size * 0.26, wrapTilt, 0.15, Math.PI - 0.15);
     ctx.stroke();
   }
 
   // The bulb cluster itself — a handful of smooth, glossy, bulbous green
-  // "banana" floats, slightly overlapping.
-  const bulbCount = 3 + (bulbTier >= 1 ? 1 : 0);
-  ctx.fillStyle = color;
+  // "banana" floats, slightly overlapping. Bulb Path escalation: more of
+  // them, each one bigger, and a visibly deeper/richer green, directly
+  // reflecting that path's own raw-damage/extra-stems growth.
+  const bulbCount = Math.min(3 + bulbTier, 6);
+  const bulbScale = 1 + bulbTier * 0.1;
+  const bulbColor = shadeColor(color, -bulbTier * 5);
+  ctx.fillStyle = bulbColor;
   for (let i = 0; i < bulbCount; i += 1) {
     const t = bulbCount === 1 ? 0.5 : i / (bulbCount - 1);
     const bulbX = x + (t - 0.5) * size * 1.1;
     const bulbY = groundY - size * 0.05 + Math.sin(i * 2.1) * size * 0.06;
     ctx.beginPath();
-    ctx.ellipse(bulbX, bulbY, size * 0.26, size * 0.42, (t - 0.5) * 0.5, 0, Math.PI * 2);
+    ctx.ellipse(bulbX, bulbY, size * 0.26 * bulbScale, size * 0.42 * bulbScale, (t - 0.5) * 0.5, 0, Math.PI * 2);
     ctx.fill();
   }
-  // A glossy highlight on each bulb — "glossy, wet-looking."
+  // A glossy highlight on each bulb — "glossy, wet-looking," scaling with
+  // the same bulbScale so it never looks like a flat patch on a bigger bulb.
   ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
   for (let i = 0; i < bulbCount; i += 1) {
     const t = bulbCount === 1 ? 0.5 : i / (bulbCount - 1);
     const bulbX = x + (t - 0.5) * size * 1.1;
     const bulbY = groundY - size * 0.05 + Math.sin(i * 2.1) * size * 0.06;
     ctx.beginPath();
-    ctx.ellipse(bulbX - size * 0.08, bulbY - size * 0.18, size * 0.08, size * 0.16, (t - 0.5) * 0.5, 0, Math.PI * 2);
+    ctx.ellipse(
+      bulbX - size * 0.08 * bulbScale,
+      bulbY - size * 0.18 * bulbScale,
+      size * 0.08 * bulbScale,
+      size * 0.16 * bulbScale,
+      (t - 0.5) * 0.5,
+      0,
+      Math.PI * 2
+    );
     ctx.fill();
   }
 
   // Thin curling stems rising from the bulb cluster up to the leaves.
-  ctx.strokeStyle = shadeColor(color, -10);
+  // Bulb Path tier 3+ grows in the extra "attacking" stems the stems
+  // mechanic itself unlocks at that tier (tower.stems, game.js) — drawn
+  // thicker and in a brighter accent shade so they read as a distinct,
+  // more aggressive growth rather than just 2 more ordinary stems.
+  ctx.strokeStyle = shadeColor(bulbColor, -10);
   ctx.lineWidth = Math.max(1.5, size * 0.05);
-  const stemCount = 2 + (bulbTier >= 3 ? 1 : 0);
+  const stemCount = 2 + (bulbTier >= 3 ? 1 : 0) + (bulbTier >= 4 ? 1 : 0);
   for (let i = 0; i < stemCount; i += 1) {
     const t = stemCount === 1 ? 0.5 : i / (stemCount - 1);
     const baseX = x + (t - 0.5) * size * 0.7;
     const curl = Math.sin(time * 0.8 + i * 1.7) * size * 0.12;
+    const isAttackStem = bulbTier >= 3 && i >= 2;
+    if (isAttackStem) {
+      ctx.save();
+      ctx.strokeStyle = shadeColor(bulbColor, 18);
+      ctx.lineWidth = Math.max(2, size * 0.075);
+    }
     ctx.beginPath();
     ctx.moveTo(baseX, groundY - size * 0.3);
     ctx.quadraticCurveTo(baseX + curl, y + stemHeight * 0.4, x + (t - 0.5) * size * 0.3, y + size * 0.1);
     ctx.stroke();
+    if (isAttackStem) ctx.restore();
   }
 
   // The leaves pulse slightly bigger right after an attack, same
@@ -3817,30 +3854,52 @@ function drawBananaPlant(ctx, x, y, size, color, glow, time, flashAmount, tangle
   ctx.scale(1 + flashAmount * 0.15, 1 + flashAmount * 0.15);
   ctx.translate(-x, -y);
 
+  // Bloom Path escalation: this tower never gets a real effects.glow of
+  // its own (no upgrade sets one), so its own glow slot is free to use
+  // here — a soft halo around the leaves that grows and shifts from a
+  // pale pollen-yellow toward a deeper violet the higher the tier, read
+  // as the armor-shredding pollen itself permeating the foliage. Falls
+  // back to the tower's real glow (e.g. a future shared effect) if one's
+  // ever set, so the two mechanisms can never fight over shadowColor.
+  const bloomGlowT = Math.min(1, Math.max(0, bloomTier - 1) / 3); // 0 at tier 1, 1 at tier 4
+  const bloomGlowColor = `rgb(${Math.round(230 - 35 * bloomGlowT)}, ${Math.round(210 - 55 * bloomGlowT)}, ${Math.round(
+    140 + 90 * bloomGlowT
+  )})`;
   if (glow) {
     ctx.shadowColor = glow;
     ctx.shadowBlur = 20;
+  } else if (bloomTier >= 1) {
+    ctx.shadowColor = bloomGlowColor;
+    ctx.shadowBlur = 10 + bloomTier * 4;
   }
 
   // Small round lily-pad-style leaves with a slightly scalloped/ruffled
-  // edge, clustered at the top of the stems.
+  // edge, clustered at the top of the stems. Bloom Path escalation: the
+  // leaves themselves grow a bit larger/more dramatic each tier, on top
+  // of the glow above.
   const leafCount = 3 + (bulbTier >= 1 ? 1 : 0);
+  const leafScale = 1 + bloomTier * 0.1;
   for (let i = 0; i < leafCount; i += 1) {
     const angle = (i / leafCount) * Math.PI * 2 + 0.4;
     const leafX = x + Math.cos(angle) * size * 0.32;
     const leafY = y + Math.sin(angle) * size * 0.22;
-    drawBananaLeaf(ctx, leafX, leafY, size * 0.42, color, angle);
+    drawBananaLeaf(ctx, leafX, leafY, size * 0.42 * leafScale, color, angle);
   }
   ctx.shadowBlur = 0;
 
   // Bloom Path's own pollen puff, once bought — a small soft cloud
-  // drifting just above the leaves, growing once the cloud becomes a
-  // real AoE (tier 3+).
+  // drifting just above the leaves, growing bigger, more opaque, and
+  // shifting toward that same deeper violet each tier, becoming a
+  // near-constant haze by tier 4 ("lingers long enough to feel
+  // continuous" — see pollenCloud.duration's own tier-4 value).
   if (bloomTier >= 1) {
     const pulse = 0.5 + 0.5 * Math.sin(time * 2);
-    ctx.fillStyle = `rgba(230, 210, 140, ${0.35 + pulse * 0.25})`;
+    const baseAlpha = 0.3 + bloomTier * 0.05;
+    ctx.fillStyle = `rgba(${Math.round(230 - 35 * bloomGlowT)}, ${Math.round(210 - 55 * bloomGlowT)}, ${Math.round(
+      140 + 90 * bloomGlowT
+    )}, ${baseAlpha + pulse * 0.25})`;
     ctx.beginPath();
-    ctx.arc(x, y - size * 0.55, size * (0.22 + (bloomTier >= 3 ? 0.18 : 0)), 0, Math.PI * 2);
+    ctx.arc(x, y - size * 0.55, size * (0.2 + bloomTier * 0.08), 0, Math.PI * 2);
     ctx.fill();
   }
 
