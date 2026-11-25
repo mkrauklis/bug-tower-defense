@@ -3736,7 +3736,17 @@ function drawArcticWillow(
 // visible roots (Tangle Path), an extra bulb/stem/leaf (Bulb Path), and a
 // drifting pollen puff that grows once bought (Bloom Path).
 function drawBananaPlant(ctx, x, y, size, color, glow, time, flashAmount, tangleTier, bulbTier, bloomTier) {
-  const stemHeight = size * 1.2;
+  // Unlike Sunflower/Arctic Willow (a tall stem down to groundY, with the
+  // actual foliage mass drawn right at (x, y), where the selection
+  // ring/range circle is centered), Banana Plant's bulb cluster — the
+  // single biggest mass of "real" ink this tower draws — used to sit a
+  // full size*1.2 below y. That put almost the whole plant outside (or
+  // straddling the bottom edge of) its own selection ring, which drew
+  // empty space in the ring's upper half (bug report: ring floats above
+  // the sprite, body renders below/outside it). A short stemHeight keeps
+  // the bulb cluster, roots, and leaves all clustered close to (x, y),
+  // matching every other tower's anchor convention.
+  const stemHeight = size * 0.5;
   const groundY = y + stemHeight;
   const sway = Math.sin(time * 1.3 + x * 0.013) * 0.05;
 

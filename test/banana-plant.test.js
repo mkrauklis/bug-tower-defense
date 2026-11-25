@@ -303,6 +303,33 @@ test('Bloom Path tier 4: near-total armor reduction, a long-lasting application,
   assert.equal(enemy.slow.multiplier, tower.pollenCloud.slow);
 });
 
+test('Banana Plant\'s bulb cluster renders within its own selection ring (regression: it used to sit a full size*1.2 below the tower\'s anchor, floating the ring over empty space with the plant rendering below/outside it — bug report, see drawBananaPlant\'s own comment)', () => {
+  const game = loadFullGameContext();
+  const tower = game.createTower('bananaPlant');
+  tower.x = 100; tower.y = 100;
+  const ringRadius = tower.stats.size + 6; // matches drawTowerWithRay's own selection-ring radius
+
+  const bulbExtents = []; // {cy, ry} — the bottom edge (cy + ry) is what actually stuck out before the fix
+  const ctx = new Proxy({}, {
+    get: (obj, prop) => {
+      if (prop === 'createRadialGradient') return () => ({ addColorStop: () => {} });
+      // the bulb cluster is the only ellipse() user in drawBananaPlant
+      if (prop === 'ellipse') return (cx, cy, rx, ry) => bulbExtents.push({ cy, ry });
+      return () => {};
+    },
+  });
+
+  game.renderTower(ctx, tower, tower.x, tower.y, 1.3);
+
+  assert.ok(bulbExtents.length > 0, 'expected the bulb cluster to actually draw some ellipses');
+  bulbExtents.forEach(({ cy, ry }) => {
+    assert.ok(
+      cy + ry <= tower.y + ringRadius,
+      `expected every bulb's bottom edge to stay within the selection ring, got cy+ry=${cy + ry} vs tower.y+ringRadius=${tower.y + ringRadius}`
+    );
+  });
+});
+
 test('renderTower never throws for a Banana Plant across every path/tier combination', () => {
   const game = loadFullGameContext();
   const ctx = new Proxy({}, { get: (obj, prop) => (prop === 'createRadialGradient' ? () => ({ addColorStop: () => {} }) : () => {}) });
